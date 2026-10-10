@@ -125,11 +125,13 @@ struct GlassViewOrderButton: View {
         Button(action: action) {
             VStack(spacing: 1) {
                 Text("View Order").font(Theme.serif(24))
-                Text(totalCents.formattedAsUSD)
-                    .font(Theme.sans(19, .semibold))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: Double(totalCents)))
-                    .opacity(0.82)
+                if totalCents > 0 {
+                    Text(totalCents.formattedAsUSD)
+                        .font(Theme.sans(19, .semibold))
+                        .monospacedDigit()
+                        .contentTransition(.numericText(value: Double(totalCents)))
+                        .opacity(0.82)
+                }
             }
             .foregroundStyle(.white)
             .frame(width: size.width - 36, height: size.height - 2 * KioskGlassButtonStyle.verticalInset)
@@ -190,14 +192,20 @@ private enum SegmentedAppearance {
     }
 }
 
-/// One glass surface for the tray of 3D minis. Draw it beneath the RealityView so the minis render on
-/// it, and put the View Order and reset buttons beside it rather than on it (no glass on glass).
+/// The tray of 3D minis: a glass well drawn beneath the RealityView so the minis render on it. Expanded,
+/// it becomes the order sheet and turns solid, so the order's text and glass buttons sit on paper rather
+/// than on glass.
 struct GlassTrayBackground: View {
     var cornerRadius: CGFloat = 40
+    var isExpanded = false
 
     var body: some View {
-        Color.clear
-            .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius, style: .continuous))
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        shape
+            .fill(Theme.background)
+            .opacity(isExpanded ? 1 : 0)
+            .glassEffect(.regular, in: shape)
+            .shadow(color: Theme.cardShadow.opacity(isExpanded ? 1 : 0), radius: 30, y: -6)
     }
 }
 

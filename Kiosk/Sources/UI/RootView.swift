@@ -7,7 +7,7 @@ struct RootView: View {
         switch app.screen {
         case .builder: app.builderVisible ? 1 : 0
         case .roleSetup, .attract: 1
-        case .summary, .name, .confirmation: 0
+        case .name, .confirmation: 0
         }
     }
 
@@ -38,7 +38,6 @@ struct RootView: View {
                 case .roleSetup: RoleSetupView(app: app)
                 case .attract: AttractView(app: app)
                 case .builder: EmptyView()
-                case .summary: SummaryView(app: app)
                 case .name: NameEntryView(app: app)
                 case .confirmation:
                     if let receipt = app.receipt { ConfirmationView(app: app, receipt: receipt) }

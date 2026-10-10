@@ -4,7 +4,7 @@ import SwiftUI
 @Observable
 @MainActor
 final class AppModel {
-    enum Screen: Equatable { case roleSetup, attract, builder, summary, name, confirmation }
+    enum Screen: Equatable { case roleSetup, attract, builder, name, confirmation }
     enum BuilderMode: Equatable { case customize, summary }
 
     struct Notice: Equatable {

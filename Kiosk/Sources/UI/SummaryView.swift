@@ -23,7 +23,7 @@ struct SummaryView: View {
             .position(x: Layout.midX, y: Layout.backButtonCenter.y)
 
             Text("Your order")
-                .font(Theme.serif(34))
+                .font(Theme.serif(40))
                 .foregroundStyle(Theme.ink)
                 .position(x: Layout.midX, y: Layout.backButtonCenter.y)
 
@@ -61,7 +61,7 @@ struct SummaryView: View {
 
             checkout(quote)
                 .frame(width: Layout.screen.width - 112)
-                .position(x: Layout.midX, y: 1214)
+                .position(x: Layout.midX, y: 1212)
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
         .animation(.easeInOut(duration: 0.35), value: quote.lines.map(\.id))
@@ -69,36 +69,37 @@ struct SummaryView: View {
     }
 
     private func checkout(_ quote: OrderQuote) -> some View {
-        VStack(spacing: 22) {
+        VStack(alignment: .leading, spacing: 0) {
             Rectangle().fill(Theme.inkFaint).frame(height: 1)
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Total").font(Theme.serif(30))
-                    Text(breakdown(quote))
-                        .font(Theme.sans(17))
-                        .foregroundStyle(Theme.inkSecondary)
-                }
+                Text("Total").font(Theme.serif(32))
                 Spacer()
                 Text(quote.totalCents.formattedAsUSD)
-                    .font(Theme.serif(54, .semibold))
+                    .font(Theme.serif(56, .semibold))
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(quote.totalCents)))
             }
             .foregroundStyle(Theme.ink)
+            .padding(.top, 22)
+            Text(contents(quote))
+                .font(Theme.serif(19, .regular))
+                .italic()
+                .foregroundStyle(Theme.ink.opacity(0.65))
             Button { app.completeOrder() } label: {
-                Text("Checkout").frame(maxWidth: .infinity)
+                Text("Check Out").frame(maxWidth: .infinity)
             }
             .buttonStyle(.glassCTA(height: 88, fontSize: 30))
             .disabled(quote.isEmpty)
+            .padding(.top, 26)
         }
     }
 
-    private func breakdown(_ quote: OrderQuote) -> String {
-        var parts = ["\(quote.scoopCount) scoop\(quote.scoopCount == 1 ? "" : "s") \(quote.scoopsTotalCents.formattedAsUSD)"]
+    private func contents(_ quote: OrderQuote) -> String {
+        var text = quote.scoopCount == 1 ? "1 scoop" : "\(quote.scoopCount) scoops"
         if quote.coneCount > 0 {
-            parts.append("\(quote.coneCount) waffle cone\(quote.coneCount == 1 ? "" : "s") \(quote.conesTotalCents.formattedAsUSD)")
+            text += quote.coneCount == 1 ? " and 1 waffle cone" : " and \(quote.coneCount) waffle cones"
         }
-        return parts.joined(separator: "  ·  ")
+        return text + ", before tax"
     }
 }
 
@@ -110,39 +111,32 @@ private struct SummaryRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Button(action: edit) {
-                HStack(spacing: 0) {
-                    Color.clear.frame(width: 268)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(line.item.vessel.title)
-                            .font(Theme.serif(30))
-                            .foregroundStyle(Theme.ink)
-                        Text(line.item.flavorSummary)
-                            .font(Theme.serif(22, .regular))
-                            .foregroundStyle(Theme.inkSecondary)
-                    }
-                    Spacer(minLength: 16)
-                    Text(line.totalCents.formattedAsUSD)
-                        .font(Theme.serif(28, .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.ink)
-                }
-                .contentShape(Rectangle())
+            Color.clear.frame(width: 268)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(line.item.vessel.title)
+                    .font(Theme.serif(30))
+                    .foregroundStyle(Theme.ink)
+                Text(line.item.flavors.map(\.title).joined(separator: " · "))
+                    .font(Theme.serif(21, .regular))
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.65))
             }
-            .buttonStyle(.plain)
-
-            Button(action: remove) {
-                LucideIcon(name: "trash-2", size: 22)
-                    .foregroundStyle(Theme.inkSecondary)
-                    .frame(width: 64, height: 64)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove \(line.item.vessel.title)")
-            .padding(.leading, 18)
+            Spacer(minLength: 16)
+            Text(line.totalCents.formattedAsUSD)
+                .font(Theme.serif(28, .medium))
+                .monospacedDigit()
+                .foregroundStyle(Theme.ink)
+                .padding(.trailing, 26)
+            Button("Edit", action: edit)
+                .buttonStyle(.glassSecondary(height: 52, fontSize: 18))
+            GlassIconButton(icon: "trash-2", size: 52, iconSize: 20, action: remove)
+                .accessibilityLabel("Remove \(line.item.vessel.title)")
+                .padding(.leading, 10)
         }
         .padding(.trailing, 40)
         .frame(height: Layout.summaryRowHeight)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: edit)
         .overlay(alignment: .top) {
             if showsDivider {
                 Rectangle().fill(Theme.inkFaint).frame(height: 1).padding(.leading, 268).padding(.trailing, 40)

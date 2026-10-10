@@ -41,8 +41,8 @@ struct BuilderBackdrop: View {
                                             removal: .opacity.animation(.easeIn(duration: 0.16))))
             }
 
-            let sheet = app.mode == .summary ? Layout.sheetRect : Layout.trayRect
-            GlassTrayBackground(cornerRadius: app.mode == .summary ? 44 : 40)
+            let sheet = app.mode == .summary ? Layout.sheetRect : Layout.trayItemsRect
+            GlassTrayBackground(cornerRadius: app.mode == .summary ? 44 : 40, isExpanded: app.mode == .summary)
                 .frame(width: sheet.width, height: sheet.height)
                 .position(x: sheet.midX, y: sheet.midY)
 
@@ -148,19 +148,14 @@ struct BuilderForeground: View {
                               width: 420)
                 .position(x: Layout.midX, y: Layout.stepIndicatorY)
 
-            VStack(spacing: 10) {
-                Text(title)
-                    .font(Theme.serif(50))
-                    .foregroundStyle(Theme.ink)
-                    .contentTransition(.opacity)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(Theme.sans(19, .medium))
-                        .foregroundStyle(app.isEditing ? Theme.accentDeep : Theme.inkSecondary)
-                        .transition(.opacity)
-                }
-            }
-            .position(x: Layout.midX, y: Layout.titleY + 18)
+            Text(title)
+                .font(Theme.serif(52))
+                .foregroundStyle(Theme.ink)
+                .contentTransition(.opacity)
+                .position(x: Layout.midX, y: Layout.titleY)
+
+            subtitle
+                .position(x: Layout.midX, y: Layout.subtitleY + 10)
         }
         .animation(.easeInOut(duration: 0.3), value: app.step)
         .animation(.easeInOut(duration: 0.3), value: app.isEditing)
@@ -174,11 +169,30 @@ struct BuilderForeground: View {
         }
     }
 
-    private var subtitle: String? {
+    @ViewBuilder
+    private var subtitle: some View {
         if let editingID = app.editingID, let index = app.items.firstIndex(where: { $0.id == editingID }) {
-            return "Editing item \(index + 1)"
+            HStack(spacing: 16) {
+                Text("Editing item \(index + 1)")
+                    .font(Theme.serif(22, .regular))
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.75))
+                Button { app.requestDelete(editingID) } label: {
+                    HStack(spacing: 7) {
+                        LucideIcon(name: "trash-2", size: 18)
+                        Text("Remove")
+                    }
+                }
+                .buttonStyle(.glassSecondary(height: 46, fontSize: 18))
+            }
+            .transition(.opacity)
+        } else if app.step == .toppings {
+            Text("Coming soon")
+                .font(Theme.serif(22, .regular))
+                .italic()
+                .foregroundStyle(Theme.ink.opacity(0.6))
+                .transition(.opacity)
         }
-        return app.step == .toppings ? "Coming soon" : nil
     }
 
     private func card<Label: View>(_ key: CardKey, center: CGPoint, action: @escaping () -> Void,
@@ -237,12 +251,7 @@ struct BuilderForeground: View {
                     }
                     .overlay(alignment: .topTrailing) {
                         if count > 0 {
-                            Text("×\(count)")
-                                .font(Theme.sans(18, .bold))
-                                .monospacedDigit()
-                                .foregroundStyle(.white)
-                                .frame(minWidth: 40, minHeight: 36)
-                                .background(Theme.ink, in: .capsule)
+                            CountBadge(count: count)
                                 .padding(16)
                                 .transition(.scale.combined(with: .opacity))
                         }
@@ -316,16 +325,17 @@ struct BuilderForeground: View {
             if let editingID = app.editingID {
                 let _ = app.trayLayoutVersion
                 if let center = app.stage.trayItemCenter(editingID), Layout.trayItemsRect.contains(center) {
-                    GlassIconButton(icon: "trash-2", size: 64, iconSize: 26) { app.requestDelete(editingID) }
-                        .accessibilityLabel("Delete this item")
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .strokeBorder(Theme.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
+                        .frame(width: Layout.trayPitch - 18, height: Layout.trayItemsRect.height - 30)
                         .position(center)
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
                 }
             }
 
             GlassViewOrderButton(totalCents: app.liveQuote.totalCents) { app.viewOrder() }
                 .disabled(!app.canViewOrder)
-                .opacity(app.canViewOrder ? 1 : 0.4)
                 .position(x: Layout.viewOrderRect.midX, y: Layout.viewOrderRect.midY)
 
             GlassIconButton(icon: "rotate-ccw") { app.requestStartOver() }

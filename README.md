@@ -10,6 +10,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
 2. `cp Config/Local.xcconfig.example Config/Local.xcconfig` and fill in:
    - `DEVELOPMENT_TEAM` / `PRODUCT_BUNDLE_IDENTIFIER` for signing.
    - `SQUARE_APPLICATION_ID`, `SQUARE_ACCESS_TOKEN`, `SQUARE_LOCATION_ID` from the [Developer Console](https://developer.squareup.com/apps). A `sandbox-…` application ID puts the app in Sandbox mode.
+   - `SQUARE_CATEGORY_NAME`: the catalog category holding the *1 Scoop*, *2nd Scoop*, *3rd+ Scoop* and *Waffle Cone* items (one fixed-price variation each). If it's missing or its prices don't match the kiosk's, orders fall back to ad-hoc line items and the debug bar shows the error.
    - `KIOSK_EVENT_NAME`, shown on the receipt screen.
 3. `xcodegen generate` (the project is generated from `project.yml`; rerun after adding source files), open `Kiosk.xcodeproj`, pick the iPad, Run.
 
@@ -21,15 +22,16 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
 2. **Attract**: looping `loop.mp4`. *Begin Order* appears once every 3D asset is preloaded; tapping anywhere starts an order.
 3. **Builder** (one RealityView behind the SwiftUI controls holds every 3D object):
    - *Vessel*: Cup (included) or Waffle Cone (+$1.50). Selecting flies the new vessel out of its icon while the old one spins back into its slot. Drag the item to orbit it; it eases back and resumes spinning.
-   - *Flavors*: tap a flavor to fling a scoop onto the item (up to 3). *Undo* sends the top scoop back.
+   - *Flavors*: tap a flavor to fling a scoop onto the item (up to 3); each card shows what the next scoop costs. The card's minus button takes one of that flavor back off.
    - *Toppings*: placeholder, then *Add to Order* flies the item into the tray.
-   - Tray: live 3D minis (drag to scroll, tap one to remove it), *View Order* with the live total, and start-over (with confirmation).
-4. **Your Order**: items, how the tiered scoop pricing works, total, *Complete Order*.
+   - The step selector at the top jumps between steps that are already reachable.
+   - Tray: live 3D minis (drag to scroll), *View Order* with the live total, and start-over (with confirmation). Tapping a mini lifts it back out to edit: *Save Changes* returns it, *Remove* deletes it.
+4. **Your order**: *View Order* grows the tray into a sheet over the builder. Each item's 3D model flies up beside its row, with *Edit* and remove buttons. Below are the total and *Check Out*; *Keep ordering* folds the sheet back into the tray.
 5. **Name**: the name becomes the Square order's ticket name and pickup recipient.
-6. **Payment**: creates an itemized Square order (one line per item at its share of the tiered scoop price, vessel and flavors as modifiers, taxes auto-applied by Square), then `startPayment` for Square's total. On failure or cancel the customer returns to *Your Order* with a message.
-7. **Confirmation**: receipt details, an email field (not wired up yet), and *New Order*. Returns to the attract screen after 10 s without a touch.
+6. **Payment**: creates a Square order from the catalog (one line per scoop, priced by its position in the whole order, plus one line per waffle cone; taxes auto-applied by Square), then `startPayment` for Square's total. On failure or cancel the customer returns to their order with a message.
+7. **Confirmation**: an itemized receipt of what Square charged, a prompt to photograph it, and *New Order*. Returns to the attract screen after 10 s without a touch.
 
-Pricing: scoops are priced on the order's total scoop count (1 → $4, 2 → $7, 3 → $9, +$2 each after). Waffle cones are $1.50 each.
+Pricing: scoops are priced by their position in the whole order: the first is $4, the second $3, and every one after that $2 (so 1 → $4, 2 → $7, 3 → $9). Waffle cones are $1.50 each.
 
 ## Debug bar
 
@@ -76,7 +78,7 @@ Square blocks payments while the screen is recorded or mirrored; the kiosk check
 
 - The access token is baked into the app bundle. Square requires OAuth (tokens expire every 30 days) for production. Move order creation and token handling to a small backend.
 - `MockReaderUI` is linked into every build. Remove it from the target before shipping.
-- Buyers must be offered a digital or printed receipt (EMV requirement). The confirmation screen shows an itemized receipt and suggests a photo; email receipts aren't implemented.
+- Buyers must be offered a digital or printed receipt (EMV requirement). The confirmation screen shows an itemized receipt and suggests a photo; there are no email receipts yet.
 - Lock the iPad to the app with Guided Access (Settings → Accessibility).
 - The terms only allow attended use: the kiosk must be within staff line of sight and inaccessible outside business hours.
 

@@ -63,52 +63,6 @@ struct LucideIcon: View {
     }
 }
 
-struct PrimaryButtonStyle: ButtonStyle {
-    var height: CGFloat = 72
-    var fontSize: CGFloat = 28
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.serif(fontSize))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 40)
-            .frame(minHeight: height)
-            .background(Theme.ink, in: .capsule)
-            .shadow(color: Theme.ink.opacity(isEnabled ? 0.22 : 0), radius: 18, y: 8)
-            .opacity(isEnabled ? 1 : 0.3)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(response: 0.28, dampingFraction: 0.62), value: configuration.isPressed)
-    }
-}
-
-struct SecondaryButtonStyle: ButtonStyle {
-    var height: CGFloat = 60
-    var fontSize: CGFloat = 22
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.serif(fontSize, .medium))
-            .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 28)
-            .frame(minHeight: height)
-            .background(Theme.card, in: .capsule)
-            .overlay(Capsule().strokeBorder(Theme.inkFaint, lineWidth: 1.5))
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(response: 0.28, dampingFraction: 0.62), value: configuration.isPressed)
-    }
-}
-
-struct PressableStyle: ButtonStyle {
-    var pressedScale: CGFloat = 0.94
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? pressedScale : 1)
-            .animation(.spring(response: 0.26, dampingFraction: 0.6), value: configuration.isPressed)
-    }
-}
-
 /// Solid card behind a vessel or flavor; the 3D model renders on top of it, so keep it opaque, not glass.
 struct CardBackground: View {
     var highlighted = false
@@ -128,23 +82,6 @@ struct CardBackground: View {
     }
 }
 
-struct PricePill: View {
-    let text: String
-    var emphasized = false
-    var fontSize: CGFloat = 17
-
-    var body: some View {
-        Text(text)
-            .font(Theme.sans(fontSize, .semibold))
-            .monospacedDigit()
-            .foregroundStyle(emphasized ? Color.white : Theme.ink)
-            .contentTransition(.numericText())
-            .padding(.horizontal, fontSize * 0.7)
-            .frame(height: fontSize * 1.9)
-            .background(emphasized ? Theme.ink : Theme.backgroundDeep, in: .capsule)
-    }
-}
-
 struct CountBadge: View {
     let count: Int
 
@@ -155,18 +92,7 @@ struct CountBadge: View {
             .foregroundStyle(.white)
             .contentTransition(.numericText(value: Double(count)))
             .frame(minWidth: 42, minHeight: 34)
-            .background(Theme.accentDeep, in: .capsule)
+            .background(Theme.ink, in: .capsule)
             .animation(.snappy, value: count)
-    }
-}
-
-extension View {
-    func bounce(trigger: Int) -> some View {
-        keyframeAnimator(initialValue: 1.0, trigger: trigger) { content, scale in
-            content.scaleEffect(scale)
-        } keyframes: { _ in
-            CubicKeyframe(0.9, duration: 0.11)
-            SpringKeyframe(1.0, duration: 0.35, spring: .init(response: 0.32, dampingRatio: 0.45))
-        }
     }
 }

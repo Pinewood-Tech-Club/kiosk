@@ -58,7 +58,6 @@ enum Layout {
         summaryListRect.minY + 12 + summaryRowHeight / 2 + index * summaryRowPitch
     }
 
-    static let trayRect = CGRect(x: 24, y: 1218, width: 984, height: 134)
     static let trayItemsRect = CGRect(x: 24, y: 1218, width: 638, height: 134)
     static let trayFirstCenterX: CGFloat = 104
     static let trayPitch: CGFloat = 118
