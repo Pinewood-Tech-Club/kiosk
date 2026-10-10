@@ -7,46 +7,51 @@ struct DebugBar: View {
     private var square: SquareService { app.square }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Badge(text: square.environmentName, color: square.isSandbox ? .orange : (square.isConfigured ? .green : .red))
-            Badge(text: authText, color: square.isAuthorized ? .green : .red)
-            Badge(text: readerText, color: readerColor)
-            Badge(text: square.catalogStatus.badgeText, color: catalogColor)
-            if app.simulatePayment { Badge(text: "Simulated pay", color: .purple) }
-            if app.slowMotion != 1 { Badge(text: "×\(app.slowMotion.formatted())", color: .blue) }
-            Spacer(minLength: 8)
-            if square.isSandbox, square.isAuthorized {
-                Button(square.isMockReaderPresented ? "Hide Mock Reader" : "Mock Reader") { square.toggleMockReader() }
-            }
-            Button("Readers") { square.presentReaderSettings(from: app.host.presenter) }
-                .disabled(!square.isAuthorized)
-            Button("Log") { app.showsLog = true }
-            Menu("Debug") {
-                Toggle("Simulate payment success", isOn: $app.simulatePayment)
-                Picker("Animation speed", selection: $app.slowMotion) {
-                    Text("Normal").tag(1.0)
-                    Text("0.5× slow-mo").tag(0.5)
-                    Text("0.25× slow-mo").tag(0.25)
-                    Text("0.1× slow-mo").tag(0.1)
+        GlassEffectContainer(spacing: 6) {
+            HStack(spacing: 6) {
+                HStack(spacing: 10) {
+                    StatusDot(text: square.environmentName, color: square.isSandbox ? .orange : (square.isConfigured ? .green : .red))
+                    StatusDot(text: authText, color: square.isAuthorized ? .green : .red)
+                    StatusDot(text: readerText, color: readerColor)
+                    if app.simulatePayment { StatusDot(text: "Simulated pay", color: .purple) }
+                    if app.slowMotion != 1 { StatusDot(text: "×\(app.slowMotion.formatted())", color: .blue) }
                 }
-                Toggle("Show 3D debug info", isOn: $app.show3DDebug)
-                Divider()
-                Button("Change role") { app.changeRole() }
-                Button("Hide debug bar (triple-tap top-left to restore)") {
-                    withAnimation(.easeInOut(duration: 0.25)) { app.debugBarHidden = true }
+                .padding(.horizontal, 12)
+                .frame(height: 32)
+                .glassEffect(.regular, in: .capsule)
+
+                if square.isSandbox, square.isAuthorized {
+                    Button(square.isMockReaderPresented ? "Hide Mock Reader" : "Mock Reader") { square.toggleMockReader() }
+                }
+                Button("Readers") { square.presentReaderSettings(from: app.host.presenter) }
+                    .disabled(!square.isAuthorized)
+                Button("Log") { app.showsLog = true }
+                Menu("Debug") {
+                    Toggle("Simulate payment success", isOn: $app.simulatePayment)
+                    Picker("Animation speed", selection: $app.slowMotion) {
+                        Text("Normal").tag(1.0)
+                        Text("0.5× slow-mo").tag(0.5)
+                        Text("0.25× slow-mo").tag(0.25)
+                        Text("0.1× slow-mo").tag(0.1)
+                    }
+                    Toggle("Show 3D debug info", isOn: $app.show3DDebug)
+                    Divider()
+                    Button("Change role") { app.changeRole() }
+                    Button("Hide debug bar (triple-tap top-left to restore)") {
+                        withAnimation(.easeInOut(duration: 0.25)) { app.debugBarHidden = true }
+                    }
                 }
             }
         }
-        .font(.system(size: 13, weight: .semibold))
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass)
         .controlSize(.small)
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(.primary)
         .tint(.primary)
-        .padding(.horizontal, 12)
-        .frame(height: 44)
-        .background(.regularMaterial, in: .capsule)
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .environment(\.colorScheme, .light)
+        .padding(.top, 10)
+        .padding(.trailing, 14)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .environment(\.colorScheme, app.screen == .attract ? .dark : .light)
     }
 
     private var authText: String {
@@ -100,18 +105,15 @@ struct DebugBar: View {
     }
 }
 
-private struct Badge: View {
+private struct StatusDot: View {
     let text: String
     let color: Color
 
     var body: some View {
-        Text(text)
-            .font(.system(size: 12, weight: .semibold))
-            .lineLimit(1)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.15), in: .capsule)
-            .foregroundStyle(color)
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(text).lineLimit(1)
+        }
     }
 }
 

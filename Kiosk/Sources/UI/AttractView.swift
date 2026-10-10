@@ -3,27 +3,47 @@ import SwiftUI
 
 struct AttractView: View {
     let app: AppModel
+    @State private var showsButton = false
 
     var body: some View {
         ZStack {
             Color.black
             LoopingVideoView(url: Bundle.main.url(forResource: "loop", withExtension: "mp4"))
 
-            Text("Begin Order")
-                .font(Theme.serif(46))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 44)
-                .padding(.vertical, 22)
-                .background(.white, in: .rect(cornerRadius: 16, style: .continuous))
-                .shadow(color: .black.opacity(0.25), radius: 24, y: 10)
-                .opacity(app.stageReady ? 1 : 0)
-                .animation(.easeOut(duration: 0.5), value: app.stageReady)
-                .position(x: Layout.midX, y: 1228)
+            GlassEffectContainer {
+                if showsButton {
+                    BeginOrderButton { app.beginOrder() }
+                        .glassEffectTransition(.materialize)
+                }
+            }
+            .position(x: Layout.midX, y: 1228)
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
         .contentShape(Rectangle())
         .onTapGesture { app.beginOrder() }
         .ignoresSafeArea()
+        .onChange(of: app.stageReady, initial: true) { _, ready in
+            withAnimation(.smooth(duration: 0.8)) { showsButton = ready }
+        }
+    }
+}
+
+private struct BeginOrderButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Text("Begin Order")
+                LucideIcon(name: "arrow-right", size: 34)
+            }
+        }
+        .buttonStyle(.glassOnMedia())
+        .phaseAnimator([false, true]) { content, lifted in
+            content.scaleEffect(lifted ? 1.025 : 1)
+        } animation: { _ in
+            .easeInOut(duration: 1.8)
+        }
     }
 }
 
@@ -70,46 +90,26 @@ struct RoleSetupView: View {
     let app: AppModel
 
     var body: some View {
-        VStack(spacing: 40) {
-            Text("Choose this iPad's role")
-                .font(Theme.serif(48))
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Set up this iPad")
+                .font(Theme.serif(64))
                 .foregroundStyle(Theme.ink)
-
-            VStack(spacing: 18) {
-                roleButton(title: "Kiosk", detail: "Customer self-order", icon: "ice-cream-cone", enabled: true) {
-                    app.chooseKioskRole()
+            Button { app.chooseKioskRole() } label: {
+                HStack(spacing: 14) {
+                    Text("Start Kiosk")
+                    LucideIcon(name: "arrow-right", size: 28)
                 }
-                roleButton(title: "Order Queue", detail: "Coming soon", icon: "shopping-bag", enabled: false) {}
-                roleButton(title: "Stats", detail: "Coming soon", icon: "refresh-cw", enabled: false) {}
             }
-            .frame(width: 520)
+            .buttonStyle(.glassCTA(height: 88, fontSize: 30))
+            .padding(.top, 56)
+
+            Text("Order Queue and Stats are coming soon.")
+                .font(Theme.sans(17))
+                .foregroundStyle(Theme.inkSecondary)
+                .padding(.top, 40)
         }
+        .frame(width: 720, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.background)
-    }
-
-    private func roleButton(title: String, detail: String, icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 20) {
-                LucideIcon(name: icon, size: 30)
-                    .frame(width: 60, height: 60)
-                    .background(Theme.backgroundDeep, in: .circle)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(Theme.serif(28))
-                    Text(detail).font(Theme.sans(17)).foregroundStyle(Theme.inkSecondary)
-                }
-                Spacer()
-                if enabled { LucideIcon(name: "chevron-right", size: 26) }
-            }
-            .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 26)
-            .frame(height: 104)
-            .background(Theme.card, in: .rect(cornerRadius: 28, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(Theme.inkFaint, lineWidth: 1))
-            .shadow(color: Theme.cardShadow, radius: enabled ? 16 : 0, y: 6)
-            .opacity(enabled ? 1 : 0.45)
-        }
-        .buttonStyle(PressableStyle(pressedScale: 0.97))
-        .disabled(!enabled)
+        .background(AmbientBackdrop())
     }
 }

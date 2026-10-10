@@ -13,7 +13,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Theme.background
+            AmbientBackdrop()
 
             app.host.frame(width: 0, height: 0)
 

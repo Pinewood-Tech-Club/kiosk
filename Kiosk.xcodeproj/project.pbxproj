@@ -31,12 +31,14 @@
 		A519F0ABC993AC2479FCF37D /* NotoSerif-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */; };
 		B6946563E5372AC1DE291AFB /* AttractView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3576D0AAEDEAFA110046DA31 /* AttractView.swift */; };
 		B7744B54D84F06776E52ED42 /* SquareMobilePaymentsSDK in Frameworks */ = {isa = PBXBuildFile; productRef = 9296C487775A032980AE7F95 /* SquareMobilePaymentsSDK */; };
+		B9749DDDBF8E0072C6AAB590 /* SquareCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 032C0963C55D1F2DDA3E4886 /* SquareCatalog.swift */; };
 		BC87549B0A11F97F418AB61F /* Layout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 425B72639F56A451EDADC970 /* Layout.swift */; };
 		C0FFE25ACFD95D63EC7D4169 /* Order.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1105750A779779A5507FAF2 /* Order.swift */; };
 		C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */; };
 		C659717E6746E0A1AD7B7C6E /* NotoSerif-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */; };
 		CFA9251FBFBDD52ED6806157 /* 3D in Resources */ = {isa = PBXBuildFile; fileRef = 41288991151D7382A2F4C89D /* 3D */; };
 		D3AB8EFD24B6A0A8DC388F0D /* NotoSerif-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */; };
+		DF96ED4630E78827B560EDCB /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A6A3D2C8370D7698E2E811 /* Glass.swift */; };
 		E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */; };
 		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
 		F346DF14280B5329EFF72A73 /* Animation.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB286FAB60CDB38CF35280B /* Animation.swift */; };
@@ -46,6 +48,7 @@
 
 /* Begin PBXFileReference section */
 		019AB8B349B0B11885D0A1B1 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
+		032C0963C55D1F2DDA3E4886 /* SquareCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareCatalog.swift; sourceTree = "<group>"; };
 		1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		2B6A6A9019E6492315EB68CA /* Local.xcconfig.example */ = {isa = PBXFileReference; path = Local.xcconfig.example; sourceTree = "<group>"; };
 		309806DC452BB62BEE356569 /* DebugBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugBar.swift; sourceTree = "<group>"; };
@@ -59,6 +62,7 @@
 		5212A82265C88FFEC5453F08 /* LaunchOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchOptions.swift; sourceTree = "<group>"; };
 		5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmationView.swift; sourceTree = "<group>"; };
 		5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "NotoSerif-OFL.txt"; sourceTree = "<group>"; };
+		60A6A3D2C8370D7698E2E811 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		6309D5E2BEA9F305D01718A3 /* Lucide-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Lucide-LICENSE.txt"; sourceTree = "<group>"; };
 		64CD3F775C84109C65BEB08B /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Medium.ttf"; sourceTree = "<group>"; };
@@ -119,6 +123,7 @@
 			children = (
 				37DFD4680D9AC7197C5C0B25 /* Receipt.swift */,
 				B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */,
+				032C0963C55D1F2DDA3E4886 /* SquareCatalog.swift */,
 				94D96DB54BCDC2006C377D8F /* SquareService.swift */,
 			);
 			path = Square;
@@ -229,6 +234,7 @@
 				A313CBED428256A71A858FEA /* BuilderView.swift */,
 				5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */,
 				309806DC452BB62BEE356569 /* DebugBar.swift */,
+				60A6A3D2C8370D7698E2E811 /* Glass.swift */,
 				425B72639F56A451EDADC970 /* Layout.swift */,
 				37AB58ED0D97D8805BD8DAA1 /* NameEntryView.swift */,
 				1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */,
@@ -363,6 +369,7 @@
 				8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */,
 				9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */,
 				F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */,
+				DF96ED4630E78827B560EDCB /* Glass.swift in Sources */,
 				1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */,
 				565858834D2F23FCC9892AE8 /* LaunchOptions.swift in Sources */,
 				BC87549B0A11F97F418AB61F /* Layout.swift in Sources */,
@@ -372,6 +379,7 @@
 				0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */,
 				C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */,
 				E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */,
+				B9749DDDBF8E0072C6AAB590 /* SquareCatalog.swift in Sources */,
 				9FB4EB59530BF0754BDBC1F3 /* SquareService.swift in Sources */,
 				330D40F9722FCB8FC0082573 /* Stage.swift in Sources */,
 				5F9C7D0544857EDEAD4E22C6 /* StageActors.swift in Sources */,

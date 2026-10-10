@@ -8,6 +8,7 @@ enum Theme {
     static let inkSecondary = Color(red: 0.235, green: 0.161, blue: 0.125).opacity(0.62)
     static let inkFaint = Color(red: 0.235, green: 0.161, blue: 0.125).opacity(0.12)
     static let accent = Color(red: 0.882, green: 0.478, blue: 0.424)
+    static let accentDeep = Color(red: 0.792, green: 0.353, blue: 0.325)
     static let success = Color(red: 0.31, green: 0.62, blue: 0.47)
 
     enum SerifWeight: String {
@@ -26,6 +27,27 @@ enum Theme {
     }
 
     static let cardShadow = Color(red: 0.35, green: 0.22, blue: 0.12).opacity(0.10)
+}
+
+/// The cream page with faint vanilla, strawberry and pistachio glows, so Liquid Glass has some color
+/// to bend at its edges.
+struct AmbientBackdrop: View {
+    var body: some View {
+        MeshGradient(
+            width: 3, height: 3,
+            points: [
+                [0, 0], [0.5, 0], [1, 0],
+                [0, 0.5], [0.55, 0.45], [1, 0.5],
+                [0, 1], [0.5, 1], [1, 1],
+            ],
+            colors: [
+                Color(red: 0.996, green: 0.957, blue: 0.886), Theme.background, Color(red: 0.992, green: 0.910, blue: 0.886),
+                Theme.background, Theme.background, Theme.background,
+                Color(red: 0.925, green: 0.953, blue: 0.898), Theme.background, Color(red: 0.984, green: 0.902, blue: 0.906),
+            ],
+            smoothsColors: true
+        )
+    }
 }
 
 struct LucideIcon: View {
@@ -87,8 +109,10 @@ struct PressableStyle: ButtonStyle {
     }
 }
 
+/// Solid card behind a vessel or flavor; the 3D model renders on top of it, so keep it opaque, not glass.
 struct CardBackground: View {
     var highlighted = false
+    var dimmed = false
 
     var body: some View {
         RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
@@ -98,6 +122,41 @@ struct CardBackground: View {
                 RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
                     .strokeBorder(highlighted ? Theme.ink : Theme.inkFaint, lineWidth: highlighted ? 3 : 1)
             }
+            .opacity(dimmed ? 0.55 : 1)
+            .animation(.easeInOut(duration: 0.25), value: highlighted)
+            .animation(.easeInOut(duration: 0.25), value: dimmed)
+    }
+}
+
+struct PricePill: View {
+    let text: String
+    var emphasized = false
+    var fontSize: CGFloat = 17
+
+    var body: some View {
+        Text(text)
+            .font(Theme.sans(fontSize, .semibold))
+            .monospacedDigit()
+            .foregroundStyle(emphasized ? Color.white : Theme.ink)
+            .contentTransition(.numericText())
+            .padding(.horizontal, fontSize * 0.7)
+            .frame(height: fontSize * 1.9)
+            .background(emphasized ? Theme.ink : Theme.backgroundDeep, in: .capsule)
+    }
+}
+
+struct CountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text("×\(count)")
+            .font(Theme.sans(17, .bold))
+            .monospacedDigit()
+            .foregroundStyle(.white)
+            .contentTransition(.numericText(value: Double(count)))
+            .frame(minWidth: 42, minHeight: 34)
+            .background(Theme.accentDeep, in: .capsule)
+            .animation(.snappy, value: count)
     }
 }
 

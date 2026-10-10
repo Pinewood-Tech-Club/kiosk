@@ -3,185 +3,311 @@ import SwiftUI
 struct ConfirmationView: View {
     let app: AppModel
     let receipt: Receipt
-    @State private var email = ""
-    @State private var emailNote: String?
     @State private var deadline = Date().addingTimeInterval(Self.timeout)
-    @FocusState private var emailFocused: Bool
+    @State private var printed = false
 
     private static let timeout: TimeInterval = 10
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 12) {
-                LucideIcon(name: "check", size: 44)
-                    .foregroundStyle(.white)
-                    .frame(width: 88, height: 88)
-                    .background(Theme.success, in: .circle)
-                Text("Thank you, \(receipt.customerName)!")
-                    .font(Theme.serif(50))
+            VStack(spacing: 14) {
+                HStack(spacing: 8) {
+                    LucideIcon(name: "check", size: 20)
+                    Text("Paid")
+                        .font(Theme.sans(16, .bold))
+                        .tracking(2.2)
+                        .textCase(.uppercase)
+                }
+                .foregroundStyle(Theme.success)
+                Text("Thank you, \(receipt.customerName).")
+                    .font(Theme.serif(64))
                     .foregroundStyle(Theme.ink)
-                Text("Order #\(receipt.orderNumber) is paid. We'll call your name when it's ready.")
-                    .font(Theme.sans(20))
-                    .foregroundStyle(Theme.inkSecondary)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                Text("We'll call your name when it's ready.")
+                    .font(Theme.serif(24, .regular))
+                    .italic()
+                    .foregroundStyle(Theme.ink.opacity(0.7))
             }
             .padding(.top, 76)
+            .padding(.horizontal, 64)
 
-            ReceiptCard(receipt: receipt)
-                .padding(.horizontal, 96)
-                .padding(.top, 30)
-
-            HStack(spacing: 12) {
-                LucideIcon(name: "mail", size: 22)
-                    .foregroundStyle(Theme.inkSecondary)
-                TextField("", text: $email, prompt: Text("Email me a receipt (optional)").foregroundStyle(Theme.ink.opacity(0.35)))
-                    .font(Theme.sans(19))
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($emailFocused)
-                    .onChange(of: email) { _, _ in extendDeadline() }
-                Button("Send") {
-                    emailFocused = false
-                    emailNote = "Email receipts aren't available yet. Please take a photo of this screen."
-                    extendDeadline()
+            ReceiptView(receipt: receipt, lines: ReceiptLines.charged(receipt: receipt, quote: app.orderQuote))
+                .frame(width: 560)
+                .mask(alignment: .top) {
+                    Rectangle().frame(maxHeight: printed ? .infinity : 0)
                 }
-                .font(Theme.sans(18, .semibold))
-                .foregroundStyle(Theme.ink)
-                .disabled(email.isEmpty)
-            }
-            .padding(.horizontal, 22)
-            .frame(height: 64)
-            .background(Theme.card, in: .rect(cornerRadius: 20, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.inkFaint, lineWidth: 1))
-            .padding(.horizontal, 96)
-            .padding(.top, 20)
+                .padding(.top, 36)
 
-            HStack(spacing: 10) {
-                LucideIcon(name: "camera", size: 20)
-                Text(emailNote ?? "Tip: take a picture of this screen to keep as your receipt.")
-                    .font(Theme.sans(17))
+            HStack(spacing: 8) {
+                LucideIcon(name: "camera", size: 18)
+                Text("Take a photo to keep this receipt.")
             }
+            .font(Theme.sans(16))
             .foregroundStyle(Theme.inkSecondary)
-            .padding(.top, 14)
+            .padding(.top, 20)
+            .opacity(printed ? 1 : 0)
 
-            Spacer(minLength: 20)
+            Spacer(minLength: 24)
 
             TimelineView(.periodic(from: .now, by: 0.25)) { context in
                 let remaining = max(0, deadline.timeIntervalSince(context.date))
-                VStack(spacing: 14) {
+                VStack(spacing: 20) {
                     Button { app.resetToAttract() } label: {
-                        Text("New Order").frame(width: 420)
+                        Text("New Order").frame(minWidth: 320)
                     }
-                    .buttonStyle(PrimaryButtonStyle(height: 84, fontSize: 30))
-                    Text("Starting over in \(Int(remaining.rounded(.up)))s")
-                        .font(Theme.sans(16, .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.inkSecondary)
-                    Capsule()
-                        .fill(Theme.inkFaint)
-                        .frame(width: 220, height: 4)
-                        .overlay(alignment: .leading) {
-                            Capsule().fill(Theme.ink.opacity(0.5))
-                                .frame(width: 220 * remaining / Self.timeout, height: 4)
-                        }
+                    .buttonStyle(.glassCTA(height: 88, fontSize: 30))
+                    Countdown(remaining: remaining, total: Self.timeout)
                 }
                 .onChange(of: remaining <= 0) { _, expired in
-                    if expired, !emailFocused { app.resetToAttract() }
+                    if expired { app.resetToAttract() }
                 }
             }
-            .padding(.bottom, 44)
+            .padding(.bottom, 52)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.background)
-        .onReceive(NotificationCenter.default.publisher(for: TouchObserver.didTouch)) { _ in extendDeadline() }
-        .onChange(of: emailFocused) { _, _ in extendDeadline() }
-    }
-
-    private func extendDeadline() {
-        deadline = Date().addingTimeInterval(Self.timeout)
+        .onReceive(NotificationCenter.default.publisher(for: TouchObserver.didTouch)) { _ in
+            deadline = Date().addingTimeInterval(Self.timeout)
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 1.1).delay(0.25)) { printed = true }
+        }
     }
 }
 
-private struct ReceiptCard: View {
-    let receipt: Receipt
+private struct Countdown: View {
+    let remaining: TimeInterval
+    let total: TimeInterval
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(receipt.merchantName).font(Theme.serif(24))
-                if receipt.eventName != receipt.merchantName {
-                    Text(receipt.eventName).font(Theme.sans(16)).foregroundStyle(Theme.inkSecondary)
-                }
-                Text(receipt.date.formatted(date: .long, time: .shortened))
-                    .font(Theme.sans(16))
-                    .foregroundStyle(Theme.inkSecondary)
+        HStack(spacing: 9) {
+            ZStack {
+                Circle().stroke(Theme.inkFaint, lineWidth: 2.5)
+                Circle()
+                    .trim(from: 0, to: remaining / total)
+                    .stroke(Theme.ink.opacity(0.55), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 0.25), value: remaining)
             }
-            .padding(.bottom, 14)
+            .frame(width: 16, height: 16)
+            Text("Starting over in \(Int(remaining.rounded(.up)))s")
+                .font(Theme.sans(16, .medium))
+                .monospacedDigit()
+                .foregroundStyle(Theme.inkSecondary)
+        }
+    }
+}
 
-            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 4) {
-                meta("Order", "#\(receipt.orderNumber) · \(receipt.customerName)")
-                meta("Square order", receipt.squareOrderID)
-                meta("Payment", receipt.paymentID)
-                meta("Card", receipt.cardDescription)
+/// What Square actually charged: one catalog line per scoop, priced by its position in the whole
+/// order (1 Scoop, 2nd Scoop, 3rd+ Scoop), plus one Waffle Cone line per cone.
+enum ReceiptLines {
+    struct Item: Identifiable {
+        let id: Int
+        let title: String
+        let charges: [Charge]
+    }
+
+    struct Charge: Identifiable {
+        let id: Int
+        let name: String
+        let detail: String?
+        let cents: Int
+    }
+
+    static func charged(receipt: Receipt, quote: OrderQuote) -> [Item] {
+        guard !quote.isEmpty, quote.totalCents == receipt.subtotalCents else {
+            return receipt.lines.enumerated().map { index, line in
+                Item(id: index, title: line.title, charges: [Charge(id: 0, name: line.detail, detail: nil, cents: line.cents)])
             }
-            .padding(.bottom, 14)
+        }
+        var position = 0
+        return quote.lines.enumerated().map { index, line in
+            var charges: [Charge] = line.item.flavors.enumerated().map { offset, flavor in
+                position += 1
+                let cents = Pricing.scoopsTotal(position) - Pricing.scoopsTotal(position - 1)
+                return Charge(id: offset, name: flavor.title, detail: scoopName(position), cents: cents)
+            }
+            if line.item.vessel == .cone {
+                charges.append(Charge(id: charges.count, name: "Waffle Cone", detail: nil, cents: line.vesselCents))
+            }
+            return Item(id: index, title: line.item.vessel.title, charges: charges)
+        }
+    }
 
-            Divider().overlay(Theme.inkFaint)
+    private static func scoopName(_ position: Int) -> String {
+        switch position {
+        case 1: "1 Scoop"
+        case 2: "2nd Scoop"
+        default: "3rd+ Scoop"
+        }
+    }
+}
 
-            VStack(spacing: 10) {
-                ForEach(receipt.lines) { line in
-                    HStack(alignment: .firstTextBaseline) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(line.title).font(Theme.sans(18, .semibold))
-                            Text(line.detail).font(Theme.sans(15)).foregroundStyle(Theme.inkSecondary)
+private struct ReceiptView: View {
+    let receipt: Receipt
+    let lines: [ReceiptLines.Item]
+    @State private var itemsHeight: CGFloat = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            rule.padding(.vertical, 18)
+            items
+            rule.padding(.vertical, 18)
+            totals
+            rule.padding(.vertical, 18)
+            payment
+        }
+        .foregroundStyle(Theme.ink)
+        .padding(.horizontal, 40)
+        .padding(.top, 34)
+        .padding(.bottom, 40)
+        .background(Theme.card, in: ReceiptShape())
+        .shadow(color: Theme.cardShadow, radius: 24, y: 12)
+    }
+
+    private var rule: some View {
+        Line()
+            .stroke(Theme.ink.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+            .frame(height: 1)
+    }
+
+    private var header: some View {
+        VStack(spacing: 6) {
+            Text(receipt.merchantName)
+                .font(Theme.serif(22))
+                .tracking(1.5)
+                .textCase(.uppercase)
+                .multilineTextAlignment(.center)
+            if receipt.eventName != receipt.merchantName {
+                Text(receipt.eventName).font(Theme.serif(17, .regular)).italic()
+            }
+            Text(receipt.date.formatted(.dateTime.month(.wide).day().year().hour().minute()))
+                .font(Theme.sans(14))
+                .foregroundStyle(Theme.inkSecondary)
+                .padding(.top, 2)
+            HStack {
+                Text("Order \(receipt.orderNumber)")
+                Spacer()
+                Text(receipt.customerName)
+            }
+            .font(Theme.serif(20))
+            .padding(.top, 16)
+        }
+    }
+
+    private var items: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(lines) { item in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(item.title).font(Theme.serif(19))
+                        ForEach(item.charges) { charge in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(charge.name).font(Theme.sans(16))
+                                if let detail = charge.detail {
+                                    Text(detail).font(Theme.sans(14)).foregroundStyle(Theme.inkSecondary)
+                                }
+                                Leader()
+                                Text(charge.cents.formattedAsUSD).font(Theme.sans(16)).monospacedDigit()
+                            }
+                            .padding(.leading, 14)
                         }
-                        Spacer()
-                        Text(line.cents.formattedAsUSD).font(Theme.sans(18, .medium)).monospacedDigit()
                     }
                 }
             }
-            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { itemsHeight = $0 }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollEdgeEffectStyle(.soft, for: .vertical)
+        .frame(height: min(itemsHeight, 330))
+    }
 
-            Divider().overlay(Theme.inkFaint)
-
-            VStack(spacing: 6) {
-                total("Subtotal", receipt.subtotalCents)
-                total("Tax", receipt.taxCents)
-                HStack {
-                    Text("Total").font(Theme.serif(24))
-                    Spacer()
-                    Text(receipt.totalCents.formattedAsUSD).font(Theme.serif(26, .bold)).monospacedDigit()
-                }
-                .padding(.top, 4)
+    private var totals: some View {
+        VStack(spacing: 8) {
+            amountRow("Subtotal", receipt.subtotalCents)
+            amountRow("Tax", receipt.taxCents)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Total").font(Theme.serif(26))
+                Spacer()
+                Text(receipt.totalCents.formattedAsUSD).font(Theme.serif(30, .bold)).monospacedDigit()
             }
-            .padding(.top, 14)
+            .padding(.top, 6)
+        }
+    }
 
+    private var payment: some View {
+        VStack(spacing: 6) {
+            Text(receipt.cardDescription).font(Theme.sans(15, .medium))
+            Text("Payment \(receipt.paymentID)")
+            Text("Square order \(receipt.squareOrderID)")
             if receipt.isSimulated {
-                Text("Simulated payment (test mode)")
-                    .font(Theme.sans(14, .semibold))
-                    .foregroundStyle(Theme.accent)
-                    .padding(.top, 10)
+                Text("Test mode · simulated payment")
+                    .font(Theme.sans(13, .semibold))
+                    .foregroundStyle(Theme.accentDeep)
+                    .padding(.top, 6)
             }
         }
-        .foregroundStyle(Theme.ink)
-        .padding(28)
-        .background(Theme.card, in: .rect(cornerRadius: 28, style: .continuous))
-        .shadow(color: Theme.cardShadow, radius: 20, y: 8)
+        .font(.system(size: 12, design: .monospaced))
+        .foregroundStyle(Theme.inkSecondary)
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity)
     }
 
-    private func meta(_ title: String, _ value: String) -> some View {
-        GridRow {
-            Text(title).font(Theme.sans(15)).foregroundStyle(Theme.inkSecondary)
-            Text(value).font(Theme.sans(15, .medium).monospaced()).textSelection(.enabled)
-        }
-    }
-
-    private func total(_ title: String, _ cents: Int) -> some View {
-        HStack {
-            Text(title).font(Theme.sans(17)).foregroundStyle(Theme.inkSecondary)
+    private func amountRow(_ title: String, _ cents: Int) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).font(Theme.sans(16)).foregroundStyle(Theme.inkSecondary)
             Spacer()
-            Text(cents.formattedAsUSD).font(Theme.sans(17, .medium)).monospacedDigit()
+            Text(cents.formattedAsUSD).font(Theme.sans(16)).monospacedDigit()
         }
+    }
+}
+
+private struct Leader: View {
+    var body: some View {
+        Line()
+            .stroke(Theme.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [0.1, 5]))
+            .frame(height: 1.2)
+            .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 1 }
+    }
+}
+
+private struct Line: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        }
+    }
+}
+
+private struct ReceiptShape: Shape {
+    var cornerRadius: CGFloat = 6
+    var toothWidth: CGFloat = 16
+    var toothDepth: CGFloat = 7
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let teeth = max(1, Int((rect.width / toothWidth).rounded()))
+        let step = rect.width / CGFloat(teeth)
+        let base = rect.maxY - toothDepth
+        path.move(to: CGPoint(x: rect.minX, y: base))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + cornerRadius))
+        path.addArc(center: CGPoint(x: rect.minX + cornerRadius, y: rect.minY + cornerRadius), radius: cornerRadius,
+                    startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.maxX - cornerRadius, y: rect.minY))
+        path.addArc(center: CGPoint(x: rect.maxX - cornerRadius, y: rect.minY + cornerRadius), radius: cornerRadius,
+                    startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.maxX, y: base))
+        for i in stride(from: teeth, to: 0, by: -1) {
+            let x = rect.minX + CGFloat(i) * step
+            path.addLine(to: CGPoint(x: x - step / 2, y: rect.maxY))
+            path.addLine(to: CGPoint(x: x - step, y: base))
+        }
+        path.closeSubpath()
+        return path
     }
 }
 
