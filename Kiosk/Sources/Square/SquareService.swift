@@ -24,6 +24,21 @@ struct LogEntry: Identifiable {
 @Observable
 final class SquareService: NSObject {
     enum Phase: Equatable { case idle, creatingOrder, takingPayment }
+    enum CatalogStatus: Equatable {
+        case notConfigured
+        case loading
+        case ready(itemCount: Int)
+        case failed(String)
+
+        var badgeText: String {
+            switch self {
+            case .notConfigured: "Catalog: ad-hoc"
+            case .loading: "Catalog…"
+            case .ready: "Catalog OK"
+            case .failed: "Catalog error"
+            }
+        }
+    }
 
     private(set) var authorizationState: AuthorizationState
     private(set) var readers: [ReaderInfo] = []
@@ -31,6 +46,8 @@ final class SquareService: NSObject {
     private(set) var log: [LogEntry] = []
     private(set) var isMockReaderPresented = false
     private(set) var merchantName = Config.eventName
+    private(set) var catalogStatus: CatalogStatus = .notConfigured
+    @ObservationIgnored private(set) var catalog: SquareCatalog?
 
     private var sdk: any SDKManager { MobilePaymentsSDK.shared }
     @ObservationIgnored private let locationManager = CLLocationManager()
@@ -77,6 +94,7 @@ final class SquareService: NSObject {
         requestPermissions()
         authorize()
         loadLocation()
+        loadCatalog()
     }
 
     private var api: SquareAPI? {
@@ -97,6 +115,57 @@ final class SquareService: NSObject {
                 record("Location: \(location.name)")
             } catch {
                 record("Location lookup failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func loadCatalog() {
+        guard let api else { return }
+        guard let categoryName = Config.categoryName else {
+            catalogStatus = .notConfigured
+            record("No SQUARE_CATEGORY_NAME configured; orders use ad-hoc line items")
+            return
+        }
+        catalogStatus = .loading
+        Task { @MainActor in
+            do {
+                let loaded = try await api.fetchCatalog(categoryName: categoryName)
+                if let mismatch = loaded.pricingMismatch {
+                    throw SquareAPI.APIError(message: "Catalog prices don't match kiosk pricing (\(mismatch))")
+                }
+                catalog = loaded
+                catalogStatus = .ready(itemCount: loaded.entries.count)
+                record("Catalog \"\(categoryName)\" loaded: " + loaded.entries.map { "\($0.itemName) \($0.cents.formattedAsUSD)" }.joined(separator: ", "))
+            } catch {
+                catalog = nil
+                catalogStatus = .failed(error.localizedDescription)
+                record("CATALOG ERROR: \(error.localizedDescription). Falling back to ad-hoc line items.")
+            }
+            if UserDefaults.standard.bool(forKey: "kioskVerifyOrders") {
+                await verifyOrders(api: api)
+            }
+        }
+    }
+
+    @MainActor
+    private func verifyOrders(api: SquareAPI) async {
+        let baskets: [[IceCreamItem]] = [
+            [IceCreamItem(vessel: .cup, flavors: [.vanilla])],
+            [IceCreamItem(vessel: .cone, flavors: [.chocolate, .cookies])],
+            [IceCreamItem(vessel: .cup, flavors: [.vanilla, .chocolate, .cookies])],
+            [IceCreamItem(vessel: .cone, flavors: [.vanilla, .chocolate]), IceCreamItem(vessel: .cup, flavors: [.cookies, .cookies, .vanilla])],
+            [IceCreamItem(vessel: .cone, flavors: [.vanilla, .vanilla, .chocolate]), IceCreamItem(vessel: .cone, flavors: [.cookies, .chocolate, .vanilla])],
+            [IceCreamItem(vessel: .cup, flavors: [.vanilla]), IceCreamItem(vessel: .cone, flavors: [.chocolate]), IceCreamItem(vessel: .cup, flavors: [.cookies])],
+        ]
+        for (index, basket) in baskets.enumerated() {
+            let quote = Pricing.quote(basket)
+            do {
+                let order = try await api.createOrder(quote: quote, catalog: catalog, customerName: "Verify", referenceID: "verify-\(index + 1)", sourceName: "\(Config.eventName) Kiosk")
+                let subtotal = order.totalCents - order.taxCents
+                let verdict = subtotal == quote.totalCents ? "MATCH" : "MISMATCH"
+                record("VERIFY basket \(index + 1): \(quote.scoopCount) scoops, \(quote.coneCount) cones, kiosk \(quote.totalCents) square \(order.totalCents) tax \(order.taxCents) catalog=\(order.usedCatalog) \(verdict)")
+            } catch {
+                record("VERIFY basket \(index + 1) failed: \(error.localizedDescription)")
             }
         }
     }
@@ -183,14 +252,14 @@ final class SquareService: NSObject {
 
         let order: SquareAPI.CreatedOrder
         do {
-            order = try await api.createOrder(quote: quote, customerName: customerName, referenceID: referenceID,
+            order = try await api.createOrder(quote: quote, catalog: catalog, customerName: customerName, referenceID: referenceID,
                                               sourceName: "\(Config.eventName) Kiosk")
         } catch {
             phase = .idle
             record("CreateOrder failed: \(error.localizedDescription)")
             return .failed(title: "Couldn't create your order", details: [error.localizedDescription])
         }
-        record("Order \(order.id) created, total \(order.totalCents.formattedAsUSD) (tax \(order.taxCents.formattedAsUSD))")
+        record("Order \(order.id) created (\(order.usedCatalog ? "catalog" : "ad-hoc") line items), total \(order.totalCents.formattedAsUSD) (tax \(order.taxCents.formattedAsUSD))")
         if order.totalCents - order.taxCents != quote.totalCents {
             record("WARNING: Square subtotal \((order.totalCents - order.taxCents).formattedAsUSD) differs from kiosk total \(quote.totalCents.formattedAsUSD)")
         }

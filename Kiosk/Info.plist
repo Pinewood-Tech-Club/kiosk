@@ -36,6 +36,8 @@
 	<string>$(SQUARE_ACCESS_TOKEN)</string>
 	<key>SquareApplicationID</key>
 	<string>$(SQUARE_APPLICATION_ID)</string>
+	<key>SquareCategoryName</key>
+	<string>$(SQUARE_CATEGORY_NAME)</string>
 	<key>SquareLocationID</key>
 	<string>$(SQUARE_LOCATION_ID)</string>
 	<key>UIAppFonts</key>

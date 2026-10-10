@@ -4,6 +4,7 @@ enum Config {
     static let squareApplicationID = value("SquareApplicationID")
     static let accessToken = value("SquareAccessToken")
     static let locationID = value("SquareLocationID")
+    static let categoryName = value("SquareCategoryName")
     static let eventName = value("KioskEventName") ?? "Tech Club Ice Cream"
 
     static var isComplete: Bool {

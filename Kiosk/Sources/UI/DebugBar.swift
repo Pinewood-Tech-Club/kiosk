@@ -11,6 +11,7 @@ struct DebugBar: View {
             Badge(text: square.environmentName, color: square.isSandbox ? .orange : (square.isConfigured ? .green : .red))
             Badge(text: authText, color: square.isAuthorized ? .green : .red)
             Badge(text: readerText, color: readerColor)
+            Badge(text: square.catalogStatus.badgeText, color: catalogColor)
             if app.simulatePayment { Badge(text: "Simulated pay", color: .purple) }
             if app.slowMotion != 1 { Badge(text: "×\(app.slowMotion.formatted())", color: .blue) }
             Spacer(minLength: 8)
@@ -62,6 +63,14 @@ struct DebugBar: View {
         return square.readers
             .map { "\(modelName($0.model)): \(statusName($0.statusInfo.status))" }
             .joined(separator: " · ")
+    }
+
+    private var catalogColor: Color {
+        switch square.catalogStatus {
+        case .ready: .green
+        case .failed: .red
+        case .loading, .notConfigured: .orange
+        }
     }
 
     private var readerColor: Color {
