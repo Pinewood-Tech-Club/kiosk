@@ -245,6 +245,29 @@ struct ScriptRunner {
             await wait(1.4)
             app.startNewItem()
             await wait(3.0)
+        case "tray-scroll":
+            await wait(0.8)
+            for target: CGFloat in [150, 0, -40] {
+                let steps = 40
+                for i in 1...steps {
+                    app.stage.trayDragChanged(target * CGFloat(i) / CGFloat(steps))
+                    try? await Task.sleep(for: .seconds(0.9 / Double(steps)))
+                }
+                app.stage.trayDragEnded(predictedDx: target)
+                await wait(1.2)
+            }
+            app.goForward()
+            await wait(0.6)
+            await add(.chocolate)
+            await wait(1.4)
+            app.addToOrder()
+            await wait(2.5)
+        case "step-fade":
+            await wait(1.0)
+            app.goForward()
+            await wait(1.5)
+            app.goBack()
+            await wait(1.5)
         case "pull-down":
             await wait(0.8)
             app.viewOrder()

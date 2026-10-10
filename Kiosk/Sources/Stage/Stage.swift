@@ -66,6 +66,12 @@ final class Stage {
     var vesselIcons: [Vessel: ItemRig] = [:]
     var vesselIconAppear: [Vessel: Float] = [.cup: 1, .cone: 1]
     var vesselIconAppearTweens: [Vessel: Tween] = [:]
+    var vesselIconShadow: [Vessel: Float] = [.cup: 1, .cone: 1]
+    var vesselIconShadowTweens: [Vessel: Tween] = [:]
+    /// Step visibility of the card icons (with their shadows), as a scale: models are never faded.
+    var iconShown: [CardKey: Float] = [:]
+    var iconShownTweens: [CardKey: Tween] = [:]
+    var iconShownTargets: [CardKey: Float] = [:]
     var flavorIcons: [Flavor: FlavorIcon] = [:]
     var pressSprings = [Spring1D](repeating: Spring1D(value: 0, response: Stage.pressResponse, dampingRatio: Stage.pressDamping), count: 5)
     var vesselIconTarget: [Vessel: Float] = [.cup: 0, .cone: 0]
@@ -128,28 +134,12 @@ final class Stage {
         contactLift = assets.contactLift
         shadowMesh = MeshResource.generatePlane(width: 1, depth: 1)
 
-        camera.components.set(PerspectiveCameraComponent(near: 0.5, far: 12, fieldOfViewInDegrees: Self.fieldOfView,
-                                                         fieldOfViewOrientation: .vertical))
-        camera.position = [0, 0, cameraDistance]
-        root.addChild(camera)
-
-        if let environment = assets.environment {
-            var ibl = ImageBasedLightComponent(source: .single(environment), intensityExponent: 0.35)
-            ibl.inheritsRotation = true
-            iblEntity.components.set(ibl)
-            iblEntity.orientation = simd_quatf(angle: .pi, axis: [0, 1, 0])
-        }
-        root.addChild(iblEntity)
-
-        addLight(intensity: 2400, from: [-1.3, 1.6, 2.2], shadow: true)
-        addLight(intensity: 700, from: [1.9, 0.35, 1.4], shadow: false)
-        addLight(intensity: 1500, from: [0.35, 1.5, -2.2], shadow: false)
+        configureScene(root: root, camera: camera, ibl: iblEntity)
 
         for vessel in Vessel.allCases {
             let rig = makeRig(vessel)
             rig.pose = iconPose(vessel)
             rig.apply()
-            rig.setOpacity(0)
             vesselIcons[vessel] = rig
             root.addChild(rig.root)
         }
@@ -168,21 +158,36 @@ final class Stage {
         log(approachReport())
     }
 
-    private func addLight(intensity: Float, from position: SIMD3<Float>, shadow: Bool) {
-        let light = Entity()
-        light.components.set(DirectionalLightComponent(color: .white, intensity: intensity))
-        if shadow {
-            light.components.set(DirectionalLightComponent.Shadow(maximumDistance: 5, depthBias: 2))
+    private func configureScene(root: Entity, camera: Entity, ibl: Entity) {
+        camera.components.set(PerspectiveCameraComponent(near: 0.5, far: 12, fieldOfViewInDegrees: Self.fieldOfView,
+                                                         fieldOfViewOrientation: .vertical))
+        camera.position = [0, 0, cameraDistance]
+        root.addChild(camera)
+        if let environment = assets?.environment {
+            var component = ImageBasedLightComponent(source: .single(environment), intensityExponent: 0.35)
+            component.inheritsRotation = true
+            ibl.components.set(component)
+            ibl.orientation = simd_quatf(angle: .pi, axis: [0, 1, 0])
         }
-        light.look(at: .zero, from: position, relativeTo: nil)
-        root.addChild(light)
+        root.addChild(ibl)
+        for (intensity, position, shadow) in [(Float(2400), SIMD3<Float>(-1.3, 1.6, 2.2), true),
+                                              (700, [1.9, 0.35, 1.4], false),
+                                              (1500, [0.35, 1.5, -2.2], false)] {
+            let light = Entity()
+            light.components.set(DirectionalLightComponent(color: .white, intensity: intensity))
+            if shadow {
+                light.components.set(DirectionalLightComponent.Shadow(maximumDistance: 5, depthBias: 2))
+            }
+            light.look(at: .zero, from: position, relativeTo: nil)
+            root.addChild(light)
+        }
     }
 
-    func applyLighting(_ entity: Entity) {
+    func applyLighting(_ entity: Entity, ibl: Entity? = nil) {
         if assets?.environment != nil {
-            entity.components.set(ImageBasedLightReceiverComponent(imageBasedLight: iblEntity))
+            entity.components.set(ImageBasedLightReceiverComponent(imageBasedLight: ibl ?? iblEntity))
         }
-        for child in entity.children { applyLighting(child) }
+        for child in entity.children { applyLighting(child, ibl: ibl) }
     }
 
     /// Renders every material, mesh and blend mode once behind the opaque launch screens, so shader
@@ -195,26 +200,20 @@ final class Stage {
             for flavor in Flavor.allCases {
                 let meshes = [assets.scoopSet(slot).staticMesh("ball")] + assets.scoopSet(slot).allMorpherResources.prefix(1)
                 for mesh in meshes {
-                    for translucent in [false, true] {
-                        let entity = ModelEntity(mesh: mesh, materials: [assets.material(slot: slot, flavor: flavor)])
-                        applyLighting(entity)
-                        entity.position = [x, translucent ? -0.1 : 0.1, 0]
-                        if translucent { entity.setOpacity(0.5) }
-                        group.addChild(entity)
-                    }
+                    let entity = ModelEntity(mesh: mesh, materials: [assets.material(slot: slot, flavor: flavor)])
+                    applyLighting(entity)
+                    entity.position = [x, 0.1, 0]
+                    group.addChild(entity)
                 }
                 x += 0.09
             }
         }
         for vessel in Vessel.allCases {
-            for translucent in [false, true] {
-                let rig = makeRig(vessel)
-                rig.pose = RigPose(position: [vessel == .cup ? -0.2 : 0.2, translucent ? -0.3 : 0.3, 0], scale: 1,
-                                   pitch: 0.3, roll: vessel == .cone ? -0.6 : 0, yaw: 0)
-                rig.apply()
-                if translucent { rig.setOpacity(0.5) }
-                group.addChild(rig.root)
-            }
+            let rig = makeRig(vessel)
+            rig.pose = RigPose(position: [vessel == .cup ? -0.2 : 0.2, 0.3, 0], scale: 1,
+                               pitch: 0.3, roll: vessel == .cone ? -0.6 : 0, yaw: 0)
+            rig.apply()
+            group.addChild(rig.root)
         }
         // Tiny and tucked under the debug-bar corner: it only has to be drawn, not seen.
         group.scale = .init(repeating: 0.04)
@@ -313,10 +312,10 @@ final class Stage {
         return shadow
     }
 
-    func makeRig(_ vessel: Vessel) -> ItemRig {
+    func makeRig(_ vessel: Vessel, ibl: Entity? = nil) -> ItemRig {
         let assets = assets!
         let model = assets.vessels[vessel]!.clone(recursive: true)
-        applyLighting(model)
+        applyLighting(model, ibl: ibl)
         let pivot = assets.vesselPivot(vessel)
         let rig: ItemRig
         switch vessel {
@@ -387,7 +386,6 @@ final class Stage {
         icon.baseScale = Self.flavorIconScale
         icon.restPosition = world(Layout.flavorIconCenter(flavor))
         icon.restOrientation = simd_quatf(angle: 0.36, axis: [1, 0, 0]) * simd_quatf(angle: -0.25, axis: [0, 1, 0])
-        icon.setOpacity(0)
         return icon
     }
 

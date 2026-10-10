@@ -386,13 +386,13 @@ extension Stage {
             let targetSlot = (rig.scoops.firstIndex { $0 === actor } ?? 0) + 1
             if !reslotDone, actor.slot != targetSlot, actor.morpher == nil, p >= 0.5 {
                 reslotDone = true
-                reslot(actor, to: targetSlot, duration: duration * 0.22)
+                reslot(actor, to: targetSlot)
             }
         } completion: { [weak self] in
             guard let self else { return }
             if actor.morpher != nil, actor.morphTo == "ball" { endMorph(actor) }
             let targetSlot = (rig.scoops.firstIndex { $0 === actor } ?? 0) + 1
-            if actor.slot != targetSlot { reslot(actor, to: targetSlot, duration: 0) }
+            if actor.slot != targetSlot { reslot(actor, to: targetSlot) }
             press(actor, onto: rig)
         }
     }
@@ -491,10 +491,10 @@ extension Stage {
             }
             if !reslotDone, actor.slot != 1, actor.morpher == nil, p >= 0.16 {
                 reslotDone = true
-                reslot(actor, to: 1, duration: duration * 0.25)
+                reslot(actor, to: 1)
             }
             if p >= 0.55 {
-                if !toIcon, actor.ghost == nil {
+                if !toIcon {
                     toIcon = true
                     beginMorph(actor, to: "icon")
                 }
@@ -536,47 +536,24 @@ extension Stage {
         }
     }
 
-    /// Swaps the scoop to another slot's mesh and textures by dissolving a copy in over it.
-    func reslot(_ actor: ScoopActor, to slot: Int, duration: Double) {
+    /// Swaps the scoop to another slot's mesh and textures. Done while it's a small ball in fast motion
+    /// (the slots' ball poses differ only in surface lumps); a cross-dissolve would need partial opacity.
+    func reslot(_ actor: ScoopActor, to slot: Int) {
         guard actor.slot != slot else { return }
         if actor.morpher != nil { endMorph(actor) }
-        finishCrossfade(actor)
-        let incoming = makeScoopModel(slot: slot, flavor: actor.flavor, pose: actor.staticPose)
         let outgoingSlot = actor.slot
-        actor.slot = slot
         let outgoing = actor.model
+        let incoming = makeScoopModel(slot: slot, flavor: actor.flavor, pose: actor.staticPose)
+        incoming.transform = outgoing.transform
+        actor.slot = slot
         actor.model = incoming
         actor.staticPose = assets!.scoopSet(slot).resolve(actor.staticPose)
         actor.root.addChild(incoming)
-        guard duration > 0 else {
-            recycleScoopModel(outgoing, slot: outgoingSlot, flavor: actor.flavor)
-            return
-        }
-        // Plain blending on purpose: the opaque incoming copy underneath already hides the outgoing
-        // copy's back faces, and a depth pre-pass here would hide the incoming copy instead.
-        actor.ghost = outgoing
-        actor.ghostSlot = outgoingSlot
-        incoming.scale = .init(repeating: 0.996)
-        actor.crossfade = animate(duration: duration, phase: .late) { p in
-            outgoing.components.set(OpacityComponent(opacity: max(0.001, 1 - Ease.inOutSine(p))))
-        } completion: { [weak self] in
-            self?.finishCrossfade(actor)
-        }
-    }
-
-    private func finishCrossfade(_ actor: ScoopActor) {
-        actor.crossfade?.cancel()
-        actor.crossfade = nil
-        if let ghost = actor.ghost {
-            recycleScoopModel(ghost, slot: actor.ghostSlot, flavor: actor.flavor)
-            actor.ghost = nil
-        }
-        actor.model.scale = .one
+        recycleScoopModel(outgoing, slot: outgoingSlot, flavor: actor.flavor)
     }
 
     func discard(_ scoop: ScoopActor) {
         scoop.cancelMotions()
-        finishCrossfade(scoop)
         if let morpher = scoop.morpher {
             assets?.scoopSet(scoop.slot).release(morpher)
             scoop.morpher = nil

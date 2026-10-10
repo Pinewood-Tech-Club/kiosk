@@ -29,36 +29,34 @@ private struct CardPressStyle: ButtonStyle {
     }
 }
 
-/// Stands in the tray slot of the item that's out for editing: where it goes back, and how to send it there.
+/// Tray tiles share the glass's inner radius (40 − 14 pt inset), so they read as concentric with it.
+private let slotRadius: CGFloat = 26
+private let slotSize = CGSize(width: 100, height: 106)
+
+/// Holds the place of the item that's out for editing. Its one control is a delete badge on the corner,
+/// like a home-screen icon in edit mode; finishing the edit is the screen's primary button.
 private struct EditingSlot: View {
-    let done: () -> Void
     let remove: () -> Void
 
     var body: some View {
-        VStack(spacing: 2) {
-            Button(action: done) {
-                Text("Done").frame(width: 62)
-            }
-            .buttonStyle(KioskGlassButtonStyle(kind: .primary, height: 46, fontSize: 16, horizontalPadding: 2))
-            Button(action: remove) {
-                HStack(spacing: 4) {
-                    LucideIcon(name: "trash-2", size: 14)
-                    Text("Remove")
+        RoundedRectangle(cornerRadius: slotRadius, style: .continuous)
+            .strokeBorder(Theme.ink.opacity(0.28), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            .frame(width: slotSize.width, height: slotSize.height)
+            .overlay(alignment: .topTrailing) {
+                Button(action: remove) {
+                    LucideIcon(name: "trash-2", size: 16)
+                        .foregroundStyle(Theme.ink)
+                        .frame(width: 34, height: 34)
+                        .background(Theme.card, in: .circle)
+                        .overlay(Circle().strokeBorder(Theme.inkFaint, lineWidth: 1))
+                        .shadow(color: Theme.cardShadow, radius: 6, y: 2)
+                        .frame(width: 48, height: 48)
+                        .contentShape(.circle)
                 }
-                .font(Theme.sans(14, .semibold))
-                .foregroundStyle(Theme.ink.opacity(0.75))
-                .frame(width: 92, height: 40)
-                .contentShape(.rect)
+                .buttonStyle(SlotPressStyle())
+                .accessibilityLabel("Remove this item")
+                .offset(x: 14, y: -14)
             }
-            .buttonStyle(SlotPressStyle())
-        }
-        .padding(.top, 4)
-        .frame(width: Layout.trayPitch - 12, height: Layout.trayItemsRect.height - 22)
-        .overlay {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .strokeBorder(Theme.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
-                .allowsHitTesting(false)
-        }
     }
 }
 
@@ -86,6 +84,7 @@ struct BuilderBackdrop: View {
             GlassTrayBackground(cornerRadius: app.mode == .summary ? 44 : 40, isExpanded: app.mode == .summary)
                 .frame(width: sheet.width, height: sheet.height)
                 .position(x: sheet.midX, y: sheet.midY + (app.mode == .summary ? app.sheetDrag : 0))
+
 
             if app.mode == .summary {
                 SummaryView(app: app)
@@ -136,6 +135,18 @@ struct BuilderBackdrop: View {
 
 struct BuilderForeground: View {
     @Bindable var app: AppModel
+    @State private var scoopHint = false
+    @State private var hintTask: Task<Void, Never>?
+
+    private func showScoopHint() {
+        hintTask?.cancel()
+        withAnimation(.easeOut(duration: 0.2)) { scoopHint = true }
+        hintTask = Task {
+            try? await Task.sleep(for: .seconds(1.8))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.3)) { scoopHint = false }
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -194,8 +205,17 @@ struct BuilderForeground: View {
                               title: { $0.title },
                               isEnabled: { app.canJump(to: $0) },
                               onSelect: { app.jumpToStep($0) },
+                              onBlockedTap: { _ in showScoopHint() },
                               width: 420)
                 .position(x: Layout.midX, y: Layout.stepIndicatorY)
+
+            if scoopHint {
+                Text("Add a scoop first")
+                    .font(Theme.sans(15, .medium))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .position(x: Layout.midX + 140, y: Layout.stepIndicatorY + 42)
+                    .transition(.opacity.combined(with: .offset(y: -4)))
+            }
 
             Text(title)
                 .font(Theme.serif(52))
@@ -208,6 +228,9 @@ struct BuilderForeground: View {
         }
         .animation(.easeInOut(duration: 0.3), value: app.step)
         .animation(.easeInOut(duration: 0.3), value: app.isEditing)
+        .onChange(of: app.current.scoopCount > 0) { _, hasScoop in
+            if hasScoop { withAnimation(.easeIn(duration: 0.2)) { scoopHint = false } }
+        }
     }
 
     private var title: String {
@@ -312,16 +335,16 @@ struct BuilderForeground: View {
     }
 
     private var primaryButton: some View {
-        Button { app.goForward() } label: {
+        Button { app.isEditing ? app.finishEditing(then: .newItem) : app.goForward() } label: {
             HStack(spacing: 12) {
                 Text(primaryTitle)
-                LucideIcon(name: app.step == .toppings ? (app.isEditing ? "check" : "plus") : "arrow-right", size: 26)
+                LucideIcon(name: app.isEditing ? "check" : (app.step == .toppings ? "plus" : "arrow-right"), size: 26)
             }
             .frame(minWidth: Layout.primaryButtonSize.width - 100)
             .contentTransition(.opacity)
         }
         .buttonStyle(.glassCTA(height: Layout.primaryButtonSize.height))
-        .disabled(!app.canContinue || app.itemInFlight)
+        .disabled((!app.canContinue && !app.isEditing) || app.itemInFlight)
         .opacity(app.itemInFlight ? 0 : 1)
         .animation(.easeOut(duration: 0.18), value: app.itemInFlight)
         .animation(.easeInOut(duration: 0.25), value: app.step)
@@ -329,8 +352,8 @@ struct BuilderForeground: View {
     }
 
     private var primaryTitle: String {
-        guard app.step == .toppings else { return "Continue" }
-        return app.isEditing ? "Done" : "Add to Order"
+        if app.isEditing { return "Done" }
+        return app.step == .toppings ? "Add to Order" : "Continue"
     }
 
     private var tray: some View {
@@ -362,8 +385,7 @@ struct BuilderForeground: View {
             if let editingID = app.editingID {
                 let _ = app.trayLayoutVersion
                 if let center = app.stage.trayItemCenter(editingID), Layout.trayItemsRect.contains(center) {
-                    EditingSlot(done: { app.finishEditing(then: .newItem) },
-                                remove: { app.requestDelete(editingID) })
+                    EditingSlot(remove: { app.requestDelete(editingID) })
                         .position(center)
                         .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 }
@@ -387,22 +409,17 @@ struct BuilderForeground: View {
     private var newItemSlot: some View {
         let enabled = app.canStartNewItem
         return Button { app.startNewItem() } label: {
-            VStack(spacing: 6) {
-                LucideIcon(name: "plus", size: 30)
-                Text("New item").font(Theme.sans(16, .semibold))
+            VStack(spacing: 4) {
+                LucideIcon(name: "plus", size: 28)
+                Text("New item").font(Theme.sans(15, .semibold))
             }
-            .foregroundStyle(Theme.ink)
-            .frame(width: Layout.trayNewItemRect.width, height: Layout.trayNewItemRect.height)
-            .background(Theme.ink.opacity(0.07), in: .rect(cornerRadius: 26, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .strokeBorder(Theme.ink.opacity(0.22), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
-            }
-            .contentShape(.rect(cornerRadius: 26))
+            .foregroundStyle(Theme.ink.opacity(enabled ? 0.85 : 0.35))
+            .frame(width: slotSize.width, height: slotSize.height)
+            .background(Theme.ink.opacity(0.055), in: .rect(cornerRadius: slotRadius, style: .continuous))
+            .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
         }
         .buttonStyle(SlotPressStyle())
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.35)
         .animation(.easeInOut(duration: 0.25), value: enabled)
         .accessibilityLabel("Start a new item")
         .position(x: Layout.trayNewItemRect.midX, y: Layout.trayNewItemRect.midY)

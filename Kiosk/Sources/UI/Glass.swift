@@ -144,31 +144,76 @@ struct GlassViewOrderButton: View {
     }
 }
 
+/// The builder's step navigation: a native `UISegmentedControl` (which draws its own Liquid Glass), used
+/// directly because SwiftUI's segmented Picker can block a segment but can't show it as disabled.
+/// Tapping a disabled segment calls `onBlockedTap` so the screen can explain why.
 struct GlassStepSelector<Step: Hashable>: View {
     let steps: [Step]
     @Binding var selection: Step
     let title: (Step) -> String
     var isEnabled: (Step) -> Bool = { _ in true }
     var onSelect: (Step) -> Void = { _ in }
+    var onBlockedTap: (Step) -> Void = { _ in }
     var width: CGFloat = 480
 
     var body: some View {
-        Picker("Step", selection: Binding(get: { selection }, set: { step in
-            guard step != selection else { return }
-            selection = step
-            onSelect(step)
-        })) {
-            ForEach(steps, id: \.self) { step in
-                Text(title(step))
-                    .tag(step)
-                    .selectionDisabled(!isEnabled(step))
+        SegmentedSteps(titles: steps.map(title),
+                       selected: steps.firstIndex(of: selection) ?? 0,
+                       enabled: steps.map(isEnabled),
+                       onSelect: { index in
+                           let step = steps[index]
+                           guard step != selection else { return }
+                           selection = step
+                           onSelect(step)
+                       })
+            .frame(width: width, height: 52)
+            .overlay {
+                // Disabled segments swallow touches in UIKit; this catches them for the hint.
+                HStack(spacing: 0) {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .allowsHitTesting(!isEnabled(step))
+                            .onTapGesture { onBlockedTap(step) }
+                    }
+                }
+            }
+            .onAppear(perform: SegmentedAppearance.apply)
+    }
+}
+
+private struct SegmentedSteps: UIViewRepresentable {
+    let titles: [String]
+    let selected: Int
+    let enabled: [Bool]
+    let onSelect: (Int) -> Void
+
+    func makeUIView(context: Context) -> UISegmentedControl {
+        let control = UISegmentedControl(items: titles)
+        control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        control.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return control
+    }
+
+    func updateUIView(_ control: UISegmentedControl, context: Context) {
+        context.coordinator.onSelect = onSelect
+        control.selectedSegmentIndex = selected
+        for (index, isEnabled) in enabled.enumerated() where control.isEnabledForSegment(at: index) != isEnabled {
+            UIView.transition(with: control, duration: 0.25, options: .transitionCrossDissolve) {
+                control.setEnabled(isEnabled, forSegmentAt: index)
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.extraLarge)
-        .frame(width: width)
-        .onAppear(perform: SegmentedAppearance.apply)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onSelect: onSelect) }
+
+    final class Coordinator: NSObject {
+        var onSelect: (Int) -> Void
+        init(onSelect: @escaping (Int) -> Void) { self.onSelect = onSelect }
+
+        @MainActor @objc func changed(_ control: UISegmentedControl) {
+            onSelect(control.selectedSegmentIndex)
+        }
     }
 }
 
@@ -189,6 +234,10 @@ private enum SegmentedAppearance {
             .font: UIFont.systemFont(ofSize: 18, weight: .semibold),
             .foregroundColor: UIColor.white,
         ], for: .selected)
+        control.setTitleTextAttributes([
+            .font: UIFont.systemFont(ofSize: 18, weight: .medium),
+            .foregroundColor: UIColor(Theme.ink.opacity(0.28)),
+        ], for: .disabled)
     }
 }
 

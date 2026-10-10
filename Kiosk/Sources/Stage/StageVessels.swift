@@ -67,8 +67,11 @@ extension Stage {
 
     /// Interpolates every pose component from the rig's current pose to a live target, so the final
     /// frame equals the target exactly.
+    /// The rig's contact shadows shrink away as it lifts off (first ~12% of the flight) and grow back as it
+    /// lands (last ~12%), so no shadow ever travels through the air with it.
     func flyRig(_ rig: ItemRig, duration: Double, delay: Double = 0, minSpin: Float, dip: Bool,
-                timing: TimingCurve, control: @escaping (SIMD3<Float>, SIMD3<Float>) -> SIMD3<Float>,
+                timing: TimingCurve, shadowAtStart: Bool = true, shadowAtEnd: Bool = true,
+                control: @escaping (SIMD3<Float>, SIMD3<Float>) -> SIMD3<Float>,
                 target: @escaping () -> RigPose, completion: @escaping () -> Void) {
         rig.motion?.cancel()
         var start = rig.pose
@@ -94,8 +97,13 @@ extension Stage {
             rig.pose.pitch = lerp(start.pitch, goal.pitch, e)
             rig.pose.roll = lerp(start.roll, goal.roll, e)
             rig.pose.yaw = start.yaw + yawDelta * Ease.inOutCubic(p)
+            let leaving: Float = shadowAtStart ? 1 - Ease.inOutSine(Ease.segment(p, 0, 0.12)) : 0
+            let landing: Float = shadowAtEnd ? Ease.inOutSine(Ease.segment(p, 0.88, 1)) : 0
+            rig.grounded = max(leaving, landing)
             rig.apply()
         } completion: {
+            rig.grounded = shadowAtEnd ? 1 : 0
+            rig.apply()
             rig.motion = nil
             completion()
         }
@@ -107,7 +115,7 @@ extension Stage {
             && abs(rig.pose.scale - Self.iconScale(vessel)) < Self.iconScale(vessel) * 0.1
         let side: Float = Layout.vesselIconCenter(vessel).x > Layout.midX ? 1 : -1
         flyRig(rig, duration: duration, delay: delay, minSpin: fromIcon ? 2 * .pi : .pi, dip: fromIcon,
-               timing: .flight,
+               timing: .flight, shadowAtStart: !fromIcon,
                control: { p0, p1 in (p0 + p1) / 2 + SIMD3<Float>(side * 0.2, -0.03, 0.14) },
                target: { [unowned self] in centerPose(vessel, yaw: rig.pose.yaw) }) { [weak self] in
             guard let self, heroes[selectedVessel] === rig else { return }
@@ -120,11 +128,13 @@ extension Stage {
         let vessel = rig.vessel
         setVesselIconAppear(vessel, to: 0, duration: 0.2, delay: delay, curve: .swiftUIEaseIn)
         let side: Float = Layout.vesselIconCenter(vessel).x > Layout.midX ? 1 : -1
-        flyRig(rig, duration: duration, delay: delay, minSpin: 1.5 * .pi, dip: false, timing: .flight,
+        setVesselIconShadow(vessel, to: 0, duration: 0.2, delay: delay)
+        flyRig(rig, duration: duration, delay: delay, minSpin: 1.5 * .pi, dip: false, timing: .flight, shadowAtEnd: false,
                control: { p0, p1 in (p0 + p1) / 2 + SIMD3<Float>(side * 0.17, 0.02, -0.1) },
                target: { [unowned self] in iconPose(vessel) }) { [weak self] in
             guard let self else { return }
             if heroes[vessel] === rig { heroes[vessel] = nil }
+            setVesselIconShadow(vessel, to: 1, duration: 0.28)
             if (vesselIconTarget[vessel] ?? 0) > 0 {
                 setVesselIconAppear(vessel, to: 1, duration: 0)
                 updateIcons()
@@ -192,6 +202,7 @@ extension Stage {
         }
         let rig = makeRig(vessel)
         rig.pose = iconPose(vessel)
+        rig.grounded = 0
         rig.apply()
         rig.root.isEnabled = false
         heroes[vessel] = rig
@@ -199,17 +210,13 @@ extension Stage {
         let takeOver = { [unowned self] in
             rig.pose = iconPose(vessel)
             rig.scaleMultiplier = vesselIconAppear[vessel] ?? 1
-            rig.setOpacity(vesselIcons[vessel]?.opacity ?? 1)
+            rig.grounded = 0
             rig.root.isEnabled = true
             rig.apply()
             setVesselIconAppear(vessel, to: 0, duration: 0)
             setVesselIconAppear(vessel, to: 1, duration: 0.32, delay: duration * 0.55)
-            if rig.opacity < 1 {
-                var from: Float = 0
-                rig.opacityTween = animate(duration: 0.2, onStart: { from = rig.opacity }) { p in
-                    rig.setOpacity(lerp(from, 1, p))
-                }
-            }
+            setVesselIconShadow(vessel, to: 0, duration: 0.2)
+            setVesselIconShadow(vessel, to: 1, duration: 0.32, delay: duration * 0.55)
         }
         if delay <= 0 { takeOver() }
         animate(delay: delay, duration: 0.2, onStart: delay > 0 ? takeOver : nil) { p in

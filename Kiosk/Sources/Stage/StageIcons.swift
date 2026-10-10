@@ -27,7 +27,10 @@ extension Stage {
         for vessel in Vessel.allCases {
             guard let rig = vesselIcons[vessel] else { continue }
             rig.pose = iconPose(vessel)
-            rig.scaleMultiplier = vesselIconAppear[vessel] ?? 1
+            rig.scaleMultiplier = iconShown[.vessel(vessel)] ?? 0
+            rig.root.isEnabled = rig.scaleMultiplier > 0.001
+            rig.modelScale = vesselIconAppear[vessel] ?? 1
+            rig.grounded = vesselIconShadow[vessel] ?? 1
             rig.apply()
         }
         for flavor in Flavor.allCases {
@@ -35,7 +38,9 @@ extension Stage {
             let (position, scale) = pressed(icon.restPosition, card: .flavor(flavor), center: Layout.flavorCardCenter(flavor))
             icon.holder.position = position
             icon.holder.orientation = icon.restOrientation
-            icon.holder.scale = .init(repeating: icon.baseScale * scale)
+            let shown = iconShown[.flavor(flavor)] ?? 0
+            icon.holder.scale = .init(repeating: max(icon.baseScale * scale * shown, 1e-5))
+            icon.holder.isEnabled = shown > 0.001
             icon.scaler.scale = .init(repeating: max(icon.appear, 1e-5))
             icon.applyShadow()
         }
@@ -61,42 +66,50 @@ extension Stage {
         refreshIconVisibility(animated: animated)
     }
 
-    /// Mirrors the cards' SwiftUI transition (`.easeIn(0.18)` out, `.easeOut(0.26).delay(0.16)` in).
+    /// Icons scale out and back in on the cards' fade curves (`.easeIn(0.18)` out, `.easeOut(0.26)` in
+    /// after 0.16 s), shrinking toward their card's centre.
     private func refreshIconVisibility(animated: Bool) {
         for vessel in Vessel.allCases {
-            guard let rig = vesselIcons[vessel] else { continue }
-            let target: Float = controlsVisible && step == .vessel ? 1 : 0
-            guard vesselIconTarget[vessel] != target || !animated else { continue }
-            vesselIconTarget[vessel] = target
-            rig.opacityTween?.cancel()
-            if !animated {
-                rig.setOpacity(target)
-                continue
-            }
-            var from: Float = 0
-            let fadingIn = target > 0
-            rig.opacityTween = animate(delay: fadingIn ? 0.16 : 0, duration: fadingIn ? 0.26 : 0.18,
-                                       onStart: { from = rig.opacity }) { p in
-                let e = fadingIn ? TimingCurve.swiftUIEaseOut(p) : TimingCurve.swiftUIEaseIn(p)
-                rig.setOpacity(lerp(from, target, e))
-            }
+            let visible = controlsVisible && step == .vessel
+            vesselIconTarget[vessel] = visible ? 1 : 0
+            setIconShown(.vessel(vessel), visible, animated: animated)
         }
-        for icon in flavorIcons.values {
-            let visible = controlsVisible && step == .flavors
-            guard icon.baseVisible != visible || !animated else { continue }
-            icon.baseVisible = visible
-            let target: Float = visible ? 1 : 0
-            icon.opacityTween?.cancel()
-            if !animated {
-                icon.setOpacity(target)
-                continue
-            }
-            var from: Float = 0
-            icon.opacityTween = animate(delay: visible ? 0.16 : 0, duration: visible ? 0.26 : 0.18,
-                                        onStart: { from = icon.opacity }) { p in
-                let e = visible ? TimingCurve.swiftUIEaseOut(p) : TimingCurve.swiftUIEaseIn(p)
-                icon.setOpacity(lerp(from, target, e))
-            }
+        for flavor in Flavor.allCases {
+            setIconShown(.flavor(flavor), controlsVisible && step == .flavors, animated: animated)
+        }
+    }
+
+    private func setIconShown(_ card: CardKey, _ visible: Bool, animated: Bool) {
+        let target: Float = visible ? 1 : 0
+        guard iconShownTargets[card] != target || !animated else { return }
+        iconShownTargets[card] = target
+        iconShownTweens[card]?.cancel()
+        iconShownTweens[card] = nil
+        guard animated else {
+            iconShown[card] = target
+            return
+        }
+        var from: Float = 0
+        iconShownTweens[card] = animate(delay: visible ? 0.16 : 0, duration: visible ? 0.26 : 0.18,
+                                        onStart: { [unowned self] in from = iconShown[card] ?? 0 }) { [unowned self] p in
+            iconShown[card] = lerp(from, target, visible ? TimingCurve.swiftUIEaseOut(p) : TimingCurve.swiftUIEaseIn(p))
+        }
+    }
+
+    func setVesselIconShadow(_ vessel: Vessel, to target: Float, duration: Double, delay: Double = 0) {
+        // A delayed change takes over when it starts, so a fade already running finishes first.
+        if delay <= 0 {
+            vesselIconShadowTweens[vessel]?.cancel()
+            vesselIconShadowTweens[vessel] = nil
+        }
+        if duration <= 0, delay <= 0 {
+            vesselIconShadow[vessel] = target
+            return
+        }
+        var from: Float = 0
+        vesselIconShadowTweens[vessel] = animate(delay: delay, duration: duration,
+                                                 onStart: { [unowned self] in from = vesselIconShadow[vessel] ?? 1 }) { [unowned self] p in
+            vesselIconShadow[vessel] = lerp(from, target, TimingCurve.swiftUIEaseInOut(p))
         }
     }
 

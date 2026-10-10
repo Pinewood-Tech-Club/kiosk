@@ -69,15 +69,6 @@ extension Stage {
         return RigPose(position: fit.position, scale: fit.scale, pitch: pitch, yaw: entry.spinYaw)
     }
 
-    /// Items tuck away by shrinking as they scroll past an edge; nothing in the tray or the order sheet ever
-    /// rests partly transparent (translucent models over light glass read as washed out).
-    private func trayEdge(_ x: CGFloat) -> Float {
-        let zone: CGFloat = 44
-        let left = (x - (Layout.trayItemsRect.minX + 2)) / zone
-        let right = ((Layout.trayItemsRect.maxX - 2) - x) / zone
-        let t = Float(min(max(min(left, right), 0), 1))
-        return t * t * (3 - 2 * t)
-    }
 
     private func clipEdge(_ y: CGFloat, _ clip: CGRect, zone: CGFloat) -> Float {
         guard clip.height > 0 else { return 1 }
@@ -103,7 +94,9 @@ extension Stage {
             switch entry.mode {
             case .tray:
                 rig.pose = trayPose(entry)
-                edge = trayEdge(trayCenterX(entry))
+                let x = trayCenterX(entry)
+                let reach = Layout.trayPitch / 2
+                edge = x > Layout.trayItemsRect.minX - reach && x < Layout.trayItemsRect.maxX + reach ? 1 : 0
             case .summary:
                 entry.spinVelocity += (0.32 - entry.spinVelocity) * (1 - exp(-dt / 0.9))
                 entry.spinYaw += entry.spinVelocity * dt
@@ -156,13 +149,6 @@ extension Stage {
         entry.mode = .flying
         entry.lastEdge = -1
         rig.root.isEnabled = true
-        if rig.opacity < 1 {
-            rig.opacityTween?.cancel()
-            var from: Float = 0
-            rig.opacityTween = animate(delay: delay, duration: 0.25, onStart: { from = rig.opacity }) { p in
-                rig.setOpacity(lerp(from, 1, p))
-            }
-        }
         if rig.scaleMultiplier < 1 {
             rig.appearTween?.cancel()
             var from: Float = 0
@@ -193,7 +179,7 @@ extension Stage {
         if summaryActive {
             flyEntry(entry, toSummary: true, duration: 1.0)
         } else {
-            animateTrayScroll(to: maxTrayScroll, duration: 0.7)
+            animateTrayScroll(to: maxTrayScroll, duration: 0.4)
             flyEntry(entry, toSummary: false, duration: 1.05)
         }
     }
@@ -338,7 +324,7 @@ extension Stage {
         guard Layout.trayItemsRect.contains(point) else { return nil }
         for entry in tray where entry.mode != .removing {
             let x = trayCenterX(entry)
-            if abs(point.x - x) < Layout.trayPitch / 2, trayEdge(x) > 0.5 { return entry.id }
+            if abs(point.x - x) < Layout.trayPitch / 2, x > Layout.trayItemsRect.minX, x < Layout.trayItemsRect.maxX { return entry.id }
         }
         return nil
     }

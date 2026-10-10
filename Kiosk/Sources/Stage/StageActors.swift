@@ -54,6 +54,7 @@ final class ItemRig {
     let pivot: SIMD3<Float>
     let floorShadow: ModelEntity?
     let floorShadowFullRoll: Float
+    private let floorShadowScale: SIMD3<Float>
     var pose: RigPose
     var scaleMultiplier: Float = 1
     var scoops: [ScoopActor] = []
@@ -62,6 +63,13 @@ final class ItemRig {
     var opacityTween: Tween?
     private(set) var opacity: Float = 1
     private var shownShadowOpacity: Float = -1
+    private var shownBaseShadow: Float = -1
+    let baseShadow: ModelEntity?
+    private let baseShadowScale: SIMD3<Float>
+    /// 1 while the item rests on a surface, 0 in the air: its contact shadows shrink and grow with it.
+    var grounded: Float = 1
+    /// Scales the model but not its contact shadows (card icons hide this way while their shadow fades).
+    var modelScale: Float = 1
 
     init(vessel: Vessel, model: Entity, baseShadow: ModelEntity?, floorShadow: ModelEntity?, floorShadowFullRoll: Float,
          pivot: SIMD3<Float>, pose: RigPose) {
@@ -69,6 +77,9 @@ final class ItemRig {
         self.pivot = pivot
         self.pose = pose
         self.floorShadow = floorShadow
+        self.floorShadowScale = floorShadow?.scale ?? .one
+        self.baseShadow = baseShadow
+        self.baseShadowScale = baseShadow?.scale ?? .one
         self.floorShadowFullRoll = floorShadowFullRoll
         root.name = "rig-\(vessel.rawValue)"
         root.addChild(floor)
@@ -78,7 +89,11 @@ final class ItemRig {
         spun.addChild(body)
         body.position = -pivot
         body.addChild(model)
-        if let baseShadow { body.addChild(baseShadow) }
+        if let baseShadow {
+            // Under `floor` rather than the spinning body, so the model can be scaled separately from it.
+            baseShadow.position.y -= pivot.y
+            floor.addChild(baseShadow)
+        }
         apply()
     }
 
@@ -87,13 +102,21 @@ final class ItemRig {
         root.scale = .init(repeating: max(pose.scale * scaleMultiplier, 1e-5))
         floor.orientation = simd_quatf(angle: pose.pitch, axis: [1, 0, 0])
         rolled.orientation = simd_quatf(angle: pose.roll, axis: [0, 0, 1])
+        rolled.scale = .init(repeating: max(modelScale, 1e-5))
+        rolled.isEnabled = modelScale > 0.001
         spun.orientation = simd_quatf(angle: pose.yaw, axis: [0, 1, 0])
         if let floorShadow, floorShadowFullRoll != 0 {
-            let amount = Ease.clamp01(abs(pose.roll) / abs(floorShadowFullRoll))
+            let amount = min(Ease.clamp01(abs(pose.roll) / abs(floorShadowFullRoll)), grounded)
             if abs(amount - shownShadowOpacity) > 0.004 {
                 shownShadowOpacity = amount
-                floorShadow.setOpacity(amount)
+                floorShadow.scale = floorShadowScale * max(amount, 1e-4)
+                floorShadow.isEnabled = amount > 0.002
             }
+        }
+        if let baseShadow, abs(grounded - shownBaseShadow) > 0.004 {
+            shownBaseShadow = grounded
+            baseShadow.scale = baseShadowScale * max(grounded, 1e-4)
+            baseShadow.isEnabled = grounded > 0.002
         }
     }
 
@@ -119,9 +142,6 @@ final class ScoopActor {
     var slot: Int
     let root = Entity()
     var model: ModelEntity
-    var ghost: ModelEntity?
-    var ghostSlot = 1
-    var crossfade: Tween?
     var staticPose: String
     var morpher: ScoopMorpher?
     var morphFrom: PoseRef?
@@ -162,6 +182,7 @@ final class FlavorIcon {
     let scaler = Entity()
     let model: ModelEntity
     let shadow: ModelEntity
+    private let shadowScale: SIMD3<Float>
     var restPosition: SIMD3<Float> = .zero
     var restOrientation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
     var baseScale: Float = 1
@@ -169,15 +190,13 @@ final class FlavorIcon {
     var shadowAmount: Float = 1
     var appearTween: Tween?
     var shadowTween: Tween?
-    var opacityTween: Tween?
-    var baseVisible = false
-    private(set) var opacity: Float = 1
     private var shownShadow: Float = -1
 
     init(flavor: Flavor, model: ModelEntity, shadow: ModelEntity) {
         self.flavor = flavor
         self.model = model
         self.shadow = shadow
+        self.shadowScale = shadow.scale
         holder.name = "flavor-\(flavor.rawValue)"
         holder.addChild(scaler)
         scaler.addChild(model)
@@ -187,13 +206,8 @@ final class FlavorIcon {
     func applyShadow() {
         guard abs(shadowAmount - shownShadow) > 0.004 else { return }
         shownShadow = shadowAmount
-        shadow.setOpacity(shadowAmount)
-    }
-
-    func setOpacity(_ value: Float) {
-        guard value != opacity else { return }
-        opacity = value
-        holder.setOpacity(value)
+        shadow.scale = shadowScale * max(shadowAmount, 1e-4)
+        shadow.isEnabled = shadowAmount > 0.002
     }
 }
 
