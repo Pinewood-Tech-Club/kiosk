@@ -224,7 +224,7 @@ def flavor_mat(name, kind):
     pm = N.new("ShaderNodeTexNoise"); pm.inputs["Scale"].default_value = 90
     L.new(tc.outputs["Object"], pm.inputs["Vector"])
     pit = N.new("ShaderNodeMapRange"); pit.inputs["From Min"].default_value = 0.0; pit.inputs["From Max"].default_value = 0.22
-    pit.inputs["To Min"].default_value = -1.0; pit.inputs["To Max"].default_value = 0.0; pit.clamp = True
+    pit.inputs["To Min"].default_value = -0.8; pit.inputs["To Max"].default_value = 0.0; pit.clamp = True
     L.new(pv.outputs["Distance"], pit.inputs["Value"])
     pmask = N.new("ShaderNodeMapRange"); pmask.inputs["From Min"].default_value = 0.45; pmask.inputs["From Max"].default_value = 0.6
     L.new(pm.outputs["Fac"], pmask.inputs["Value"])
@@ -247,12 +247,12 @@ def flavor_mat(name, kind):
     for lk in list(b.inputs["Normal"].links): nt.links.remove(lk)
     g = N.new("ShaderNodeTexNoise"); g.inputs["Scale"].default_value = 1800; g.inputs["Detail"].default_value = 3; g.inputs["Roughness"].default_value = 0.65
     L.new(tc.outputs["Object"], g.inputs["Vector"])
-    gs = N.new("ShaderNodeMath"); gs.operation = 'MULTIPLY_ADD'; gs.inputs[1].default_value = 0.000170; gs.inputs[2].default_value = -0.000085
+    gs = N.new("ShaderNodeMath"); gs.operation = 'MULTIPLY_ADD'; gs.inputs[1].default_value = 0.0000935; gs.inputs[2].default_value = -0.00004675
     L.new(g.outputs["Fac"], gs.inputs[0])
     pv2 = N.new("ShaderNodeTexVoronoi"); pv2.inputs["Scale"].default_value = 650
     L.new(tc.outputs["Object"], pv2.inputs["Vector"])
     pr = N.new("ShaderNodeMapRange"); pr.inputs["From Min"].default_value = 0.0; pr.inputs["From Max"].default_value = 0.28
-    pr.inputs["To Min"].default_value = -0.00045; pr.inputs["To Max"].default_value = 0.0; pr.clamp = True
+    pr.inputs["To Min"].default_value = -0.00036; pr.inputs["To Max"].default_value = 0.0; pr.clamp = True
     L.new(pv2.outputs["Distance"], pr.inputs["Value"])
     pmk = N.new("ShaderNodeTexNoise"); pmk.inputs["Scale"].default_value = 110
     L.new(tc.outputs["Object"], pmk.inputs["Vector"])
@@ -328,8 +328,8 @@ def place(container, kinds, x, seeds=None, solo_lift=None):
     if container == "cup":
         cx_, cy_ = x, 0.0
         base = CUP_FLOOR + lift*0.9 + ((4.0*mm if len(kinds) == 1 else 0.0) if solo_lift is None else solo_lift)
-        base += 3.0*mm if len(kinds) > 1 else 0.0
-        centers = [Vector((0, 0, base)), Vector((0.36*r, 0.28*r, base + 1.02*r)), Vector((-0.08*r, 0.0*r, base + 1.85*r))]
+        base += 6.0*mm if len(kinds) > 1 else 0.0
+        centers = [Vector((0, 0, base)), Vector((0.45*r, 0.30*r, base + 1.12*r)), Vector((-0.22*r, -0.20*r, base + 1.85*r))]
         fn = cup_inner; ztop = (CUP_ZB - 0.2)*mm; zfl = CUP_FLOOR
     else:
         V = np.empty(len(o.data.vertices)*3); o.data.vertices.foreach_get("co", V); V = V.reshape(-1,3)

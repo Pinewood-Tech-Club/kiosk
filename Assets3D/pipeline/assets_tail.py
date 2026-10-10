@@ -56,17 +56,29 @@ def normals_tangents(P, T, UV, pairs):
     w = np.sign((np.cross(N, Tg)*Bg).sum(1)); w[w == 0] = 1
     return N, np.c_[Tg, w]
 
-def ball_pose(P_icon):
-    c = np.array([0.0, 0.0, 0.0])
-    zc = P_icon[:,2].min() + (P_icon[:,2].max() - P_icon[:,2].min())*0.45
-    c[2] = zc
-    D = P_icon - c
-    L = np.linalg.norm(D, axis=1)[:,None]; D = D/np.maximum(L, 1e-9)
-    hull_r = 0.5*(np.ptp(P_icon[:,0]) + np.ptp(P_icon[:,1]))/2
-    R = 0.86*r
-    jit = np.array([noise.noise(Vector(d)*2.0 + Vector((5,5,5))) for d in D])
-    B = c + D*R*(1 + 0.03*jit)[:,None]
-    B[:,2] += R - zc
+def smooth_verts(P, T, iters=60, lam=0.6):
+    n = len(P); E = np.r_[T[:,[0,1]], T[:,[1,2]], T[:,[2,0]]]
+    E = np.r_[E, E[:,::-1]]
+    deg = np.bincount(E[:,0], minlength=n)[:,None].astype(np.float64)
+    S = P.copy()
+    for _ in range(iters):
+        acc = np.zeros_like(S); np.add.at(acc, E[:,0], S[E[:,1]])
+        S = S + lam*(acc/np.maximum(deg, 1) - S)
+    return S
+
+def ball_pose(P_icon, T, blend=0.65):
+    smooth = smooth_verts(P_icon, T)
+    detail = P_icon - smooth
+    c = np.array([smooth[:,0].mean(), smooth[:,1].mean(), 0.0])
+    c[2] = smooth[:,2].min() + (smooth[:,2].max() - smooth[:,2].min())*0.5
+    D = smooth - c
+    D = D/np.maximum(np.linalg.norm(D, axis=1)[:,None], 1e-9)
+    R = 0.95*r
+    sphere = c + D*R
+    f = (smooth[:,2] - smooth[:,2].min())/(np.ptp(smooth[:,2]) + 1e-9)
+    w = np.clip((f - 0.35)/0.3, 0, 1)[:,None]
+    B = smooth + (blend + 0.2*(1 - w))*(sphere - smooth) + detail*(0.35 + 0.65*w)
+    B[:,2] -= B[:,2].min()
     return B
 
 cone_me = cone_src.data
@@ -97,7 +109,7 @@ for mi in seeds:
     h = -raw[:,2].min(); heights[mi] = h
     icon = raw + np.array([0, 0, h])
     poses[mi]["icon"] = icon
-    poses[mi]["ball"] = ball_pose(icon)
+    poses[mi]["ball"] = ball_pose(icon, mesh_arrays(scoop_meshes[mi])[1])
 
 def record(obj, mi, key, slotname, container):
     bpy.context.view_layer.update()
