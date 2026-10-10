@@ -5,6 +5,8 @@ struct Receipt: Sendable {
         let id = UUID()
         let title: String
         let detail: String
+        let quantity: Int
+        let baseCents: Int
         let cents: Int
     }
 
@@ -22,13 +24,32 @@ struct Receipt: Sendable {
     let totalCents: Int
     let isSimulated: Bool
 
-    static func lines(for quote: OrderQuote) -> [Line] {
-        quote.lines.map { line in
-            var detail = line.item.flavorSummary
-            if line.item.vessel == .cone {
-                detail += " · cone +\(line.vesselCents.formattedAsUSD)"
+    var displayLines: [(title: String, detail: String, amountCents: Int)] {
+        lines.map { ($0.title, $0.detail, $0.cents) }
+    }
+
+    static func chargedLines(for quote: OrderQuote) -> [Line] {
+        var lines: [Line] = []
+        var position = 0
+        for (index, line) in quote.lines.enumerated() {
+            let label = "#\(index + 1) \(line.item.vessel.title)"
+            for flavor in line.item.flavors {
+                position += 1
+                let cents = Pricing.scoopsTotal(position) - Pricing.scoopsTotal(position - 1)
+                lines.append(Line(title: scoopName(position), detail: "\(label): \(flavor.title)", quantity: 1, baseCents: cents, cents: cents))
             }
-            return Line(title: line.item.title, detail: detail, cents: line.totalCents)
+            if line.item.vessel == .cone {
+                lines.append(Line(title: "Waffle Cone", detail: "#\(index + 1)", quantity: 1, baseCents: line.vesselCents, cents: line.vesselCents))
+            }
+        }
+        return lines
+    }
+
+    private static func scoopName(_ position: Int) -> String {
+        switch position {
+        case 1: "1 Scoop"
+        case 2: "2nd Scoop"
+        default: "3rd+ Scoop"
         }
     }
 
@@ -39,7 +60,7 @@ struct Receipt: Sendable {
         }
         return Receipt(merchantName: merchantName, eventName: Config.eventName, date: Date(), orderNumber: orderNumber,
                        customerName: customerName, squareOrderID: "SIM-" + randomID(22), paymentID: "SIM-" + randomID(22),
-                       cardDescription: "Visa •••• 1111", lines: lines(for: quote), subtotalCents: quote.totalCents,
+                       cardDescription: "Visa •••• 1111", lines: chargedLines(for: quote), subtotalCents: quote.totalCents,
                        taxCents: 0, totalCents: quote.totalCents, isSimulated: true)
     }
 }

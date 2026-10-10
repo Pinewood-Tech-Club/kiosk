@@ -5,7 +5,7 @@ struct SquareAPI {
         let id: String
         let totalCents: Int
         let taxCents: Int
-        let lineTotals: [Int]
+        let lines: [Receipt.Line]
         let usedCatalog: Bool
     }
 
@@ -143,10 +143,18 @@ struct SquareAPI {
             throw APIError(message: "Unexpected CreateOrder response: \(json)")
         }
         let tax = (order["total_tax_money"] as? [String: Any])?["amount"] as? Int ?? 0
-        let lines = (order["line_items"] as? [[String: Any]] ?? []).map {
-            ($0["total_money"] as? [String: Any])?["amount"] as? Int ?? 0
+        let lines = (order["line_items"] as? [[String: Any]] ?? []).map { item -> Receipt.Line in
+            func cents(_ key: String) -> Int { (item[key] as? [String: Any])?["amount"] as? Int ?? 0 }
+            let modifiers = (item["modifiers"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+            return Receipt.Line(
+                title: item["name"] as? String ?? "Item",
+                detail: item["note"] as? String ?? modifiers.joined(separator: ", "),
+                quantity: Int(item["quantity"] as? String ?? "1") ?? 1,
+                baseCents: cents("base_price_money"),
+                cents: cents("total_money")
+            )
         }
-        return CreatedOrder(id: id, totalCents: total, taxCents: tax, lineTotals: lines, usedCatalog: catalog != nil)
+        return CreatedOrder(id: id, totalCents: total, taxCents: tax, lines: lines, usedCatalog: catalog != nil)
     }
 
     private func request(_ path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {

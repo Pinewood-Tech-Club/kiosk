@@ -164,6 +164,9 @@ final class SquareService: NSObject {
                 let subtotal = order.totalCents - order.taxCents
                 let verdict = subtotal == quote.totalCents ? "MATCH" : "MISMATCH"
                 record("VERIFY basket \(index + 1): \(quote.scoopCount) scoops, \(quote.coneCount) cones, kiosk \(quote.totalCents) square \(order.totalCents) tax \(order.taxCents) catalog=\(order.usedCatalog) \(verdict)")
+                let local = Receipt.chargedLines(for: quote).map { "\($0.title)|\($0.detail)|\($0.cents)" }
+                let remote = order.lines.map { "\($0.title)|\($0.detail)|\($0.cents)" }
+                record("VERIFY lines basket \(index + 1): \(local == remote ? "SAME" : "DIFFERENT") \(remote.joined(separator: " ; "))")
             } catch {
                 record("VERIFY basket \(index + 1) failed: \(error.localizedDescription)")
             }
@@ -381,7 +384,7 @@ extension SquareService: PaymentManagerDelegate {
         let receipt = Receipt(
             merchantName: merchantName, eventName: Config.eventName, date: Date(), orderNumber: pending.number,
             customerName: pending.name, squareOrderID: payment.orderID ?? pending.order.id, paymentID: paymentID,
-            cardDescription: card, lines: Receipt.lines(for: pending.quote),
+            cardDescription: card, lines: pending.order.lines,
             subtotalCents: total - pending.order.taxCents, taxCents: pending.order.taxCents, totalCents: total,
             isSimulated: false
         )

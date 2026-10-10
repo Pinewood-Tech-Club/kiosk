@@ -33,7 +33,7 @@ struct ConfirmationView: View {
             .padding(.top, 76)
             .padding(.horizontal, 64)
 
-            ReceiptView(receipt: receipt, lines: ReceiptLines.charged(receipt: receipt, quote: app.orderQuote))
+            ReceiptView(receipt: receipt)
                 .frame(width: 560)
                 .mask(alignment: .top) {
                     Rectangle().frame(maxHeight: printed ? .infinity : 0)
@@ -99,54 +99,8 @@ private struct Countdown: View {
     }
 }
 
-/// What Square actually charged: one catalog line per scoop, priced by its position in the whole
-/// order (1 Scoop, 2nd Scoop, 3rd+ Scoop), plus one Waffle Cone line per cone.
-enum ReceiptLines {
-    struct Item: Identifiable {
-        let id: Int
-        let title: String
-        let charges: [Charge]
-    }
-
-    struct Charge: Identifiable {
-        let id: Int
-        let name: String
-        let detail: String?
-        let cents: Int
-    }
-
-    static func charged(receipt: Receipt, quote: OrderQuote) -> [Item] {
-        guard !quote.isEmpty, quote.totalCents == receipt.subtotalCents else {
-            return receipt.lines.enumerated().map { index, line in
-                Item(id: index, title: line.title, charges: [Charge(id: 0, name: line.detail, detail: nil, cents: line.cents)])
-            }
-        }
-        var position = 0
-        return quote.lines.enumerated().map { index, line in
-            var charges: [Charge] = line.item.flavors.enumerated().map { offset, flavor in
-                position += 1
-                let cents = Pricing.scoopsTotal(position) - Pricing.scoopsTotal(position - 1)
-                return Charge(id: offset, name: flavor.title, detail: scoopName(position), cents: cents)
-            }
-            if line.item.vessel == .cone {
-                charges.append(Charge(id: charges.count, name: "Waffle Cone", detail: nil, cents: line.vesselCents))
-            }
-            return Item(id: index, title: line.item.vessel.title, charges: charges)
-        }
-    }
-
-    private static func scoopName(_ position: Int) -> String {
-        switch position {
-        case 1: "1 Scoop"
-        case 2: "2nd Scoop"
-        default: "3rd+ Scoop"
-        }
-    }
-}
-
 private struct ReceiptView: View {
     let receipt: Receipt
-    let lines: [ReceiptLines.Item]
     @State private var itemsHeight: CGFloat = 0
 
     var body: some View {
@@ -200,20 +154,16 @@ private struct ReceiptView: View {
     private var items: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                ForEach(lines) { item in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(item.title).font(Theme.serif(19))
-                        ForEach(item.charges) { charge in
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text(charge.name).font(Theme.sans(16))
-                                if let detail = charge.detail {
-                                    Text(detail).font(Theme.sans(14)).foregroundStyle(Theme.inkSecondary)
-                                }
-                                Leader()
-                                Text(charge.cents.formattedAsUSD).font(Theme.sans(16)).monospacedDigit()
+                ForEach(receipt.lines) { line in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(line.quantity > 1 ? "\(line.title) × \(line.quantity)" : line.title).font(Theme.sans(16, .medium))
+                            if !line.detail.isEmpty {
+                                Text(line.detail).font(Theme.sans(14)).foregroundStyle(Theme.inkSecondary)
                             }
-                            .padding(.leading, 14)
                         }
+                        Leader()
+                        Text(line.cents.formattedAsUSD).font(Theme.sans(16)).monospacedDigit()
                     }
                 }
             }
