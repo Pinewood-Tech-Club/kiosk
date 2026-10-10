@@ -234,6 +234,15 @@ struct ScriptRunner {
             await wait(2.5)
             app.backToBuilder()
             await wait(2.5)
+        case "name-pingpong":
+            let dwells = [0.2, 0.45, 0.5, 0.6, 0.9, 1.5, 0.3, 0.55]
+            for round in 0..<40 {
+                app.completeOrder()
+                await wait(dwells[round % dwells.count])
+                app.backToSummary()
+                await wait(dwells[(round + 3) % dwells.count])
+                log("name round \(round)")
+            }
         case "tray-remove":
             await wait(0.8)
             if let target = app.items.dropFirst().first {

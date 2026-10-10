@@ -335,7 +335,7 @@ extension SquareService {
 
     private static let logTimestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true, timeZone: .current)
 
-    private static func appendToLogFile(_ message: String) {
+    static func appendToLogFile(_ message: String) {
         let line = Data("\(Date().formatted(logTimestamp)) \(message)\n".utf8)
         guard let handle = try? FileHandle(forWritingTo: logFileURL) else {
             try? line.write(to: logFileURL)

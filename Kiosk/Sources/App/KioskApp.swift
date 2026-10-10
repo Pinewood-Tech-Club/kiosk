@@ -12,9 +12,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 squareApplicationID: applicationID
             )
         }
+        installExceptionLogger()
         application.isIdleTimerDisabled = true
         return true
     }
+
+    /// Crash reports from the device omit the exception reason, so write it to kiosk.log, then hand
+    /// the exception on to the handler Square's crash reporter installed.
+    private func installExceptionLogger() {
+        AppDelegate.previousExceptionHandler = NSGetUncaughtExceptionHandler()
+        NSSetUncaughtExceptionHandler { exception in
+            SquareService.appendToLogFile("Uncaught \(exception.name.rawValue): \(exception.reason ?? "no reason")")
+            AppDelegate.previousExceptionHandler?(exception)
+        }
+    }
+
+    nonisolated(unsafe) private static var previousExceptionHandler: (@convention(c) (NSException) -> Void)?
 }
 
 @main

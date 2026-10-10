@@ -46,6 +46,7 @@ struct NameEntryView: View {
         .onAppear {
             Task {
                 try? await Task.sleep(for: .seconds(0.45))
+                app.square.record("Name field focus: \(Self.controllerContext())")
                 focused = true
             }
         }
@@ -89,6 +90,27 @@ struct NameEntryView: View {
         .buttonStyle(.glassCTA(height: 88, fontSize: 30, morph: GlassMorph(id: "continue", namespace: glass)))
         .disabled(app.isPaying)
         .animation(.easeInOut(duration: 0.2), value: app.isPaying)
+    }
+
+    /// Recorded because a one-off UIViewControllerHierarchyInconsistency crash while the keyboard came up
+    /// (2026-10-10, iPadOS 27.2 beta) couldn't be reproduced.
+    private static func controllerContext() -> String {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+        return windows.map { window in
+            var chain: [String] = []
+            var controller = window.rootViewController
+            while let current = controller {
+                var name = String(describing: type(of: current))
+                if current.isBeingPresented { name += "(presenting)" }
+                if current.isBeingDismissed { name += "(dismissing)" }
+                chain.append(name)
+                controller = current.presentedViewController
+            }
+            let flags = window.isKeyWindow ? " key" : ""
+            return "\(type(of: window))\(flags)[\(chain.joined(separator: " > "))]"
+        }.joined(separator: ", ")
     }
 
     private func submit() {
