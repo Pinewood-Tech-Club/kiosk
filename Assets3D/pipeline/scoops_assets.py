@@ -128,6 +128,63 @@ def drape_over(o, below, rad):
             w = bc + dv*(rad/L)
         v.co = inv @ w
 
+
+from mathutils.bvhtree import BVHTree
+CLEAR = 0.0008
+_DIRS = [Vector(d).normalized() for d in [(0.31,0.52,0.79),(-0.6,0.2,-0.77),(0.1,-0.9,0.42)]]
+def _parity(tree, p, d):
+    c = 0; o = p.copy()
+    for _ in range(24):
+        h = tree.ray_cast(o, d)
+        if h[0] is None: break
+        c += 1; o = h[0] + d*1e-6
+    return c % 2
+def push_out(o, below, clear=CLEAR, passes=3):
+    bm_ = below.matrix_world
+    bv = [bm_ @ v.co for v in below.data.vertices]
+    tree = BVHTree.FromPolygons(bv, [tuple(p.vertices) for p in below.data.polygons])
+    cen = sum(bv, Vector()) / len(bv)
+    mw = o.matrix_world; inv = mw.inverted()
+    n = 0
+    for _ in range(passes):
+        for v in o.data.vertices:
+            w = mw @ v.co
+            loc, nrm, idx, dist = tree.find_nearest(w)
+            if loc is None: continue
+            if dist > 0.012 and (w - loc).dot(nrm) > 0: continue
+            if sum(_parity(tree, w, d) for d in _DIRS) >= 2:
+                d = (w - cen).normalized(); h = None; q = w.copy()
+                for _ in range(24):
+                    hit = tree.ray_cast(q, d)
+                    if hit[0] is None: break
+                    h = hit[0]; q = h + d*1e-6
+                if h is None: continue
+                w = h + d*clear
+                loc2, nrm2, _, dist2 = tree.find_nearest(w)
+                if dist2 < clear: w = loc2 + nrm2*clear
+            elif dist < clear:
+                w = loc + nrm*clear
+            else: continue
+            v.co = inv @ w; n += 1
+    return n
+
+def push_smooth(o, below, iters=6):
+    n = len(o.data.vertices)
+    P0 = np.empty(n*3); o.data.vertices.foreach_get("co", P0); P0 = P0.reshape(-1,3)
+    push_out(o, below, passes=2)
+    P1 = np.empty(n*3); o.data.vertices.foreach_get("co", P1); P1 = P1.reshape(-1,3)
+    d = P1 - P0
+    W = int(o.data["seam_cols"]); rows = (n-2)//W
+    E = np.array([[e.vertices[0], e.vertices[1]] for e in o.data.edges]); E = np.r_[E, E[:,::-1]]
+    a_ = np.arange(rows)*W + W - 1; b_ = np.arange(rows)*W
+    deg = np.bincount(E[:,0], minlength=n)[:,None].astype(float)
+    for _ in range(iters):
+        acc = np.zeros_like(d); np.add.at(acc, E[:,0], d[E[:,1]])
+        s = acc/np.maximum(deg,1)
+        d = np.maximum(d, 0.5*d + 0.5*s) if False else 0.5*d + 0.5*s
+        d[a_] = d[b_] = 0.5*(d[a_] + d[b_])
+    o.data.vertices.foreach_set("co", (P0 + d).ravel()); o.data.update()
+
 def clamp_to(o, radius_at, z_top, z_floor=None, inset=0.0006):
     mw = o.matrix_world; inv = mw.inverted()
     for v in o.data.vertices:
@@ -369,7 +426,9 @@ def place(container, kinds, x, seeds=None, solo_lift=None):
             bpy.context.view_layer.update()
         if i > 0: so.scale = (0.92, 0.92, 0.97); bpy.context.view_layer.update()
         if prev is not None: drape_over(so, prev, 0.80*r)
+        if prev is not None: push_smooth(so, prev)
         clamp_to(so, fn, ztop, zfl)
+        if prev is not None: push_out(so, prev, passes=8)
         prev = so; made.append(so)
     return made
 
