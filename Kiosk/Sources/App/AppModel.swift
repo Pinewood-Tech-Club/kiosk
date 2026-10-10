@@ -35,7 +35,7 @@ final class AppModel {
     private(set) var editingID: UUID?
     private(set) var editingOriginal: IceCreamItem?
     private(set) var stageReady = false
-    private(set) var pressedCard: CardKey?
+    private(set) var pressedCards: Set<CardKey> = []
     private(set) var trayLayoutVersion = 0
     var confirmation: Confirmation?
     var notice: Notice?
@@ -170,7 +170,7 @@ final class AppModel {
         editingOriginal = nil
         mode = .customize
         step = .vessel
-        pressedCard = nil
+        pressedCards = []
         confirmation = nil
         notice = nil
         receipt = nil
@@ -186,9 +186,9 @@ final class AppModel {
 
     func setPressed(_ card: CardKey, _ pressed: Bool) {
         if pressed {
-            pressedCard = card
-        } else if pressedCard == card {
-            pressedCard = nil
+            pressedCards.insert(card)
+        } else {
+            pressedCards.remove(card)
         }
         stage.setPressed(card, pressed)
     }

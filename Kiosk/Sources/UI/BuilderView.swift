@@ -63,7 +63,7 @@ struct BuilderBackdrop: View {
                 ForEach(Vessel.allCases) { vessel in
                     CardBackground(highlighted: app.current.vessel == vessel)
                         .frame(width: Layout.cardSize.width, height: Layout.cardSize.height)
-                        .modifier(PressEffect(pressed: app.pressedCard == .vessel(vessel)))
+                        .modifier(PressEffect(pressed: app.pressedCards.contains(.vessel(vessel))))
                         .position(Layout.vesselCardCenter(vessel))
                         .animation(.easeInOut(duration: 0.3), value: app.current.vessel)
                 }
@@ -74,7 +74,7 @@ struct BuilderBackdrop: View {
                 ForEach(Flavor.allCases) { flavor in
                     CardBackground()
                         .frame(width: Layout.cardSize.width, height: Layout.cardSize.height)
-                        .modifier(PressEffect(pressed: app.pressedCard == .flavor(flavor)))
+                        .modifier(PressEffect(pressed: app.pressedCards.contains(.flavor(flavor))))
                         .position(Layout.flavorCardCenter(flavor))
                 }
             }
@@ -189,7 +189,7 @@ struct BuilderForeground: View {
                 .contentShape(.rect(cornerRadius: Layout.cardCornerRadius))
         }
         .buttonStyle(CardPressStyle { app.setPressed(key, $0) })
-        .modifier(PressEffect(pressed: app.pressedCard == key))
+        .modifier(PressEffect(pressed: app.pressedCards.contains(key)))
         .position(center)
     }
 

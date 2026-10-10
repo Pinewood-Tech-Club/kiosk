@@ -47,7 +47,6 @@ struct FlightPath {
 extension Stage {
     enum ScoopRoute {
         case fromIcon(side: Float)
-        case transfer
         case restack
     }
 
@@ -93,7 +92,7 @@ extension Stage {
         actor.root.transform = Transform(matrix: matrix)
     }
 
-    private func after(_ delay: Double, _ action: @escaping () -> Void) -> Tween {
+    func after(_ delay: Double, _ action: @escaping () -> Void) -> Tween {
         animate(delay: delay, duration: 0.0001, phase: .attachments, onStart: action) { _ in }
     }
 
@@ -148,19 +147,56 @@ extension Stage {
         relayoutFirstScoop(on: hero, delay: 0.42)
     }
 
-    func transferScoops(to rig: ItemRig) {
+    /// Lifts the scoops off as balls into a row above the center, holds them there while the new vessel
+    /// flies in beneath, then drops them onto it bottom-up.
+    func transferScoops(to rig: ItemRig, landingIn delay: Double) {
         for actor in scoops {
             actor.rig?.scoops.removeAll { $0 === actor }
         }
         rig.scoops = scoops
+        guard let assets, !scoops.isEmpty else { return }
+        let center = centerPose(rig.vessel, yaw: 0)
+        let scale = Self.mainScale(rig.vessel)
+        let top = center.position.y + (assets.vesselTop(rig.vessel) - rig.pivot.y) * scale
+        let width: Float = 0.048 * scale
+        let descentStart = now + delay - 0.05
+        let count = Float(scoops.count)
         for (index, actor) in scoops.enumerated() {
             actor.cancelMotions()
-            let fly = { [unowned self] in flyToSlot(actor, rig: rig, route: .transfer, delay: Double(index) * 0.05) }
-            if actor.root.parent !== root, actor.state != .flying {
-                unpress(actor, then: fly)
-            } else {
-                fly()
+            let hoverPoint = SIMD3<Float>(center.position.x + (Float(index) - (count - 1) / 2) * width, top + 0.06, 0.06)
+            let land = { [unowned self] in
+                actor.motion = after(max(0, descentStart + Double(index) * 0.3 - now)) { [unowned self] in
+                    flyToSlot(actor, rig: rig, route: .restack)
+                }
             }
+            let rise = { [unowned self] in hover(actor, to: hoverPoint, scale: scale, duration: 0.42, then: land) }
+            if actor.root.parent !== root, actor.state != .flying {
+                unpress(actor, then: rise)
+            } else {
+                rise()
+            }
+        }
+    }
+
+    private func hover(_ actor: ScoopActor, to point: SIMD3<Float>, scale: Float, duration: Double, then next: @escaping () -> Void) {
+        var start = Transform()
+        var toBall = false
+        actor.motion = animate(duration: duration, phase: .attachments, onStart: { [unowned self] in
+            if actor.root.parent !== root { detachToWorld(actor) }
+            actor.state = .flying
+            start = actor.root.transform
+            toBall = actor.staticPose != "ball" || actor.morpher != nil
+            if toBall { beginMorph(actor, to: "ball") }
+        }) { [unowned self] p in
+            let e = TimingCurve.standard(p)
+            let s0 = (start.scale.x + start.scale.y + start.scale.z) / 3
+            actor.root.transform = Transform(scale: .init(repeating: lerp(s0, scale, e)), rotation: start.rotation,
+                                             translation: simd_mix(start.translation, point, .init(repeating: e)))
+            if toBall { setMorphWeight(actor, e) }
+        } completion: { [weak self] in
+            if toBall { self?.endMorph(actor) }
+            actor.motion = nil
+            next()
         }
     }
 
@@ -238,8 +274,6 @@ extension Stage {
         switch route {
         case .fromIcon:
             dip = true; spin = 1; duration = 0.7
-        case .transfer:
-            dip = false; spin = 0; duration = 0.95
         case .restack:
             dip = false; spin = 0; duration = 0.42
         }
@@ -265,9 +299,6 @@ extension Stage {
                 let sx = pa.x + side * max(halfWidth, abs(p0.x - pa.x))
                 points.append([sx, lerp(p0.y, clear, 0.55), abs(p0.x - pa.x) < halfWidth ? 0.12 : 0.05])
                 points.append([pa.x + side * min(0.05, abs(sx - pa.x) * 0.3), clear + 0.04, 0.04])
-                points.append(above)
-            case .transfer:
-                points.append(SIMD3<Float>((p0.x + above.x) / 2, max(p0.y, above.y) + 0.06, 0.06))
                 points.append(above)
             case .restack:
                 if simd_length(above - pa) > 0.005 { points.append(above) }

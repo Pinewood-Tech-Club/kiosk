@@ -87,8 +87,6 @@ final class Stage {
     var summaryActive = false
     var summaryScroll: CGFloat = 0
 
-    // MARK: Viewport
-
     func attach(to content: inout RealityViewCameraContent) {
         content.add(root)
         subscription = content.subscribe(to: SceneEvents.Update.self, on: nil, componentType: nil) { [weak self] event in
@@ -112,8 +110,6 @@ final class Stage {
         return CGPoint(x: CGFloat(position.x / depthScale / 0.001) + viewFrame.midX,
                        y: viewFrame.midY - CGFloat(position.y / depthScale / 0.001))
     }
-
-    // MARK: Build
 
     func build(with assets: AssetLibrary) {
         guard !isBuilt else { return }
@@ -215,8 +211,6 @@ final class Stage {
         root.addChild(group)
     }
 
-    // MARK: Frame loop
-
     private func tick(realDelta: Double) {
         let started = CACurrentMediaTime()
         let dt = min(realDelta, 0.25) * timeScale
@@ -261,8 +255,6 @@ final class Stage {
     var activeAnimationCount: Int { tweens.count }
     var morphingCount: Int { morphing.count }
 
-    // MARK: Poses
-
     static func mainScale(_ vessel: Vessel) -> Float { vessel == .cup ? 4.2 : 2.5 }
     static func iconScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.75 : 1.18 }
     static func miniScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.0 : 0.5 }
@@ -300,8 +292,6 @@ final class Stage {
         p.y -= Self.pressDepth * 0.001 * amount
         return (p, scale)
     }
-
-    // MARK: Factories
 
     func makeShadow(width: Float, depth: Float, y: Float) -> ModelEntity? {
         guard let assets, let shadowMesh else { return nil }
@@ -361,8 +351,6 @@ final class Stage {
         icon.setOpacity(0)
         return icon
     }
-
-    // MARK: Debug
 
     struct DebugMarker: Identifiable {
         let id: String

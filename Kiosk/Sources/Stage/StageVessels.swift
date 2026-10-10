@@ -226,10 +226,10 @@ extension Stage {
         let duration = 1.0
         launchFromIcon(vessel, duration: duration)
         if let outgoing = heroes[old] {
-            flyHeroHome(outgoing, duration: duration, delay: scoops.isEmpty ? 0 : 0.14)
+            flyHeroHome(outgoing, duration: duration, delay: scoops.isEmpty ? 0 : 0.3)
         }
         if let incoming = heroes[vessel] {
-            transferScoops(to: incoming)
+            transferScoops(to: incoming, landingIn: duration)
         }
     }
 }

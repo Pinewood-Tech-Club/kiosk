@@ -136,6 +136,14 @@ struct ScriptRunner {
             await wait(0.25)
             await add(.vanilla)
             await wait(2.5)
+        case "press-hold":
+            await wait(0.5)
+            app.setPressed(.vessel(.cup), true)
+            app.setPressed(.vessel(.cone), true)
+            try? await Task.sleep(for: .seconds(6))
+            app.setPressed(.vessel(.cup), false)
+            app.setPressed(.vessel(.cone), false)
+            await wait(1)
         case "remove-middle":
             await wait(0.6)
             app.removeScoop(.chocolate)
