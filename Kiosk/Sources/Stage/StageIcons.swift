@@ -35,17 +35,20 @@ extension Stage {
             let (position, scale) = pressed(icon.restPosition, card: .flavor(flavor), center: Layout.flavorCardCenter(flavor))
             icon.holder.position = position
             icon.holder.orientation = icon.restOrientation
-            icon.holder.scale = .init(repeating: max(icon.baseScale * scale * icon.appear, 1e-5))
+            icon.holder.scale = .init(repeating: icon.baseScale * scale)
+            icon.scaler.scale = .init(repeating: max(icon.appear, 1e-5))
+            icon.applyShadow()
         }
     }
 
     /// World transform of the flavor icon's scoop as it sits in the card (ignoring hide/grow), where
     /// launched scoops start and returning scoops land.
-    func flavorIconModelTransform(_ flavor: Flavor) -> Transform {
+    /// `slot` picks whose icon pose to center, so a scoop using another slot's mesh sits where the icon sits.
+    func flavorIconModelTransform(_ flavor: Flavor, slot: Int = 1) -> Transform {
         guard let icon = flavorIcons[flavor] else { return Transform() }
         let (position, scale) = pressed(icon.restPosition, card: .flavor(flavor), center: Layout.flavorCardCenter(flavor))
         let holder = Transform(scale: .init(repeating: icon.baseScale * scale), rotation: icon.restOrientation, translation: position)
-        return Transform(matrix: holder.matrix * icon.model.transform.matrix)
+        return Transform(matrix: holder.matrix * Transform(translation: -iconCenter(slot: slot)).matrix)
     }
 
     func setStep(_ newStep: BuilderStep, animated: Bool) {
@@ -112,11 +115,28 @@ extension Stage {
         }
     }
 
+    /// `shadowDuration` lets the contact shadow fade out after the scoop has already lifted off.
     func setFlavorIconAppear(_ flavor: Flavor, to target: Float, duration: Double, delay: Double = 0,
-                             curve: TimingCurve = .swiftUIEaseOut) {
+                             curve: TimingCurve = .swiftUIEaseOut, shadowDuration: Double? = nil) {
         guard let icon = flavorIcons[flavor] else { return }
         icon.appearTween?.cancel()
         icon.appearTween = nil
+        let shadowTime = shadowDuration ?? duration
+        if shadowTime <= 0, delay <= 0 {
+            icon.shadowTween?.cancel()
+            icon.shadowTween = nil
+            icon.shadowAmount = target
+        } else {
+            // A delayed fade takes over when it starts, so a fade already running finishes first.
+            if delay <= 0 { icon.shadowTween?.cancel() }
+            var from: Float = 0
+            icon.shadowTween = animate(delay: delay, duration: max(shadowTime, 0.0001), onStart: { [weak icon] in
+                guard let icon else { return }
+                from = icon.shadowAmount
+            }) { [weak icon] p in
+                icon?.shadowAmount = lerp(from, target, TimingCurve.swiftUIEaseInOut(p))
+            }
+        }
         if duration <= 0, delay <= 0 {
             icon.appear = target
             return

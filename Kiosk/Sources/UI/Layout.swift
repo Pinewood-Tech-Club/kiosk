@@ -15,15 +15,15 @@ enum Layout {
 
     static func mainPivot(_ vessel: Vessel) -> CGPoint {
         switch vessel {
-        case .cup: CGPoint(x: midX, y: 648)
-        case .cone: CGPoint(x: midX, y: 618)
+        case .cup: CGPoint(x: midX, y: 691)
+        case .cone: CGPoint(x: midX, y: 666)
         }
     }
 
     static let cardsCenterY: CGFloat = 966
     static let cardSize = CGSize(width: 296, height: 232)
     static let cardCornerRadius: CGFloat = 34
-    static let iconOffsetY: CGFloat = -36
+    static let iconOffsetY: CGFloat = -23.5
 
     static func vesselCardCenter(_ vessel: Vessel) -> CGPoint {
         CGPoint(x: midX + (vessel == .cup ? -166 : 166), y: cardsCenterY)

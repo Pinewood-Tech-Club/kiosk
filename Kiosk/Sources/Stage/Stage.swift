@@ -14,6 +14,11 @@ enum BuilderStep: Int, CaseIterable, Sendable {
     }
 }
 
+struct ScoopModelKey: Hashable {
+    let slot: Int
+    let flavor: Flavor
+}
+
 enum CardKey: Hashable {
     case vessel(Vessel)
     case flavor(Flavor)
@@ -56,6 +61,7 @@ final class Stage {
     var shadowMesh: MeshResource?
     var morphing: [ScoopActor] = []
     var contactLift: [String: Float] = [:]
+    var scoopModelPool: [ScoopModelKey: [ModelEntity]] = [:]
 
     var vesselIcons: [Vessel: ItemRig] = [:]
     var vesselIconAppear: [Vessel: Float] = [.cup: 1, .cone: 1]
@@ -147,12 +153,14 @@ final class Stage {
             flavorIcons[flavor] = icon
             root.addChild(icon.holder)
         }
+        fillScoopModelPool()
         buildWarmup()
         isBuilt = true
         setStep(.vessel, animated: false)
         updateIcons()
         log("Contact lifts (mm): " + contactLift.sorted { $0.key < $1.key }
             .map { "\($0.key)=\(String(format: "%.1f", $0.value * 1000))" }.joined(separator: " "))
+        log(approachReport())
     }
 
     private func addLight(intensity: Float, from position: SIMD3<Float>, shadow: Bool) {
@@ -186,10 +194,7 @@ final class Stage {
                         let entity = ModelEntity(mesh: mesh, materials: [assets.material(slot: slot, flavor: flavor)])
                         applyLighting(entity)
                         entity.position = [x, translucent ? -0.1 : 0.1, 0]
-                        if translucent {
-                            entity.useDepthPrePass()
-                            entity.components.set(OpacityComponent(opacity: 0.5))
-                        }
+                        if translucent { entity.setOpacity(0.5) }
                         group.addChild(entity)
                     }
                 }
@@ -206,6 +211,9 @@ final class Stage {
                 group.addChild(rig.root)
             }
         }
+        // Tiny and tucked under the debug-bar corner: it only has to be drawn, not seen.
+        group.scale = .init(repeating: 0.04)
+        group.position = world(CGPoint(x: 1010, y: 12))
         warmup = group
         warmupFrames = 0
         root.addChild(group)
@@ -255,7 +263,7 @@ final class Stage {
     var activeAnimationCount: Int { tweens.count }
     var morphingCount: Int { morphing.count }
 
-    static func mainScale(_ vessel: Vessel) -> Float { vessel == .cup ? 4.2 : 2.5 }
+    static func mainScale(_ vessel: Vessel) -> Float { vessel == .cup ? 3.9 : 2.35 }
     static func iconScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.75 : 1.18 }
     static func miniScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.0 : 0.5 }
     static func summaryScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.6 : 0.78 }
@@ -320,17 +328,46 @@ final class Stage {
                           floorShadowFullRoll: Self.coneIconRoll, pivot: pivot,
                           pose: RigPose(position: .zero, scale: 1, pitch: Self.preferredPitch, yaw: 0))
         }
-        rig.root.useDepthPrePass()
         return rig
     }
 
+    /// Scoop models come from a pool filled at launch, so a tap never allocates entities or components.
     func makeScoopModel(slot: Int, flavor: Flavor, pose: String) -> ModelEntity {
         let assets = assets!
-        let entity = ModelEntity(mesh: assets.scoopSet(slot).staticMesh(pose),
-                                 materials: [assets.material(slot: slot, flavor: flavor)])
+        let key = ScoopModelKey(slot: slot, flavor: flavor)
+        let mesh = assets.scoopSet(slot).staticMesh(pose)
+        if let entity = scoopModelPool[key]?.popLast() {
+            entity.model?.mesh = mesh
+            entity.transform = Transform()
+            entity.setOpacity(1)
+            return entity
+        }
+        let entity = ModelEntity(mesh: mesh, materials: [assets.material(slot: slot, flavor: flavor)])
         applyLighting(entity)
-        entity.useDepthPrePass()
         return entity
+    }
+
+    func recycleScoopModel(_ entity: ModelEntity, slot: Int, flavor: Flavor) {
+        entity.removeFromParent()
+        entity.setOpacity(1)
+        entity.components.remove(ModelSortGroupComponent.self)
+        scoopModelPool[ScoopModelKey(slot: slot, flavor: flavor), default: []].append(entity)
+    }
+
+    func fillScoopModelPool() {
+        guard let assets else { return }
+        for slot in 1...3 {
+            for flavor in Flavor.allCases {
+                var entities: [ModelEntity] = []
+                for _ in 0..<4 {
+                    let entity = ModelEntity(mesh: assets.scoopSet(slot).staticMesh("icon"),
+                                             materials: [assets.material(slot: slot, flavor: flavor)])
+                    applyLighting(entity)
+                    entities.append(entity)
+                }
+                scoopModelPool[ScoopModelKey(slot: slot, flavor: flavor)] = entities
+            }
+        }
     }
 
     func iconCenter(slot: Int) -> SIMD3<Float> {
@@ -347,9 +384,30 @@ final class Stage {
         icon.baseScale = Self.flavorIconScale
         icon.restPosition = world(Layout.flavorIconCenter(flavor))
         icon.restOrientation = simd_quatf(angle: 0.36, axis: [1, 0, 0]) * simd_quatf(angle: -0.25, axis: [0, 1, 0])
-        icon.holder.useDepthPrePass()
         icon.setOpacity(0)
         return icon
+    }
+
+    /// Screen y of the top of a ball waiting above each slot, which must stay below the header.
+    func approachReport() -> String {
+        guard let assets else { return "" }
+        var parts: [String] = []
+        for vessel in Vessel.allCases {
+            let center = centerPose(vessel, yaw: 0)
+            let pivot = assets.vesselPivot(vessel)
+            for slot in 1...3 {
+                let key = placementKey(index: slot - 1, count: slot, vessel: vessel)
+                let base = assets.placements.placement(vessel, key: key).translation.y + liftHeight(vessel, key: key) + Self.approachClearance
+                let top = base + 0.0438
+                let tilt = cos(center.pitch)
+                let y = center.position.y + (top - pivot.y) * center.scale * tilt
+                let topY = Int(screen([0, y, 0]).y)
+                let speed = Self.pressStartSlope * (liftHeight(vessel, key: key) + Self.approachClearance) / Float(Self.pressDuration) * center.scale
+                let needed = Int(speed * 0.62 / (3 * Self.maxArrivalSlope) * 1000)
+                parts.append("\(vessel.rawValue)\(slot)=\(topY) (room \(topY - Int(Self.flightCeilingY)), wants \(needed))")
+            }
+        }
+        return "Approach ball tops (screen y, header ends at \(Int(Self.flightCeilingY))): " + parts.joined(separator: " ")
     }
 
     struct DebugMarker: Identifiable {

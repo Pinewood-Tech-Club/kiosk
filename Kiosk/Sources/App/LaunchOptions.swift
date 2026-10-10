@@ -212,6 +212,23 @@ struct ScriptRunner {
             }
             app.finishEditing(then: .newItem)
             await wait(2.0)
+        case "edit-adds":
+            await wait(0.8)
+            if let first = app.items.first { app.tapTrayItem(first.id) }
+            await wait(2.0)
+            app.jumpToStep(.flavors)
+            await wait(0.8)
+            for flavor in app.current.flavors.reversed() {
+                app.removeScoop(flavor)
+                await wait(1.2)
+            }
+            await wait(0.6)
+            await add(.chocolate)
+            await wait(2.4)
+            await add(.vanilla)
+            await wait(2.4)
+            await add(.cookies)
+            await wait(2.4)
         case "fresh":
             await wait(0.6)
             app.goForward()

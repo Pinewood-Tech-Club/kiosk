@@ -263,6 +263,7 @@ extension Stage {
         }
         for icon in flavorIcons.values {
             icon.appear = 1
+            icon.shadowAmount = 1
             icon.appearTween = nil
         }
         controlsVisible = true

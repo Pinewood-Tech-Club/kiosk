@@ -181,6 +181,42 @@ struct ScoopMeshData: Sendable {
     }
 }
 
+extension ScoopMeshData {
+    func poseIndex(_ name: String) -> Int {
+        if let index = poseNames.firstIndex(of: name) { return index }
+        if name == "cup_solo", let index = poseNames.firstIndex(of: "cup") { return index }
+        return 0
+    }
+
+    func positions(_ name: String, stride step: Int = 1) -> [SIMD3<Float>] {
+        let base = poseIndex(name) * vertexCount * Self.floatsPerPoseVertex
+        var out: [SIMD3<Float>] = []
+        out.reserveCapacity(vertexCount / step + 1)
+        poseVertices.withUnsafeBufferPointer { v in
+            var i = 0
+            while i < vertexCount {
+                let o = base + i * Self.floatsPerPoseVertex
+                out.append([v[o], v[o + 1], v[o + 2]])
+                i += step
+            }
+        }
+        return out
+    }
+
+    func triangles(_ name: String) -> [SIMD3<Float>] {
+        let base = poseIndex(name) * vertexCount * Self.floatsPerPoseVertex
+        var out: [SIMD3<Float>] = []
+        out.reserveCapacity(indices.count)
+        poseVertices.withUnsafeBufferPointer { v in
+            for index in indices {
+                let o = base + Int(index) * Self.floatsPerPoseVertex
+                out.append([v[o], v[o + 1], v[o + 2]])
+            }
+        }
+        return out
+    }
+}
+
 struct PoseRef {
     let buffer: MTLBuffer
     let offset: Int
@@ -270,7 +306,7 @@ final class ScoopMorpher {
 final class ScoopMeshSet {
     let slot: Int
     let vertexCount: Int
-    private let data: ScoopMeshData
+    let data: ScoopMeshData
     private let poseBuffer: MTLBuffer
     private let poseIndex: [String: Int]
     private let engine: MorphEngine
@@ -328,21 +364,6 @@ final class ScoopMeshSet {
         for name in data.poseNames {
             _ = staticMesh(name)
         }
-    }
-
-    func positions(_ name: String, stride step: Int = 1) -> [SIMD3<Float>] {
-        let base = (poseIndex[resolve(name)] ?? 0) * vertexCount * ScoopMeshData.floatsPerPoseVertex
-        var out: [SIMD3<Float>] = []
-        out.reserveCapacity(vertexCount / step + 1)
-        data.poseVertices.withUnsafeBufferPointer { v in
-            var i = 0
-            while i < vertexCount {
-                let o = base + i * ScoopMeshData.floatsPerPoseVertex
-                out.append([v[o], v[o + 1], v[o + 2]])
-                i += step
-            }
-        }
-        return out
     }
 
     func preloadMorphers(_ count: Int) {

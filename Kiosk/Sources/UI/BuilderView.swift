@@ -272,17 +272,20 @@ struct BuilderForeground: View {
                         }
                     }
                 }
-                .overlay(alignment: .topLeading) {
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: count)
+
+                // Own small frame at the card corner, so the scale-in happens in place.
+                ZStack {
                     if count > 0 {
                         GlassIconButton(icon: "minus", size: 52, iconSize: 22) { app.removeScoop(flavor) }
                             .accessibilityLabel("Remove a \(flavor.title) scoop")
-                            .padding(10)
-                            .offset(x: Layout.flavorCardCenter(flavor).x - Layout.cardSize.width / 2,
-                                    y: Layout.flavorCardCenter(flavor).y - Layout.cardSize.height / 2)
                             .transition(.scale(scale: 0.6).combined(with: .opacity))
                     }
                 }
+                .frame(width: 64, height: 64)
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: count)
+                .position(x: Layout.flavorCardCenter(flavor).x - Layout.cardSize.width / 2 + 42,
+                          y: Layout.flavorCardCenter(flavor).y - Layout.cardSize.height / 2 + 42)
             }
         }
         .animation(.easeInOut(duration: 0.25), value: full)

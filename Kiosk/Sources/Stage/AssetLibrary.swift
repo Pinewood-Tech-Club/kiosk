@@ -69,6 +69,7 @@ final class AssetLibrary {
     private(set) var report: [String] = []
     private(set) var contactLift: [String: Float] = [:]
     private var vesselPoints: [Vessel: [SIMD3<Float>]] = [:]
+    private var vesselGeometry: [Vessel: ContactSolver.VesselGeometry] = [:]
 
     private static let directory = Bundle.main.resourceURL!.appending(path: "3D")
 
@@ -136,7 +137,9 @@ final class AssetLibrary {
         }
 
         for vessel in Vessel.allCases {
-            vesselPoints[vessel] = Self.points(of: vessels[vessel]!)
+            let geometry = Self.geometry(of: vessels[vessel]!)
+            vesselPoints[vessel] = geometry.points
+            vesselGeometry[vessel] = ContactSolver.VesselGeometry(points: geometry.points, triangles: geometry.triangles)
         }
 
         if let url = url("placements.json"), let data = try? Data(contentsOf: url), let parsed = Placements.parse(data) {
@@ -160,9 +163,13 @@ final class AssetLibrary {
         }
         engine.flush()
 
-        let problems = contactProblems()
-        let lifts = await Task.detached(priority: .userInitiated) { ContactSolver.solve(problems) }.value
-        contactLift = lifts
+        let meshes = scoopSets.map(\.data)
+        let placementsCopy = placements
+        let geometry = vesselGeometry
+        let liftTask = Task.detached(priority: .userInitiated) {
+            await ContactSolver.lifts(ContactSolver.problems(meshes: meshes, placements: placementsCopy,
+                                                             vessels: geometry, withTriangles: false))
+        }
 
         let decoded = await images
         var missing = 0
@@ -206,6 +213,8 @@ final class AssetLibrary {
             report.append("studio.exr: MISSING, using default lighting")
         }
 
+        contactLift = await liftTask.value
+
         if let image = Self.makeShadowImage(), let texture = try? await TextureResource(image: image, options: .init(semantic: .color)) {
             var material = UnlitMaterial(applyPostProcessToneMap: false)
             material.color = .init(tint: .white, texture: .init(texture))
@@ -217,8 +226,9 @@ final class AssetLibrary {
 
     private func url(named name: String) -> URL? { url(name) }
 
-    private static func points(of entity: Entity) -> [SIMD3<Float>] {
-        var out: [SIMD3<Float>] = []
+    private static func geometry(of entity: Entity) -> (points: [SIMD3<Float>], triangles: [SIMD3<Float>]) {
+        var points: [SIMD3<Float>] = []
+        var triangles: [SIMD3<Float>] = []
         func visit(_ node: Entity) {
             if let model = node.components[ModelComponent.self] {
                 let toRoot = node.transformMatrix(relativeTo: entity)
@@ -227,9 +237,15 @@ final class AssetLibrary {
                     guard let meshModel = contents.models[instance.model] else { continue }
                     let matrix = toRoot * instance.transform
                     for part in meshModel.parts {
-                        for p in part.positions.elements {
+                        let local = part.positions.elements.map { p -> SIMD3<Float> in
                             let w = matrix * SIMD4<Float>(p, 1)
-                            out.append([w.x, w.y, w.z])
+                            return [w.x, w.y, w.z]
+                        }
+                        points += local
+                        if let indices = part.triangleIndices?.elements {
+                            for index in indices where Int(index) < local.count {
+                                triangles.append(local[Int(index)])
+                            }
                         }
                     }
                 }
@@ -237,36 +253,25 @@ final class AssetLibrary {
             for child in node.children { visit(child) }
         }
         visit(entity)
-        return out
+        return (points, triangles)
     }
 
-    /// One problem per landing slot: the slot's ball dropped onto the vessel plus the scoops already
-    /// placed beneath it (in their placed poses).
-    private func contactProblems() -> [ContactSolver.Problem] {
-        var problems: [ContactSolver.Problem] = []
-        for vessel in Vessel.allCases {
-            let keys = vessel == .cup ? ["solo", "1", "2", "3"] : ["1", "2", "3"]
-            for key in keys {
-                let slot = key == "solo" ? 1 : Int(key)!
-                var obstacles = vesselPoints[vessel] ?? []
-                if slot > 1 {
-                    for below in 1..<slot {
-                        let belowKey = String(below)
-                        let pose = vessel == .cone ? "cone" : "cup"
-                        let placement = placements.placement(vessel, key: belowKey)
-                        for v in scoopSets[below - 1].positions(pose, stride: 2) {
-                            obstacles.append(placement.rotation.act(v) + placement.translation)
-                        }
-                    }
-                }
-                let placement = placements.placement(vessel, key: key)
-                problems.append(ContactSolver.Problem(key: "\(vessel.rawValue):\(key)", rotation: placement.rotation,
-                                                      translation: placement.translation,
-                                                      ball: scoopSets[slot - 1].positions("ball", stride: 2),
-                                                      obstacles: obstacles))
+    /// Logs any placed scoop pose that sits inside the scoops beneath it, so an asset regression shows up
+    /// in the log. Runs in the background after launch.
+    func checkContacts(log: @escaping @MainActor (String) -> Void) {
+        let meshes = scoopSets.map(\.data)
+        let placementsCopy = placements
+        let geometry = vesselGeometry
+        Task.detached(priority: .background) {
+            let problems = ContactSolver.problems(meshes: meshes, placements: placementsCopy, vessels: geometry, withTriangles: true)
+            let results = await ContactSolver.penetrations(problems)
+            let lines = results.sorted { $0.key < $1.key }.map { key, value in
+                value.vertices == 0
+                    ? "\(key) clear"
+                    : String(format: "%@ %.1f mm inside (%d vertices)", key, value.depth * 1000, value.vertices)
             }
+            await log("Contact check (placed pose vs scoops beneath): " + lines.joined(separator: ", "))
         }
-        return problems
     }
 
     private struct ParsedMesh: Sendable {

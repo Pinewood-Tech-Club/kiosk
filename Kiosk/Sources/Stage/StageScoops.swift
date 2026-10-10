@@ -31,14 +31,39 @@ struct FlightPath {
         return total
     }
 
+    /// Per-axis monotone tangents: zero at a local extremum and never more than 3× the neighboring
+    /// step, so the curve can't bulge past a waypoint (e.g. up behind the header).
+    private func tangent(at i: Int) -> SIMD3<Float> {
+        let last = points.count - 1
+        var m: SIMD3<Float>
+        if i == 0 {
+            m = startTangent
+        } else if i == last {
+            m = endTangent
+        } else {
+            let d0 = points[i] - points[i - 1], d1 = points[i + 1] - points[i]
+            m = .zero
+            for axis in 0..<3 where d0[axis] * d1[axis] > 0 {
+                m[axis] = 2 * d0[axis] * d1[axis] / (d0[axis] + d1[axis])
+            }
+            return m
+        }
+        let d = i == 0 ? points[1] - points[0] : points[last] - points[last - 1]
+        for axis in 0..<3 {
+            let limit = 3 * abs(d[axis])
+            m[axis] = d[axis] * m[axis] < 0 ? 0 : min(max(m[axis], -limit), limit)
+        }
+        return m
+    }
+
     func position(_ s: Float) -> SIMD3<Float> {
         let s = Ease.clamp01(s)
         var i = 0
         while i < stops.count - 2, s > stops[i + 1] { i += 1 }
         let t = (s - stops[i]) / max(stops[i + 1] - stops[i], 1e-5)
         let p0 = points[i], p1 = points[i + 1]
-        let m0 = i == 0 ? startTangent : (points[i + 1] - points[i - 1]) * 0.5
-        let m1 = i + 1 == points.count - 1 ? endTangent : (points[i + 2] - points[i]) * 0.5
+        let m0 = tangent(at: i)
+        let m1 = tangent(at: i + 1)
         let t2 = t * t, t3 = t2 * t
         return (2 * t3 - 3 * t2 + 1) * p0 + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * p1 + (t3 - t2) * m1
     }
@@ -50,11 +75,18 @@ extension Stage {
         case restack
     }
 
-    static let approachClearance: Float = 0.012
-    static let pressDuration: Double = 0.3
+    static let approachClearance: Float = 0.008
+    static let minimumLift: Float = 0.004
+    static let pressDuration: Double = 0.4
+    /// Settling curve for the press; starts at 1.2× linear speed so the flight can hand over without a kink.
+    static let pressCurve = TimingCurve(0.3, 0.36, 0.42, 1)
+    static let pressStartSlope: Float = 1.2
+    static let maxArrivalSlope: Float = 2.2
+    /// Screen y (points) below the builder header; a flying scoop's top must stay under it.
+    static let flightCeilingY: CGFloat = 288
 
     func liftHeight(_ vessel: Vessel, key: String) -> Float {
-        contactLift["\(vessel.rawValue):\(key)"] ?? 0.02
+        max(contactLift["\(vessel.rawValue):\(key)"] ?? 0.02, Self.minimumLift)
     }
 
     func placementKey(index: Int, count: Int, vessel: Vessel) -> String {
@@ -118,8 +150,9 @@ extension Stage {
     func addScoop(_ flavor: Flavor) {
         guard let hero = heroes[selectedVessel], scoops.count < Pricing.maxScoopsPerItem,
               flavorIcons[flavor] != nil else { return }
-        let actor = ScoopActor(flavor: flavor, slot: 1, model: makeScoopModel(slot: 1, flavor: flavor, pose: "icon"), pose: "icon")
-        let start = flavorIconModelTransform(flavor)
+        let slot = scoops.count + 1
+        let actor = ScoopActor(flavor: flavor, slot: slot, model: makeScoopModel(slot: slot, flavor: flavor, pose: "icon"), pose: "icon")
+        let start = flavorIconModelTransform(flavor, slot: slot)
         let appear = flavorIcons[flavor]?.appear ?? 1
         actor.root.transform = Transform(scale: start.scale * appear, rotation: start.rotation, translation: start.translation)
         root.addChild(actor.root)
@@ -127,7 +160,7 @@ extension Stage {
         hero.scoops.append(actor)
         actor.rig = hero
 
-        setFlavorIconAppear(flavor, to: 0, duration: 0)
+        setFlavorIconAppear(flavor, to: 0, duration: 0, shadowDuration: 0.12)
         setFlavorIconAppear(flavor, to: 1, duration: 0.34, delay: 0.5)
         relayoutFirstScoop(on: hero, delay: 0)
 
@@ -263,6 +296,7 @@ extension Stage {
     /// tracks the (spinning, possibly flying) rig every frame.
     func flyToSlot(_ actor: ScoopActor, rig: ItemRig, route: ScoopRoute, delay: Double = 0) {
         var path = FlightPath(points: [.zero, .one], startDirection: [0, 1, 0], endDirection: [0, -1, 0])
+        var arc: (c1: SIMD3<Float>, lift: Float, up: SIMD3<Float>)?
         var start = Transform()
         var timing = TimingCurve.standard
         var morphToBall = false
@@ -273,7 +307,7 @@ extension Stage {
         let duration: Double
         switch route {
         case .fromIcon:
-            dip = true; spin = 1; duration = 0.7
+            dip = true; spin = 1; duration = 0.62
         case .restack:
             dip = false; spin = 0; duration = 0.42
         }
@@ -290,45 +324,57 @@ extension Stage {
             let up = goal.rotation.act([0, 1, 0])
             let p0 = start.translation
             let pa = goal.translation
-            var points = [p0]
-            let clear = clearTop(rig, excluding: actor)
-            let above = pa + up * max(0, (clear - pa.y) / max(up.y, 0.3))
+            let rigScale = rig.pose.scale * rig.scaleMultiplier
+            let pressSpeed = Self.pressStartSlope * (liftHeight(rig.vessel, key: liveKey(actor, on: rig)) + Self.approachClearance)
+                / Float(Self.pressDuration) * rigScale
             switch route {
             case .fromIcon(let side):
-                let halfWidth = clearanceHalfWidth(rig)
-                let sx = pa.x + side * max(halfWidth, abs(p0.x - pa.x))
-                points.append([sx, lerp(p0.y, clear, 0.55), abs(p0.x - pa.x) < halfWidth ? 0.12 : 0.05])
-                points.append([pa.x + side * min(0.05, abs(sx - pa.x) * 0.3), clear + 0.04, 0.04])
-                points.append(above)
+                // One cubic arc. Every control point stays under the header ceiling, so the whole curve does
+                // (convex hull). The last control point sits on the slot's up axis, so the scoop arrives along
+                // the settle direction at the speed the press starts with.
+                let ceiling = world(CGPoint(x: 0, y: Self.flightCeilingY)).y - 0.0438 * rigScale
+                let room = max(0, (ceiling - pa.y) / max(up.y, 0.3))
+                let lift = min(max(pressSpeed * Float(duration) / (3 * Self.maxArrivalSlope), 0.012), room)
+                let endSlope = lift > 1e-4 ? min(pressSpeed * Float(duration) / (3 * lift), Self.maxArrivalSlope) : 0
+                let centerCard = abs(p0.x - pa.x) < clearanceHalfWidth(rig)
+                let c1x = centerCard ? pa.x + side * 0.24 : p0.x
+                let c1y = min(lerp(p0.y, pa.y + up.y * lift, 0.95), ceiling)
+                arc = (SIMD3<Float>(c1x, c1y, centerCard ? 0.1 : 0.04), lift, up)
+                timing = TimingCurve(0.42, 0, 0.6, 1 - 0.4 * endSlope)
             case .restack:
+                let clear = clearTop(rig, excluding: actor)
+                let above = pa + up * max(0, (clear - pa.y) / max(up.y, 0.3))
+                var points = [p0]
                 if simd_length(above - pa) > 0.005 { points.append(above) }
+                points.append(pa)
+                path = FlightPath(points: points, startDirection: [0, 1, 0.1], endDirection: -up)
+                let endSlope = min(pressSpeed * Float(duration) / max(path.length, 0.01), 2)
+                timing = TimingCurve(0.42, 0, 0.6, 1 - 0.4 * endSlope)
             }
-            points.append(pa)
-            path = FlightPath(points: points, startDirection: [0, 1, 0.15], endDirection: -up)
-
-            let rigScale = rig.pose.scale * rig.scaleMultiplier
-            let pressSpeed = 2 * (liftHeight(rig.vessel, key: liveKey(actor, on: rig)) + Self.approachClearance)
-                / Float(Self.pressDuration) * rigScale
-            let endSlope = min(pressSpeed * Float(duration) / max(path.length, 0.01), 2)
-            timing = TimingCurve(0.42, 0, 0.6, 1 - 0.4 * endSlope)
         }) { [unowned self] p in
             let goal = approachTransform(actor, on: rig)
-            path.points[path.points.count - 1] = goal.translation
             let e = timing(p)
+            let position: SIMD3<Float>
+            if let arc {
+                position = cubicBezier(start.translation, arc.c1, goal.translation + arc.up * arc.lift, goal.translation, e)
+            } else {
+                path.points[path.points.count - 1] = goal.translation
+                position = path.position(e)
+            }
             let s0 = (start.scale.x + start.scale.y + start.scale.z) / 3
             let s1 = (goal.scale.x + goal.scale.y + goal.scale.z) / 3
             let scale: Float
             if dip {
                 scale = p < 0.15
-                    ? s0 * lerp(1, 0.94, Ease.inOutSine(p / 0.15))
-                    : lerp(s0 * 0.94, s1, TimingCurve.standard(Ease.segment(p, 0.15, 1)))
+                    ? s0 * lerp(1, 0.9, Ease.inOutSine(p / 0.15))
+                    : lerp(s0 * 0.9, s1, TimingCurve.standard(Ease.segment(p, 0.15, 1)))
             } else {
                 scale = lerp(s0, s1, TimingCurve.standard(p))
             }
             let turn = simd_quatf(angle: spin * 2 * .pi * Ease.inOutCubic(p), axis: [0, 1, 0])
             actor.root.transform = Transform(scale: .init(repeating: max(scale, 1e-5)),
                                              rotation: simd_slerp(start.rotation, goal.rotation, e) * turn,
-                                             translation: path.position(e))
+                                             translation: position)
             if morphToBall, !morphDone {
                 let w = Ease.inOutSine(Ease.segment(p, 0.04, 0.48))
                 setMorphWeight(actor, w)
@@ -351,8 +397,10 @@ extension Stage {
         }
     }
 
-    /// Descends along the slot's up axis; from first contact the offset and the ball→placed morph share
-    /// one parameter, so each vertex moves on a straight line into its final position (no overshoot).
+    /// Settles along the slot's up axis while the ball morphs into the placed pose on the same curve, so
+    /// shape and height arrive together. The morph is never behind `1 − h / contact`: that bound keeps every
+    /// vertex on or above the straight line from "ball touching" to "placed", so nothing passes through the
+    /// vessel or the scoops below. (With a shared curve it holds automatically; the `max` guards tuning.)
     private func press(_ actor: ScoopActor, onto rig: ItemRig) {
         let vessel = rig.vessel
         let key = liveKey(actor, on: rig)
@@ -364,24 +412,19 @@ extension Stage {
         actor.placementKey = key
         actor.pressHeight = startHeight
         actor.state = .pressing
-        var touched = false
+        beginMorph(actor, to: pose)
         actor.motion = animate(duration: Self.pressDuration, phase: .attachments) { [unowned self] p in
-            let h = startHeight * (1 - Ease.outQuad(p))
+            let c = Self.pressCurve(p)
+            let h = startHeight * (1 - c)
             actor.pressHeight = h
             actor.root.transform = slotLocal(vessel, key: key, height: h)
-            if h <= contact {
-                if !touched {
-                    touched = true
-                    beginMorph(actor, to: pose)
-                }
-                setMorphWeight(actor, contact > 1e-5 ? Ease.clamp01((contact - h) / contact) : Ease.outQuad(p))
-            }
+            setMorphWeight(actor, max(c, Ease.clamp01(1 - h / contact)))
         } completion: { [weak self] in
-            if !touched { self?.beginMorph(actor, to: pose) }
-            self?.setMorphWeight(actor, 1)
-            self?.endMorph(actor)
+            guard let self else { return }
+            setMorphWeight(actor, 1)
+            endMorph(actor)
             actor.pressHeight = 0
-            actor.root.transform = self?.slotLocal(vessel, key: key, height: 0) ?? actor.root.transform
+            actor.root.transform = slotLocal(vessel, key: key, height: 0)
             actor.state = .landed
             actor.motion = nil
         }
@@ -461,6 +504,7 @@ extension Stage {
             guard let self else { return }
             flavorIcons[flavor]?.appearTween?.cancel()
             flavorIcons[flavor]?.appear = 1
+            flavorIcons[flavor]?.shadowAmount = 1
             updateIcons()
             discard(actor)
         }
@@ -498,21 +542,23 @@ extension Stage {
         if actor.morpher != nil { endMorph(actor) }
         finishCrossfade(actor)
         let incoming = makeScoopModel(slot: slot, flavor: actor.flavor, pose: actor.staticPose)
+        let outgoingSlot = actor.slot
         actor.slot = slot
         let outgoing = actor.model
         actor.model = incoming
         actor.staticPose = assets!.scoopSet(slot).resolve(actor.staticPose)
         actor.root.addChild(incoming)
         guard duration > 0 else {
-            outgoing.removeFromParent()
+            recycleScoopModel(outgoing, slot: outgoingSlot, flavor: actor.flavor)
             return
         }
+        // Plain blending on purpose: the opaque incoming copy underneath already hides the outgoing
+        // copy's back faces, and a depth pre-pass here would hide the incoming copy instead.
         actor.ghost = outgoing
-        outgoing.components.remove(ModelSortGroupComponent.self)
-        incoming.components.remove(ModelSortGroupComponent.self)
+        actor.ghostSlot = outgoingSlot
         incoming.scale = .init(repeating: 0.996)
         actor.crossfade = animate(duration: duration, phase: .late) { p in
-            outgoing.setOpacity(max(0.001, 1 - Ease.inOutSine(p)))
+            outgoing.components.set(OpacityComponent(opacity: max(0.001, 1 - Ease.inOutSine(p))))
         } completion: { [weak self] in
             self?.finishCrossfade(actor)
         }
@@ -522,12 +568,10 @@ extension Stage {
         actor.crossfade?.cancel()
         actor.crossfade = nil
         if let ghost = actor.ghost {
-            ghost.removeFromParent()
+            recycleScoopModel(ghost, slot: actor.ghostSlot, flavor: actor.flavor)
             actor.ghost = nil
-            actor.model.useDepthPrePass()
         }
         actor.model.scale = .one
-        actor.model.setOpacity(1)
     }
 
     func discard(_ scoop: ScoopActor) {
@@ -538,6 +582,7 @@ extension Stage {
             scoop.morpher = nil
         }
         morphing.removeAll { $0 === scoop }
+        recycleScoopModel(scoop.model, slot: scoop.slot, flavor: scoop.flavor)
         scoop.root.removeFromParent()
     }
 

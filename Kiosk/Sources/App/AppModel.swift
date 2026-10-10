@@ -139,6 +139,7 @@ final class AppModel {
         Task {
             if let assets = await AssetLibrary.load(log: { [weak self] in self?.square.record($0) }) {
                 stage.build(with: assets)
+                assets.checkContacts { [weak self] in self?.square.record($0) }
                 stageReady = true
                 try? await Task.sleep(for: .seconds(0.4))
                 applyLaunchOptions()
@@ -149,7 +150,7 @@ final class AppModel {
     }
 
     func chooseKioskRole() {
-        withAnimation(.easeInOut(duration: 0.4)) { screen = .attract }
+        withAnimation(.easeInOut(duration: 0.5)) { screen = .attract }
     }
 
     func changeRole() {
@@ -160,15 +161,9 @@ final class AppModel {
     func beginOrder() {
         guard stageReady, screen == .attract else { return }
         resetEverything()
-        builderVisible = false
-        withAnimation(.easeIn(duration: 0.35)) { screen = .builder }
-        transitionTask?.cancel()
-        transitionTask = Task {
-            try? await Task.sleep(for: .seconds(0.35))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.4)) { builderVisible = true }
-            stage.presentNewItem(vessel: .cup, delay: 0.3)
-        }
+        stage.restore(current: current, items: [], step: .vessel)
+        builderVisible = true
+        withAnimation(.easeInOut(duration: 0.5)) { screen = .builder }
     }
 
     private func resetEverything() {
@@ -188,9 +183,13 @@ final class AppModel {
     }
 
     func resetToAttract() {
-        resetEverything()
-        builderVisible = false
-        withAnimation(.easeInOut(duration: 0.45)) { screen = .attract }
+        withAnimation(.easeInOut(duration: 0.5)) { screen = .attract }
+        transitionTask?.cancel()
+        transitionTask = Task {
+            try? await Task.sleep(for: .seconds(0.6))
+            guard !Task.isCancelled, screen == .attract else { return }
+            resetEverything()
+        }
     }
 
     func setPressed(_ card: CardKey, _ pressed: Bool) {

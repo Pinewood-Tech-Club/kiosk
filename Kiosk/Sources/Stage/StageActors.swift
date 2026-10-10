@@ -10,21 +10,30 @@ struct RigPose {
 }
 
 extension Entity {
+    /// While translucent, the subtree gets a depth pre-pass so a fade reads as a flat layer instead of
+    /// revealing the model's own back faces. The pre-pass costs an extra geometry pass, so it is only
+    /// present during fades.
     func setOpacity(_ value: Float) {
+        let wasTranslucent = components.has(OpacityComponent.self)
         if value >= 0.999 {
             components.remove(OpacityComponent.self)
+            if wasTranslucent { setDepthPrePass(false) }
         } else {
             components.set(OpacityComponent(opacity: max(value, 0)))
+            if !wasTranslucent { setDepthPrePass(true) }
         }
         isEnabled = value > 0.002
     }
 
-    /// Fades render as a flat layer instead of revealing the model's own back faces.
-    func useDepthPrePass() {
+    func setDepthPrePass(_ enabled: Bool) {
         let group = ModelSortGroup(depthPass: .prePass)
         func visit(_ entity: Entity) {
             if entity.components.has(ModelComponent.self) {
-                entity.components.set(ModelSortGroupComponent(group: group, order: 0))
+                if enabled {
+                    entity.components.set(ModelSortGroupComponent(group: group, order: 0))
+                } else {
+                    entity.components.remove(ModelSortGroupComponent.self)
+                }
             }
             for child in entity.children { visit(child) }
         }
@@ -101,7 +110,7 @@ final class ItemRig {
     }
 }
 
-/// One scoop. Flights move `root`; `model` (and `ghost` during a slot cross-dissolve) are its children.
+/// One scoop. Flights move `root`; `model` is its child.
 @MainActor
 final class ScoopActor {
     enum State { case flying, pressing, landed, leaving }
@@ -111,6 +120,7 @@ final class ScoopActor {
     let root = Entity()
     var model: ModelEntity
     var ghost: ModelEntity?
+    var ghostSlot = 1
     var crossfade: Tween?
     var staticPose: String
     var morpher: ScoopMorpher?
@@ -143,26 +153,41 @@ final class ScoopActor {
     }
 }
 
+/// holder (card position, press) → [scaler (hide / grow) → model, shadow]. The shadow fades rather than
+/// scales, so it lingers briefly when the scoop leaves and returns with it.
 @MainActor
 final class FlavorIcon {
     let flavor: Flavor
     let holder = Entity()
+    let scaler = Entity()
     let model: ModelEntity
+    let shadow: ModelEntity
     var restPosition: SIMD3<Float> = .zero
     var restOrientation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
     var baseScale: Float = 1
     var appear: Float = 1
+    var shadowAmount: Float = 1
     var appearTween: Tween?
+    var shadowTween: Tween?
     var opacityTween: Tween?
     var baseVisible = false
     private(set) var opacity: Float = 1
+    private var shownShadow: Float = -1
 
     init(flavor: Flavor, model: ModelEntity, shadow: ModelEntity) {
         self.flavor = flavor
         self.model = model
+        self.shadow = shadow
         holder.name = "flavor-\(flavor.rawValue)"
-        holder.addChild(model)
+        holder.addChild(scaler)
+        scaler.addChild(model)
         holder.addChild(shadow)
+    }
+
+    func applyShadow() {
+        guard abs(shadowAmount - shownShadow) > 0.004 else { return }
+        shownShadow = shadowAmount
+        shadow.setOpacity(shadowAmount)
     }
 
     func setOpacity(_ value: Float) {
