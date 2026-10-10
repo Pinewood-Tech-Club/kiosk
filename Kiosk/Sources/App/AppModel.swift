@@ -46,11 +46,7 @@ final class AppModel {
     init() {
         let defaults = UserDefaults.standard
         debugBarHidden = defaults.bool(forKey: "debugBarHidden")
-        #if targetEnvironment(simulator)
-        simulatePayment = true
-        #else
-        simulatePayment = !Config.isComplete
-        #endif
+        simulatePayment = false
     }
 
     var liveQuote: OrderQuote {
