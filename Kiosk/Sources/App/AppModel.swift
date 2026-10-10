@@ -12,14 +12,21 @@ final class AppModel {
         let details: [String]
     }
 
+    /// Where to go once the item being edited has been put back.
+    enum AfterEdit: Equatable {
+        case newItem
+        case edit(UUID)
+        case viewOrder
+    }
+
     enum Confirmation: Identifiable, Equatable {
-        case discardCurrent(thenEdit: UUID)
+        case removeEmptyEdit(then: AfterEdit)
         case deleteItem(UUID)
         case startOver
 
         var id: String {
             switch self {
-            case .discardCurrent(let id): "discard-\(id)"
+            case .removeEmptyEdit: "remove-empty"
             case .deleteItem(let id): "delete-\(id)"
             case .startOver: "start-over"
             }
@@ -33,7 +40,6 @@ final class AppModel {
     private(set) var current = IceCreamItem()
     private(set) var items: [IceCreamItem] = []
     private(set) var editingID: UUID?
-    private(set) var editingOriginal: IceCreamItem?
     private(set) var stageReady = false
     private(set) var pressedCards: Set<CardKey> = []
     private(set) var trayLayoutVersion = 0
@@ -42,7 +48,7 @@ final class AppModel {
     var receipt: Receipt?
     var customerName = ""
     private(set) var isPaying = false
-    private(set) var isSendingToTray = false
+    private(set) var itemInFlight = false
 
     var debugBarHidden: Bool {
         didSet { UserDefaults.standard.set(debugBarHidden, forKey: "debugBarHidden") }
@@ -101,9 +107,13 @@ final class AppModel {
         current.flavors.filter { $0 == flavor }.count
     }
 
-    private var currentHasUnsavedWork: Bool {
-        if let editingOriginal { return current != editingOriginal }
-        return current.hasChoices
+    var editingIndex: Int? {
+        editingID.flatMap { id in items.firstIndex { $0.id == id } }
+    }
+
+    /// The tray's New item slot: finishes the edit, or adds the item being built, then starts a fresh cup.
+    var canStartNewItem: Bool {
+        mode == .customize && !itemInFlight && (isEditing || current.scoopCount > 0)
     }
 
     func start() {
@@ -163,11 +173,10 @@ final class AppModel {
 
     private func resetEverything() {
         transitionTask?.cancel()
-        isSendingToTray = false
+        itemInFlight = false
         items = []
         current = IceCreamItem()
         editingID = nil
-        editingOriginal = nil
         mode = .customize
         step = .vessel
         pressedCards = []
@@ -218,16 +227,16 @@ final class AppModel {
     }
 
     func jumpToStep(_ target: BuilderStep) {
-        guard mode == .customize, !isSendingToTray, target != step, canJump(to: target) else { return }
+        guard mode == .customize, !itemInFlight, target != step, canJump(to: target) else { return }
         setStep(target)
     }
 
     func goForward() {
-        guard canContinue, !isSendingToTray else { return }
+        guard canContinue, !itemInFlight else { return }
         switch step {
         case .vessel: setStep(.flavors)
         case .flavors: setStep(.toppings)
-        case .toppings: isEditing ? saveEdit() : addToOrder()
+        case .toppings: isEditing ? finishEditing(then: .newItem) : addToOrder()
         }
     }
 
@@ -245,83 +254,126 @@ final class AppModel {
     }
 
     func addToOrder() {
-        guard current.scoopCount > 0, !isSendingToTray, !isEditing else { return }
+        guard current.scoopCount > 0, !itemInFlight, !isEditing else { return }
         let item = current
         items.append(item)
         stage.sendCurrentToTray(item)
         startNextItem()
     }
 
-    func saveEdit() {
-        guard let editingID, let index = items.firstIndex(where: { $0.id == editingID }), current.scoopCount > 0 else { return }
+    /// Leaving an edit keeps what the customer sees: the edited item is already live at the center and in
+    /// the total, so it is saved rather than asking Save / Discard. Only an item emptied of scoops needs a
+    /// decision, because it can't stay in the order.
+    func finishEditing(then next: AfterEdit) {
+        guard let editingID, let index = editingIndex else {
+            proceed(to: next)
+            return
+        }
+        guard current.scoopCount > 0 else {
+            confirmation = .removeEmptyEdit(then: next)
+            return
+        }
         items[index] = current
         stage.returnHeroToEntry(editingID, item: current)
         self.editingID = nil
-        editingOriginal = nil
-        startNextItem()
+        current = IceCreamItem()
+        trayLayoutVersion += 1
+        proceed(to: next)
+    }
+
+    private func proceed(to next: AfterEdit) {
+        switch next {
+        case .newItem: startNextItem()
+        case .edit(let id): edit(id)
+        case .viewOrder: viewOrder()
+        }
+    }
+
+    func startNewItem() {
+        guard canStartNewItem else { return }
+        if isEditing {
+            finishEditing(then: .newItem)
+        } else {
+            addToOrder()
+        }
     }
 
     private func startNextItem() {
         current = IceCreamItem()
-        isSendingToTray = true
-        transitionTask?.cancel()
-        transitionTask = Task {
-            try? await Task.sleep(for: .seconds(0.6 / max(slowMotion, 0.01)))
-            guard !Task.isCancelled else { return }
-            isSendingToTray = false
-            setStep(.vessel)
-            stage.presentNewItem(vessel: .cup, delay: 0.3)
+        holdControlsWhileItemsFly(for: 0.6) { [weak self] in
+            self?.setStep(.vessel)
+            self?.stage.presentNewItem(vessel: .cup, delay: 0.3)
         }
     }
 
-    func tapTrayItem(_ id: UUID) {
-        guard screen == .builder, !isSendingToTray, id != editingID, items.contains(where: { $0.id == id }) else { return }
-        if currentHasUnsavedWork {
-            confirmation = .discardCurrent(thenEdit: id)
-        } else {
-            edit(id)
+    /// Fades the step cards (and their 3D icons) out while an item flies between the center and the tray,
+    /// so it never passes beneath a card's label, then brings them back.
+    private func holdControlsWhileItemsFly(for seconds: Double, then finish: @escaping () -> Void) {
+        itemInFlight = true
+        stage.setControlsVisible(false, animated: true)
+        transitionTask?.cancel()
+        transitionTask = Task {
+            try? await Task.sleep(for: .seconds(seconds / max(slowMotion, 0.01)))
+            guard !Task.isCancelled else { return }
+            itemInFlight = false
+            finish()
+            stage.setControlsVisible(true, animated: true)
         }
+    }
+
+    /// Editing another item never throws work away: an edit in progress is saved, and an item being
+    /// built that already has scoops is added to the order first.
+    func tapTrayItem(_ id: UUID) {
+        guard screen == .builder, id != editingID, items.contains(where: { $0.id == id }) else { return }
+        if isEditing {
+            finishEditing(then: .edit(id))
+            return
+        }
+        if mode == .customize, current.scoopCount > 0 {
+            let item = current
+            items.append(item)
+            stage.sendCurrentToTray(item)
+            current = IceCreamItem()
+        }
+        edit(id)
     }
 
     func edit(_ id: UUID) {
         guard let item = items.first(where: { $0.id == id }) else { return }
         transitionTask?.cancel()
-        isSendingToTray = false
+        itemInFlight = false
         if mode == .summary {
             mode = .customize
             stage.exitSummary()
         }
-        if let editingID, let editingOriginal {
-            stage.cancelEditing(editingID, original: editingOriginal)
-        } else if !current.hasChoices, step == .vessel {
+        if step == .vessel {
             stage.sendCurrentHeroHome()
         } else {
             stage.dismissCurrentHero()
         }
         editingID = id
-        editingOriginal = item
         current = item
         step = .vessel
-        stage.setStep(.vessel, animated: true)
+        stage.setStep(.vessel, animated: false)
         stage.beginEditing(id)
         trayLayoutVersion += 1
+        holdControlsWhileItemsFly(for: 0.7) {}
     }
 
     func requestDelete(_ id: UUID) {
         confirmation = .deleteItem(id)
     }
 
-    func delete(_ id: UUID) {
+    func delete(_ id: UUID, presentNewItem: Bool = true) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items.remove(at: index)
         if id == editingID {
             editingID = nil
-            editingOriginal = nil
             stage.dismissCurrentHero()
             stage.removeTrayItem(id)
             current = IceCreamItem()
             setStep(.vessel)
-            stage.presentNewItem(vessel: .cup, delay: 0.3)
+            if presentNewItem { stage.presentNewItem(vessel: .cup, delay: 0.3) }
         } else {
             stage.removeTrayItem(id)
         }
@@ -338,7 +390,10 @@ final class AppModel {
     func confirm(_ confirmation: Confirmation) {
         self.confirmation = nil
         switch confirmation {
-        case .discardCurrent(let id): edit(id)
+        case .removeEmptyEdit(let next):
+            guard let editingID else { return }
+            delete(editingID, presentNewItem: next == .newItem)
+            if next != .newItem { proceed(to: next) }
         case .deleteItem(let id): delete(id)
         case .startOver: resetToAttract()
         }
@@ -346,14 +401,16 @@ final class AppModel {
 
     func viewOrder() {
         guard canViewOrder, mode == .customize else { return }
+        if isEditing, current.scoopCount == 0 {
+            confirmation = .removeEmptyEdit(then: .viewOrder)
+            return
+        }
         transitionTask?.cancel()
-        isSendingToTray = false
+        itemInFlight = false
         stage.enterSummary()
         if let editingID, current.scoopCount > 0, let index = items.firstIndex(where: { $0.id == editingID }) {
             items[index] = current
             stage.returnHeroToEntry(editingID, item: current)
-        } else if let editingID, let editingOriginal {
-            stage.cancelEditing(editingID, original: editingOriginal)
         } else if current.scoopCount > 0 {
             let item = current
             items.append(item)
@@ -362,7 +419,6 @@ final class AppModel {
             stage.dismissCurrentHero()
         }
         editingID = nil
-        editingOriginal = nil
         current = IceCreamItem()
         step = .vessel
         stage.setStep(.vessel, animated: false)

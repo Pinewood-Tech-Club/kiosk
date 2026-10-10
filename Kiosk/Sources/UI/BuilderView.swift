@@ -29,19 +29,27 @@ private struct CardPressStyle: ButtonStyle {
     }
 }
 
+private struct SlotPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .animation(pressSpring, value: configuration.isPressed)
+    }
+}
+
 /// Drawn beneath the RealityView so 3D models sit on their cards and on the tray / order sheet.
 struct BuilderBackdrop: View {
     let app: AppModel
 
     var body: some View {
         ZStack {
-            if app.mode == .customize {
+            if app.mode == .customize, !app.itemInFlight {
                 cards
                     .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.3).delay(0.22)),
                                             removal: .opacity.animation(.easeIn(duration: 0.16))))
             }
 
-            let sheet = app.mode == .summary ? Layout.sheetRect : Layout.trayItemsRect
+            let sheet = app.mode == .summary ? Layout.sheetRect : Layout.trayGlassRect
             GlassTrayBackground(cornerRadius: app.mode == .summary ? 44 : 40, isExpanded: app.mode == .summary)
                 .frame(width: sheet.width, height: sheet.height)
                 .position(x: sheet.midX, y: sheet.midY)
@@ -99,7 +107,7 @@ struct BuilderForeground: View {
         .frame(width: Layout.screen.width, height: Layout.screen.height)
         .alert(alertTitle, isPresented: alertBinding, presenting: app.confirmation) { confirmation in
             Button(confirmTitle(confirmation), role: .destructive) { app.confirm(confirmation) }
-            Button("Cancel", role: .cancel) {}
+            Button(cancelTitle(confirmation), role: .cancel) {}
         } message: { confirmation in
             Text(alertMessage(confirmation))
         }
@@ -119,7 +127,7 @@ struct BuilderForeground: View {
 
             header
 
-            Group {
+            if !app.itemInFlight {
                 switch app.step {
                 case .vessel: vesselCards.transition(stepFade)
                 case .flavors: flavorCards.transition(stepFade)
@@ -171,12 +179,19 @@ struct BuilderForeground: View {
 
     @ViewBuilder
     private var subtitle: some View {
-        if let editingID = app.editingID, let index = app.items.firstIndex(where: { $0.id == editingID }) {
-            HStack(spacing: 16) {
+        if let editingID = app.editingID, let index = app.editingIndex {
+            HStack(spacing: 28) {
                 Text("Editing item \(index + 1)")
                     .font(Theme.serif(22, .regular))
                     .italic()
                     .foregroundStyle(Theme.ink.opacity(0.75))
+                Button { app.finishEditing(then: .newItem) } label: {
+                    HStack(spacing: 7) {
+                        LucideIcon(name: "check", size: 18)
+                        Text("Done")
+                    }
+                }
+                .buttonStyle(.glassCTA(height: 46, fontSize: 18))
                 Button { app.requestDelete(editingID) } label: {
                     HStack(spacing: 7) {
                         LucideIcon(name: "trash-2", size: 18)
@@ -284,16 +299,16 @@ struct BuilderForeground: View {
             .contentTransition(.opacity)
         }
         .buttonStyle(.glassCTA(height: Layout.primaryButtonSize.height))
-        .disabled(!app.canContinue || app.isSendingToTray)
-        .opacity(app.isSendingToTray ? 0 : 1)
-        .animation(.easeOut(duration: 0.18), value: app.isSendingToTray)
+        .disabled(!app.canContinue || app.itemInFlight)
+        .opacity(app.itemInFlight ? 0 : 1)
+        .animation(.easeOut(duration: 0.18), value: app.itemInFlight)
         .animation(.easeInOut(duration: 0.25), value: app.step)
         .position(Layout.primaryButtonCenter)
     }
 
     private var primaryTitle: String {
         guard app.step == .toppings else { return "Continue" }
-        return app.isEditing ? "Save Changes" : "Add to Order"
+        return app.isEditing ? "Done" : "Add to Order"
     }
 
     private var tray: some View {
@@ -334,6 +349,8 @@ struct BuilderForeground: View {
                 }
             }
 
+            newItemSlot
+
             GlassViewOrderButton(totalCents: app.liveQuote.totalCents) { app.viewOrder() }
                 .disabled(!app.canViewOrder)
                 .position(x: Layout.viewOrderRect.midX, y: Layout.viewOrderRect.midY)
@@ -346,13 +363,38 @@ struct BuilderForeground: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: app.editingID)
     }
 
+    /// Pinned first slot of the tray. Not glass: it sits on the tray's glass.
+    private var newItemSlot: some View {
+        let enabled = app.canStartNewItem
+        return Button { app.startNewItem() } label: {
+            VStack(spacing: 6) {
+                LucideIcon(name: "plus", size: 30)
+                Text("New item").font(Theme.sans(16, .semibold))
+            }
+            .foregroundStyle(Theme.ink)
+            .frame(width: Layout.trayNewItemRect.width, height: Layout.trayNewItemRect.height)
+            .background(Theme.ink.opacity(0.07), in: .rect(cornerRadius: 26, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .strokeBorder(Theme.ink.opacity(0.22), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+            }
+            .contentShape(.rect(cornerRadius: 26))
+        }
+        .buttonStyle(SlotPressStyle())
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
+        .animation(.easeInOut(duration: 0.25), value: enabled)
+        .accessibilityLabel("Start a new item")
+        .position(x: Layout.trayNewItemRect.midX, y: Layout.trayNewItemRect.midY)
+    }
+
     private var alertBinding: Binding<Bool> {
         Binding(get: { app.confirmation != nil }, set: { if !$0 { app.confirmation = nil } })
     }
 
     private var alertTitle: String {
         switch app.confirmation {
-        case .discardCurrent: app.isEditing ? "Discard your changes?" : "Discard this item?"
+        case .removeEmptyEdit: "Remove item \((app.editingIndex ?? 0) + 1)?"
         case .deleteItem: "Remove this item?"
         case .startOver: "Start over?"
         case nil: ""
@@ -361,15 +403,20 @@ struct BuilderForeground: View {
 
     private func confirmTitle(_ confirmation: AppModel.Confirmation) -> String {
         switch confirmation {
-        case .discardCurrent: "Discard"
+        case .removeEmptyEdit: "Remove"
         case .deleteItem: "Remove"
         case .startOver: "Start Over"
         }
     }
 
+    private func cancelTitle(_ confirmation: AppModel.Confirmation) -> String {
+        if case .removeEmptyEdit = confirmation { return "Keep Editing" }
+        return "Cancel"
+    }
+
     private func alertMessage(_ confirmation: AppModel.Confirmation) -> String {
         switch confirmation {
-        case .discardCurrent: app.isEditing ? "Your changes to this item won't be saved." : "The item you're building hasn't been added yet."
+        case .removeEmptyEdit: "It has no scoops left, so it can't stay in your order."
         case .deleteItem: "It will be taken out of your order."
         case .startOver: "This clears your whole order."
         }

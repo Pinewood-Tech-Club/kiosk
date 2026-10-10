@@ -25,7 +25,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
    - *Flavors*: tap a flavor to fling a scoop onto the item (up to 3); each card shows what the next scoop costs. The card's minus button takes one of that flavor back off.
    - *Toppings*: placeholder, then *Add to Order* flies the item into the tray.
    - The step selector at the top jumps between steps that are already reachable.
-   - Tray: live 3D minis (drag to scroll), *View Order* with the live total, and start-over (with confirmation). Tapping a mini lifts it back out to edit: *Save Changes* returns it, *Remove* deletes it.
+   - Tray: a pinned *New item* slot, live 3D minis (drag to scroll), *View Order* with the live total, and start-over (with confirmation). Tapping a mini lifts it back out to edit. Leaving an edit keeps the changes: *Done*, *New item*, tapping another mini or *View Order* return the item to its slot. *Remove* deletes it; an item edited down to no scoops asks to be removed. *New item* outside an edit adds the item being built to the order and starts a fresh cup.
 4. **Your order**: *View Order* grows the tray into a sheet over the builder. Each item's 3D model flies up beside its row, with *Edit* and remove buttons. Below are the total and *Check Out*; *Keep ordering* folds the sheet back into the tray.
 5. **Name**: the name becomes the Square order's ticket name and pickup recipient.
 6. **Payment**: creates a Square order from the catalog (one line per scoop, priced by its position in the whole order, plus one line per waffle cone; taxes auto-applied by Square), then `startPayment` for Square's total. On failure or cancel the customer returns to their order with a message.
@@ -56,7 +56,7 @@ Pass in the scheme or with `xcrun simctl launch <udid> com.adamxu.kiosk -kioskSc
 | `-kioskCurrent "cone:vanilla,chocolate"` | Item being customized. |
 | `-kioskItems "cup:cookies;cone:vanilla"` | Items already in the tray. |
 | `-kioskName Alex` | Prefill the name. |
-| `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `demo`. |
+| `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `remove-middle`, `edit`, `edit-done`, `edit-new`, `edit-switch`, `edit-empty`, `fresh`, `summary`, `press-hold`, `demo`. |
 | `-kioskAutoplay YES` | Same as `-kioskScript demo`: the whole flow through a simulated payment. |
 | `-kioskSlowmo 0.25` | Slow motion. |
 | `-kioskDebug3D YES` | 3D debug overlay and frame-stat logging. |

@@ -131,7 +131,7 @@ private struct SummaryRow: View {
                 .buttonStyle(.glassSecondary(height: 52, fontSize: 18))
             GlassIconButton(icon: "trash-2", size: 52, iconSize: 20, action: remove)
                 .accessibilityLabel("Remove \(line.item.vessel.title)")
-                .padding(.leading, 10)
+                .padding(.leading, 26)
         }
         .padding(.trailing, 40)
         .frame(height: Layout.summaryRowHeight)

@@ -58,10 +58,12 @@ enum Layout {
         summaryListRect.minY + 12 + summaryRowHeight / 2 + index * summaryRowPitch
     }
 
-    static let trayItemsRect = CGRect(x: 24, y: 1218, width: 638, height: 134)
-    static let trayFirstCenterX: CGFloat = 104
+    static let trayGlassRect = CGRect(x: 24, y: 1218, width: 640, height: 134)
+    static let trayNewItemRect = CGRect(x: 38, y: 1232, width: 100, height: 106)
+    static let trayItemsRect = CGRect(x: 150, y: 1218, width: 514, height: 134)
+    static let trayFirstCenterX: CGFloat = 214
     static let trayPitch: CGFloat = 118
     static let trayCenterY: CGFloat = 1285
-    static let viewOrderRect = CGRect(x: 674, y: 1238, width: 250, height: 94)
+    static let viewOrderRect = CGRect(x: 684, y: 1238, width: 220, height: 94)
     static let resetCenter = CGPoint(x: 966, y: 1285)
 }

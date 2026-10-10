@@ -42,9 +42,9 @@ extension Stage {
     }
 
     private func trayOpacity(_ x: CGFloat) -> Float {
-        let fade: CGFloat = 46
-        let left = (x - (Layout.trayItemsRect.minX + 30)) / fade
-        let right = ((Layout.trayItemsRect.maxX - 30) - x) / fade
+        let fade: CGFloat = 40
+        let left = (x - (Layout.trayItemsRect.minX + 6)) / fade
+        let right = ((Layout.trayItemsRect.maxX - 6) - x) / fade
         return Float(min(max(min(left, right), 0), 1))
     }
 
@@ -162,24 +162,6 @@ extension Stage {
         scoops = rig.scoops
         flyHeroToCenter(rig, duration: 0.95)
         onLayoutChange()
-    }
-
-    /// Throws away the edited copy at the center and puts the original back in its slot.
-    func cancelEditing(_ id: UUID, original: IceCreamItem) {
-        dismissCurrentHero()
-        guard let entry = tray.first(where: { $0.id == id }) else { return }
-        let rig = makeItemRig(original)
-        entry.item = original
-        entry.rig = rig
-        entry.contentCenterY = contentCenterY(of: original)
-        entry.mode = summaryActive ? .summary : .tray
-        entry.lastOpacity = -1
-        rig.scaleMultiplier = 0.0001
-        root.addChild(rig.root)
-        updateTray(dt: 0)
-        rig.appearTween = animate(duration: 0.34) { p in
-            rig.scaleMultiplier = max(0.0001, TimingCurve.swiftUIEaseOut(p))
-        }
     }
 
     func removeTrayItem(_ id: UUID) {

@@ -169,9 +169,7 @@ struct ScriptRunner {
         case "edit":
             await wait(0.8)
             if let first = app.items.first { app.tapTrayItem(first.id) }
-            await wait(0.6)
-            if app.confirmation != nil, let confirmation = app.confirmation { app.confirm(confirmation) }
-            await wait(1.6)
+            await wait(2.0)
             app.jumpToStep(.flavors)
             await wait(0.8)
             await add(.cookies)
@@ -180,6 +178,56 @@ struct ScriptRunner {
             await wait(0.8)
             app.goForward()
             await wait(2.5)
+        case "edit-done":
+            await wait(0.8)
+            if let first = app.items.first { app.tapTrayItem(first.id) }
+            await wait(2.4)
+            app.finishEditing(then: .newItem)
+            await wait(3.0)
+        case "edit-new":
+            await wait(0.8)
+            if let first = app.items.first { app.tapTrayItem(first.id) }
+            await wait(2.0)
+            app.jumpToStep(.flavors)
+            await wait(0.8)
+            await add(.vanilla)
+            await wait(1.6)
+            app.startNewItem()
+            await wait(3.0)
+        case "edit-switch":
+            await wait(0.8)
+            if let first = app.items.first { app.tapTrayItem(first.id) }
+            await wait(2.2)
+            if let last = app.items.last { app.tapTrayItem(last.id) }
+            await wait(3.0)
+        case "edit-empty":
+            await wait(0.8)
+            if let first = app.items.first { app.tapTrayItem(first.id) }
+            await wait(2.0)
+            app.jumpToStep(.flavors)
+            await wait(0.8)
+            for flavor in app.current.flavors.reversed() {
+                app.removeScoop(flavor)
+                await wait(0.9)
+            }
+            app.finishEditing(then: .newItem)
+            await wait(2.0)
+        case "fresh":
+            await wait(0.6)
+            app.goForward()
+            await wait(0.8)
+            await add(.chocolate)
+            await wait(1.4)
+            app.startNewItem()
+            await wait(2.6)
+            app.goForward()
+            await wait(0.8)
+            await add(.vanilla)
+            await wait(1.4)
+            await add(.cookies)
+            await wait(1.4)
+            app.startNewItem()
+            await wait(3.0)
         case "summary":
             await wait(0.8)
             app.viewOrder()
