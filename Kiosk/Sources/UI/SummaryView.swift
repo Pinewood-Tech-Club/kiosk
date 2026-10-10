@@ -8,6 +8,11 @@ struct SummaryView: View {
     var body: some View {
         let quote = app.orderQuote
         ZStack(alignment: .top) {
+            Capsule()
+                .fill(Theme.ink.opacity(0.22))
+                .frame(width: 56, height: 6)
+                .position(x: Layout.midX, y: Layout.sheetRect.minY + 14)
+
             HStack {
                 Button { app.backToBuilder() } label: {
                     HStack(spacing: 6) {
@@ -53,6 +58,7 @@ struct SummaryView: View {
                 .padding(.bottom, 40)
             }
             .scrollIndicators(.hidden)
+            .scrollDisabled(quote.lines.count <= Layout.summaryRowsThatFit)
             .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y + $0.contentInsets.top }) { _, offset in
                 app.setSummaryScroll(offset)
             }

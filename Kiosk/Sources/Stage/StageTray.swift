@@ -2,21 +2,50 @@ import RealityKit
 import SwiftUI
 
 extension Stage {
-    func contentCenterY(of item: IceCreamItem) -> Float {
-        guard let assets else { return 0.05 }
+    /// Top of the item (vessel plus placed scoops) and its widest horizontal radius, in the vessel's frame.
+    func itemMetrics(_ item: IceCreamItem) -> (top: Float, radius: Float) {
+        guard let assets else { return (0.1, 0.045) }
         var top = assets.vesselTop(item.vessel)
+        var radius = assets.vesselHalfWidth(item.vessel)
         for index in item.flavors.indices {
             let key = placementKey(index: index, count: item.flavors.count, vessel: item.vessel)
-            let y = assets.placements.placement(item.vessel, key: key).translation.y
-            top = max(top, y + assets.scoopSet(index + 1).poseBounds(finalPoseName(item.vessel, key: key)).max.y)
+            let placement = assets.placements.placement(item.vessel, key: key)
+            let bounds = assets.scoopSet(index + 1).poseBounds(finalPoseName(item.vessel, key: key))
+            top = max(top, placement.translation.y + bounds.max.y)
+            let reach = max(abs(bounds.min.x), abs(bounds.max.x), abs(bounds.min.z), abs(bounds.max.z))
+            radius = max(radius, simd_length(SIMD2(placement.translation.x, placement.translation.z)) + reach)
         }
-        return top / 2
+        return (top, radius)
+    }
+
+    /// Scale and vertical offset that fit the whole item (scoops included) into `box` when viewed at `pitch`,
+    /// centered on the box: every item gets the same visual footprint whatever it holds.
+    func fitted(_ entry: TrayEntry, box: CGSize, pitch: Float, centerY: CGFloat, centerX: CGFloat) -> (position: SIMD3<Float>, scale: Float) {
+        let height = entry.contentTop * cos(pitch) + 2 * entry.contentRadius * sin(pitch)
+        let width = 2 * entry.contentRadius
+        let scale = min(Float(box.height) * 0.001 / height, Float(box.width) * 0.001 / width)
+        var position = world(CGPoint(x: centerX, y: centerY))
+        // Projected bounds run from the base's front edge up to the top's back edge; centre that span.
+        let pivotY = entry.rig?.pivot.y ?? entry.contentTop / 2
+        let lowest = -pivotY * cos(pitch) - entry.contentRadius * sin(pitch)
+        let highest = (entry.contentTop - pivotY) * cos(pitch) + entry.contentRadius * sin(pitch)
+        position.y -= (lowest + highest) / 2 * scale
+        return (position, scale)
     }
 
     var maxTrayScroll: CGFloat {
-        guard !tray.isEmpty else { return 0 }
-        let lastCenter = Layout.trayFirstCenterX + CGFloat(tray.count - 1) * Layout.trayPitch
-        return max(0, lastCenter + Layout.trayPitch / 2 + 8 - Layout.trayItemsRect.maxX)
+        CGFloat(max(0, tray.count - Layout.trayVisibleSlots)) * Layout.trayPitch
+    }
+
+    func snappedTrayScroll(_ value: CGFloat) -> CGFloat {
+        min(max((value / Layout.trayPitch).rounded() * Layout.trayPitch, 0), maxTrayScroll)
+    }
+
+    /// Smallest snapped scroll that shows slot `index` completely.
+    func trayScroll(showing index: Int) -> CGFloat {
+        let slot = CGFloat(index) * Layout.trayPitch
+        let lowest = slot - CGFloat(Layout.trayVisibleSlots - 1) * Layout.trayPitch
+        return min(max(trayScroll, lowest), slot, maxTrayScroll)
     }
 
     func trayCenterX(_ entry: TrayEntry) -> CGFloat {
@@ -24,58 +53,84 @@ extension Stage {
     }
 
     func trayPose(_ entry: TrayEntry) -> RigPose {
-        var position = world(CGPoint(x: trayCenterX(entry), y: Layout.trayCenterY))
-        let scale = Self.miniScale(entry.item.vessel)
-        position.y += ((entry.rig?.pivot.y ?? 0) - entry.contentCenterY) * scale
-        return RigPose(position: position, scale: scale, pitch: 0.3, yaw: -0.55)
+        let pitch: Float = 0.3
+        let fit = fitted(entry, box: Layout.trayMiniBox, pitch: pitch, centerY: Layout.trayCenterY, centerX: trayCenterX(entry))
+        return RigPose(position: fit.position, scale: fit.scale, pitch: pitch, yaw: -0.55)
     }
 
     func summaryCenterY(_ entry: TrayEntry) -> CGFloat {
-        Layout.summaryRowCenterY(CGFloat(entry.index)) - summaryScroll
+        Layout.summaryRowCenterY(CGFloat(entry.index)) - summaryScroll + CGFloat(summaryDrag.value)
     }
 
     func summaryPose(_ entry: TrayEntry) -> RigPose {
-        var position = world(CGPoint(x: Layout.summaryItemCenterX, y: summaryCenterY(entry)))
-        let scale = Self.summaryScale(entry.item.vessel)
-        position.y += ((entry.rig?.pivot.y ?? 0) - entry.contentCenterY) * scale
-        return RigPose(position: position, scale: scale, pitch: 0.42, yaw: entry.spinYaw)
+        let pitch: Float = 0.42
+        let fit = fitted(entry, box: Layout.summaryMiniBox, pitch: pitch, centerY: summaryCenterY(entry),
+                         centerX: Layout.summaryItemCenterX)
+        return RigPose(position: fit.position, scale: fit.scale, pitch: pitch, yaw: entry.spinYaw)
     }
 
-    private func trayOpacity(_ x: CGFloat) -> Float {
-        let fade: CGFloat = 40
-        let left = (x - (Layout.trayItemsRect.minX + 6)) / fade
-        let right = ((Layout.trayItemsRect.maxX - 6) - x) / fade
-        return Float(min(max(min(left, right), 0), 1))
+    /// Items tuck away by shrinking as they scroll past an edge; nothing in the tray or the order sheet ever
+    /// rests partly transparent (translucent models over light glass read as washed out).
+    private func trayEdge(_ x: CGFloat) -> Float {
+        let zone: CGFloat = 44
+        let left = (x - (Layout.trayItemsRect.minX + 2)) / zone
+        let right = ((Layout.trayItemsRect.maxX - 2) - x) / zone
+        let t = Float(min(max(min(left, right), 0), 1))
+        return t * t * (3 - 2 * t)
     }
 
-    private func summaryOpacity(_ y: CGFloat) -> Float {
-        let fade: CGFloat = 60
-        let top = (y - Layout.summaryListRect.minY) / fade
-        let bottom = (Layout.summaryListRect.maxY - y) / fade
-        return Float(min(max(min(top, bottom), 0), 1))
+    private func clipEdge(_ y: CGFloat, _ clip: CGRect, zone: CGFloat) -> Float {
+        guard clip.height > 0 else { return 1 }
+        let top = (y - clip.minY) / zone + 0.5
+        let bottom = (clip.maxY - y) / zone + 0.5
+        let t = Float(min(max(min(top, bottom), 0), 1))
+        return t * t * (3 - 2 * t)
+    }
+
+    private func summaryEdge(_ y: CGFloat) -> Float {
+        let zone: CGFloat = 70
+        let top = (y - Layout.summaryListRect.minY) / zone
+        let bottom = (Layout.summaryListRect.maxY - y) / zone
+        let t = Float(min(max(min(top, bottom), 0), 1))
+        return t * t * (3 - 2 * t)
     }
 
     func updateTray(dt: Float) {
+        summaryDrag.step(dt)
         for entry in tray {
             guard let rig = entry.rig else { continue }
-            let opacity: Float
+            let edge: Float
             switch entry.mode {
             case .tray:
                 rig.pose = trayPose(entry)
-                opacity = trayOpacity(trayCenterX(entry))
+                edge = trayEdge(trayCenterX(entry))
             case .summary:
                 entry.spinVelocity += (0.32 - entry.spinVelocity) * (1 - exp(-dt / 0.9))
                 entry.spinYaw += entry.spinVelocity * dt
                 if entry.spinYaw > 200 { entry.spinYaw -= 2 * .pi * 30 }
                 rig.pose = summaryPose(entry)
-                opacity = summaryOpacity(summaryCenterY(entry))
+                edge = summaryEdge(summaryCenterY(entry))
+            case .receipt:
+                entry.spinYaw += 0.32 * dt
+                if entry.spinYaw > 200 { entry.spinYaw -= 2 * .pi * 30 }
+                guard let frame = receiptFrames[entry.id] else {
+                    rig.root.isEnabled = false
+                    entry.lastEdge = 0
+                    continue
+                }
+                let pitch: Float = 0.42
+                let fit = fitted(entry, box: CGSize(width: frame.width * 0.9, height: frame.height * 0.9), pitch: pitch,
+                                 centerY: frame.midY, centerX: frame.midX)
+                rig.pose = RigPose(position: fit.position, scale: fit.scale, pitch: pitch, yaw: entry.spinYaw)
+                edge = clipEdge(frame.midY, receiptClip, zone: frame.height * 0.6) * entry.appear
             case .flying, .editing, .removing:
                 continue
             }
+            rig.scaleMultiplier = edge
             rig.apply()
-            if abs(opacity - entry.lastOpacity) > 0.004 {
-                entry.lastOpacity = opacity
-                rig.setOpacity(opacity)
+            if abs(edge - entry.lastEdge) > 0.002 {
+                entry.lastEdge = edge
+                rig.root.isEnabled = edge > 0.01
             }
         }
     }
@@ -99,12 +154,20 @@ extension Stage {
     private func flyEntry(_ entry: TrayEntry, toSummary: Bool, delay: Double = 0, duration: Double = 0.9) {
         guard let rig = entry.rig else { return }
         entry.mode = .flying
-        entry.lastOpacity = -1
+        entry.lastEdge = -1
+        rig.root.isEnabled = true
         if rig.opacity < 1 {
             rig.opacityTween?.cancel()
             var from: Float = 0
             rig.opacityTween = animate(delay: delay, duration: 0.25, onStart: { from = rig.opacity }) { p in
                 rig.setOpacity(lerp(from, 1, p))
+            }
+        }
+        if rig.scaleMultiplier < 1 {
+            rig.appearTween?.cancel()
+            var from: Float = 0
+            rig.appearTween = animate(delay: delay, duration: 0.3, onStart: { from = rig.scaleMultiplier }) { p in
+                rig.scaleMultiplier = lerp(from, 1, TimingCurve.standard(p))
             }
         }
         if toSummary { entry.spinYaw = -0.55 }
@@ -125,7 +188,7 @@ extension Stage {
         heroes[selectedVessel] = nil
         isDragging = false
         scoops.removeAll()
-        let entry = TrayEntry(item: item, rig: hero, index: Float(tray.count), contentCenterY: contentCenterY(of: item))
+        let entry = TrayEntry(item: item, rig: hero, index: Float(tray.count), metrics: itemMetrics(item))
         tray.append(entry)
         if summaryActive {
             flyEntry(entry, toSummary: true, duration: 1.0)
@@ -142,10 +205,9 @@ extension Stage {
         scoops.removeAll()
         entry.item = item
         entry.rig = hero
-        entry.contentCenterY = contentCenterY(of: item)
-        if !summaryActive, let center = trayItemCenter(id), !Layout.trayItemsRect.insetBy(dx: 40, dy: 0).contains(center) {
-            let target = Layout.trayFirstCenterX + CGFloat(entry.index) * Layout.trayPitch - Layout.trayItemsRect.midX
-            animateTrayScroll(to: min(max(target, 0), maxTrayScroll), duration: 0.6)
+        entry.setMetrics(itemMetrics(item))
+        if !summaryActive {
+            animateTrayScroll(to: trayScroll(showing: Int(entry.index.rounded())), duration: 0.6)
         }
         flyEntry(entry, toSummary: summaryActive, duration: 1.0)
     }
@@ -160,7 +222,18 @@ extension Stage {
         selectedVessel = rig.vessel
         heroes[rig.vessel] = rig
         scoops = rig.scoops
+        rig.appearTween?.cancel()
+        rig.root.isEnabled = true
+        if rig.scaleMultiplier < 1 {
+            var from: Float = 0
+            rig.appearTween = animate(duration: 0.3, onStart: { from = rig.scaleMultiplier }) { p in
+                rig.scaleMultiplier = lerp(from, 1, TimingCurve.standard(p))
+            }
+        }
         flyHeroToCenter(rig, duration: 0.95)
+        if !summaryActive {
+            animateTrayScroll(to: trayScroll(showing: Int(entry.index.rounded())), duration: 0.5)
+        }
         onLayoutChange()
     }
 
@@ -177,7 +250,47 @@ extension Stage {
                 other.index = lerp(from, to, TimingCurve.swiftUIEaseInOut(p))
             }
         }
-        animateTrayScroll(to: min(trayScroll, maxTrayScroll), duration: 0.45)
+        animateTrayScroll(to: snappedTrayScroll(min(trayScroll, maxTrayScroll)), duration: 0.45)
+    }
+
+    /// Moves the order's items onto the confirmation receipt: the builder is gone (the screen is covered
+    /// while this happens), and each item grows into its receipt row as the receipt prints.
+    func enterReceipt() {
+        for rig in heroes.values { discard(rig) }
+        heroes.removeAll()
+        for scoop in scoops { discard(scoop) }
+        scoops.removeAll()
+        isDragging = false
+        summaryActive = false
+        setSummaryDrag(0)
+        setControlsVisible(false, animated: false)
+        receiptFrames = [:]
+        for (i, entry) in tray.enumerated() {
+            guard let rig = entry.rig else { continue }
+            rig.cancelMotions()
+            rig.setOpacity(1)
+            entry.mode = .receipt
+            entry.lastEdge = -1
+            entry.appear = 0
+            entry.appearTween?.cancel()
+            entry.appearTween = animate(delay: 0.55 + 0.14 * Double(i), duration: 0.45) { p in
+                entry.appear = TimingCurve.standard(p)
+            }
+        }
+    }
+
+    func setReceiptFrame(_ id: UUID, _ frame: CGRect) {
+        receiptFrames[id] = frame
+    }
+
+    func setSummaryDrag(_ offset: Float) {
+        summaryDrag.value = offset
+        summaryDrag.target = offset
+        summaryDrag.velocity = 0
+    }
+
+    func releaseSummaryDrag() {
+        summaryDrag.target = 0
     }
 
     func enterSummary() {
@@ -214,7 +327,7 @@ extension Stage {
     }
 
     func trayDragEnded(predictedDx: CGFloat) {
-        let target = min(max((trayDragStart ?? trayScroll) - predictedDx, 0), maxTrayScroll)
+        let target = snappedTrayScroll((trayDragStart ?? trayScroll) - predictedDx)
         trayDragStart = nil
         animateTrayScroll(to: target, duration: 0.5)
     }
@@ -225,7 +338,7 @@ extension Stage {
         guard Layout.trayItemsRect.contains(point) else { return nil }
         for entry in tray where entry.mode != .removing {
             let x = trayCenterX(entry)
-            if abs(point.x - x) < Layout.trayPitch / 2, trayOpacity(x) > 0.5 { return entry.id }
+            if abs(point.x - x) < Layout.trayPitch / 2, trayEdge(x) > 0.5 { return entry.id }
         }
         return nil
     }
@@ -250,6 +363,9 @@ extension Stage {
         trayDragStart = nil
         summaryActive = false
         summaryScroll = 0
+        setSummaryDrag(0)
+        receiptFrames = [:]
+        receiptClip = .zero
         isDragging = false
         selectedVessel = .cup
         for index in pressSprings.indices {
@@ -276,7 +392,7 @@ extension Stage {
         summaryActive = summary
         for item in items {
             let rig = makeItemRig(item)
-            let entry = TrayEntry(item: item, rig: rig, index: Float(tray.count), contentCenterY: contentCenterY(of: item))
+            let entry = TrayEntry(item: item, rig: rig, index: Float(tray.count), metrics: itemMetrics(item))
             entry.mode = summary ? .summary : .tray
             tray.append(entry)
             root.addChild(rig.root)

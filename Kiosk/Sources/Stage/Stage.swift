@@ -92,6 +92,11 @@ final class Stage {
     var trayDragStart: CGFloat?
     var summaryActive = false
     var summaryScroll: CGFloat = 0
+    /// Interactive pull-down offset of the order sheet, as a spring matching the SwiftUI one.
+    var summaryDrag = Spring1D(value: 0, response: 0.36, dampingRatio: 0.86)
+    /// Screen frames of the confirmation receipt's 3D cells, and the visible part of the receipt's list.
+    var receiptFrames: [UUID: CGRect] = [:]
+    var receiptClip: CGRect = .zero
 
     func attach(to content: inout RealityViewCameraContent) {
         content.add(root)
@@ -265,8 +270,6 @@ final class Stage {
 
     static func mainScale(_ vessel: Vessel) -> Float { vessel == .cup ? 3.9 : 2.35 }
     static func iconScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.75 : 1.18 }
-    static func miniScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.0 : 0.5 }
-    static func summaryScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.6 : 0.78 }
     static let flavorIconScale: Float = 2.1
 
     func centerPose(_ vessel: Vessel, yaw: Float) -> RigPose {

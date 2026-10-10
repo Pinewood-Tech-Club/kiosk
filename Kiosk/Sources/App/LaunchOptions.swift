@@ -245,6 +245,26 @@ struct ScriptRunner {
             await wait(1.4)
             app.startNewItem()
             await wait(3.0)
+        case "pull-down":
+            await wait(0.8)
+            app.viewOrder()
+            await wait(2.4)
+            for distance in [60.0, 120, 70, 20] {
+                let steps = 20
+                let start = app.sheetDrag
+                for i in 1...steps {
+                    app.dragSheet(by: start + (distance - start) * Double(i) / Double(steps))
+                    try? await Task.sleep(for: .seconds(0.4 / Double(steps)))
+                }
+            }
+            app.endSheetDrag(translation: 20, predicted: 40)
+            await wait(1.5)
+            for i in 1...24 {
+                app.dragSheet(by: 220 * Double(i) / 24)
+                try? await Task.sleep(for: .seconds(0.3 / 24))
+            }
+            app.endSheetDrag(translation: 220, predicted: 600)
+            await wait(2.5)
         case "summary":
             await wait(0.8)
             app.viewOrder()

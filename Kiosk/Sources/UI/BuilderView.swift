@@ -29,6 +29,39 @@ private struct CardPressStyle: ButtonStyle {
     }
 }
 
+/// Stands in the tray slot of the item that's out for editing: where it goes back, and how to send it there.
+private struct EditingSlot: View {
+    let done: () -> Void
+    let remove: () -> Void
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Button(action: done) {
+                Text("Done").frame(width: 62)
+            }
+            .buttonStyle(KioskGlassButtonStyle(kind: .primary, height: 46, fontSize: 16, horizontalPadding: 2))
+            Button(action: remove) {
+                HStack(spacing: 4) {
+                    LucideIcon(name: "trash-2", size: 14)
+                    Text("Remove")
+                }
+                .font(Theme.sans(14, .semibold))
+                .foregroundStyle(Theme.ink.opacity(0.75))
+                .frame(width: 92, height: 40)
+                .contentShape(.rect)
+            }
+            .buttonStyle(SlotPressStyle())
+        }
+        .padding(.top, 4)
+        .frame(width: Layout.trayPitch - 12, height: Layout.trayItemsRect.height - 22)
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .strokeBorder(Theme.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
+                .allowsHitTesting(false)
+        }
+    }
+}
+
 private struct SlotPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -52,15 +85,23 @@ struct BuilderBackdrop: View {
             let sheet = app.mode == .summary ? Layout.sheetRect : Layout.trayGlassRect
             GlassTrayBackground(cornerRadius: app.mode == .summary ? 44 : 40, isExpanded: app.mode == .summary)
                 .frame(width: sheet.width, height: sheet.height)
-                .position(x: sheet.midX, y: sheet.midY)
+                .position(x: sheet.midX, y: sheet.midY + (app.mode == .summary ? app.sheetDrag : 0))
 
             if app.mode == .summary {
                 SummaryView(app: app)
+                    .offset(y: app.sheetDrag)
+                    .gesture(pullDown)
                     .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.3).delay(0.2)),
                                             removal: .opacity.animation(.easeIn(duration: 0.14))))
             }
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
+    }
+
+    private var pullDown: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { app.dragSheet(by: $0.translation.height) }
+            .onEnded { app.endSheetDrag(translation: $0.translation.height, predicted: $0.predictedEndTranslation.height) }
     }
 
     @ViewBuilder
@@ -179,29 +220,7 @@ struct BuilderForeground: View {
 
     @ViewBuilder
     private var subtitle: some View {
-        if let editingID = app.editingID, let index = app.editingIndex {
-            HStack(spacing: 28) {
-                Text("Editing item \(index + 1)")
-                    .font(Theme.serif(22, .regular))
-                    .italic()
-                    .foregroundStyle(Theme.ink.opacity(0.75))
-                Button { app.finishEditing(then: .newItem) } label: {
-                    HStack(spacing: 7) {
-                        LucideIcon(name: "check", size: 18)
-                        Text("Done")
-                    }
-                }
-                .buttonStyle(.glassCTA(height: 46, fontSize: 18))
-                Button { app.requestDelete(editingID) } label: {
-                    HStack(spacing: 7) {
-                        LucideIcon(name: "trash-2", size: 18)
-                        Text("Remove")
-                    }
-                }
-                .buttonStyle(.glassSecondary(height: 46, fontSize: 18))
-            }
-            .transition(.opacity)
-        } else if app.step == .toppings {
+        if app.step == .toppings {
             Text("Coming soon")
                 .font(Theme.serif(22, .regular))
                 .italic()
@@ -343,12 +362,10 @@ struct BuilderForeground: View {
             if let editingID = app.editingID {
                 let _ = app.trayLayoutVersion
                 if let center = app.stage.trayItemCenter(editingID), Layout.trayItemsRect.contains(center) {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .strokeBorder(Theme.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
-                        .frame(width: Layout.trayPitch - 18, height: Layout.trayItemsRect.height - 30)
+                    EditingSlot(done: { app.finishEditing(then: .newItem) },
+                                remove: { app.requestDelete(editingID) })
                         .position(center)
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
+                        .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 }
             }
 

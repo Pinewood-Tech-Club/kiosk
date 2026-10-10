@@ -33,7 +33,7 @@ struct ConfirmationView: View {
             .padding(.top, 76)
             .padding(.horizontal, 64)
 
-            ReceiptView(receipt: receipt)
+            ReceiptView(receipt: receipt, entries: ReceiptItem.group(receipt, items: app.items), stage: app.stage)
                 .frame(width: 560)
                 .mask(alignment: .top) {
                     Rectangle().frame(maxHeight: printed ? .infinity : 0)
@@ -99,8 +99,84 @@ private struct Countdown: View {
     }
 }
 
+/// One ordered item on the receipt, with the amounts Square charged for it.
+struct ReceiptItem: Identifiable {
+    let id: UUID
+    let number: Int
+    let item: IceCreamItem?
+    let vesselTitle: String
+    let vesselCents: Int
+    let scoopCount: Int
+    let scoopCents: Int
+    let toppingCount: Int
+    let toppingCents: Int
+
+    var totalCents: Int { vesselCents + scoopCents + toppingCents }
+
+    /// "Cup + 2 Scoops ($6.00) + 1 Topping ($0.50)"; the vessel shows a price only when it has one.
+    var composition: String {
+        var parts = [vesselCents > 0 ? "\(vesselTitle) (\(vesselCents.formattedAsUSD))" : vesselTitle]
+        if scoopCount > 0 {
+            parts.append("\(scoopCount) Scoop\(scoopCount == 1 ? "" : "s") (\(scoopCents.formattedAsUSD))")
+        }
+        if toppingCount > 0 {
+            parts.append("\(toppingCount) Topping\(toppingCount == 1 ? "" : "s") (\(toppingCents.formattedAsUSD))")
+        }
+        return parts.joined(separator: " + ")
+    }
+
+    var flavors: String { item.map { IceCreamItem.describe($0.flavors) } ?? "" }
+
+    /// Groups Square's charged lines by the item tag in each line's note ("#2 Cup: Chocolate"), so every
+    /// amount is exactly what Square billed. If the lines can't be grouped that way, falls back to the
+    /// kiosk's order-position pricing, which is the same rule the catalog encodes.
+    static func group(_ receipt: Receipt, items: [IceCreamItem]) -> [ReceiptItem] {
+        var groups: [Int: (vessel: Int, scoops: Int, scoopCents: Int, toppings: Int, toppingCents: Int, hint: String)] = [:]
+        var tagged = true
+        for line in receipt.lines {
+            guard let match = line.detail.firstMatch(of: /^#(\d+)/), let number = Int(match.1) else {
+                tagged = false
+                break
+            }
+            var group = groups[number] ?? (0, 0, 0, 0, 0, "")
+            let cents = line.baseCents * line.quantity
+            let title = line.title.lowercased()
+            if title.contains("topping") {
+                group.toppings += line.quantity
+                group.toppingCents += cents
+            } else if title.contains("cone") {
+                group.vessel += cents
+            } else {
+                group.scoops += line.quantity
+                group.scoopCents += cents
+                if group.hint.isEmpty { group.hint = line.detail }
+            }
+            groups[number] = group
+        }
+        let total = groups.values.reduce(0) { $0 + $1.vessel + $1.scoopCents + $1.toppingCents }
+        if tagged, !groups.isEmpty, total == receipt.subtotalCents, items.isEmpty || groups.count == items.count {
+            return groups.keys.sorted().map { number in
+                let group = groups[number]!
+                let item = number <= items.count ? items[number - 1] : nil
+                let isCone = item?.vessel == .cone || group.vessel > 0 || group.hint.contains("Cone")
+                return ReceiptItem(id: item?.id ?? UUID(), number: number, item: item,
+                                   vesselTitle: isCone ? Vessel.cone.title : Vessel.cup.title, vesselCents: group.vessel,
+                                   scoopCount: group.scoops, scoopCents: group.scoopCents,
+                                   toppingCount: group.toppings, toppingCents: group.toppingCents)
+            }
+        }
+        return Pricing.quote(items).lines.enumerated().map { index, line in
+            ReceiptItem(id: line.item.id, number: index + 1, item: line.item, vesselTitle: line.item.vessel.title,
+                        vesselCents: line.vesselCents, scoopCount: line.item.scoopCount, scoopCents: line.scoopShareCents,
+                        toppingCount: 0, toppingCents: 0)
+        }
+    }
+}
+
 private struct ReceiptView: View {
     let receipt: Receipt
+    let entries: [ReceiptItem]
+    let stage: Stage
     @State private var itemsHeight: CGFloat = 0
 
     var body: some View {
@@ -153,17 +229,32 @@ private struct ReceiptView: View {
 
     private var items: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(receipt.lines) { line in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(line.quantity > 1 ? "\(line.title) × \(line.quantity)" : line.title).font(Theme.sans(16, .medium))
-                            if !line.detail.isEmpty {
-                                Text(line.detail).font(Theme.sans(14)).foregroundStyle(Theme.inkSecondary)
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(entries) { entry in
+                    HStack(alignment: .center, spacing: 14) {
+                        // The item's live 3D model is drawn here by the stage.
+                        Color.clear
+                            .frame(width: 84, height: 84)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                                stage.setReceiptFrame(entry.id, frame)
+                            }
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("Item \(entry.number)").font(Theme.serif(19))
+                                Leader()
+                                Text(entry.totalCents.formattedAsUSD).font(Theme.sans(17, .medium)).monospacedDigit()
+                            }
+                            Text(entry.composition)
+                                .font(Theme.sans(14))
+                                .foregroundStyle(Theme.ink.opacity(0.78))
+                                .fixedSize(horizontal: false, vertical: true)
+                            if !entry.flavors.isEmpty {
+                                Text(entry.flavors)
+                                    .font(Theme.serif(14, .regular))
+                                    .italic()
+                                    .foregroundStyle(Theme.inkSecondary)
                             }
                         }
-                        Leader()
-                        Text(line.cents.formattedAsUSD).font(Theme.sans(16)).monospacedDigit()
                     }
                 }
             }
@@ -173,6 +264,7 @@ private struct ReceiptView: View {
         .scrollBounceBehavior(.basedOnSize)
         .scrollEdgeEffectStyle(.soft, for: .vertical)
         .frame(height: min(itemsHeight, 330))
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { stage.receiptClip = $0 }
     }
 
     private var totals: some View {

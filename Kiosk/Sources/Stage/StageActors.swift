@@ -199,23 +199,32 @@ final class FlavorIcon {
 
 @MainActor
 final class TrayEntry {
-    enum Mode { case tray, summary, flying, editing, removing }
+    enum Mode { case tray, summary, receipt, flying, editing, removing }
 
     var item: IceCreamItem
     var rig: ItemRig?
     var index: Float
     var indexTween: Tween?
     var mode: Mode = .flying
-    var contentCenterY: Float
-    var lastOpacity: Float = -1
+    var contentTop: Float
+    var contentRadius: Float
+    var lastEdge: Float = -1
     var spinYaw: Float = -0.55
     var spinVelocity: Float = 0
+    var appear: Float = 1
+    var appearTween: Tween?
 
-    init(item: IceCreamItem, rig: ItemRig?, index: Float, contentCenterY: Float) {
+    init(item: IceCreamItem, rig: ItemRig?, index: Float, metrics: (top: Float, radius: Float)) {
         self.item = item
         self.rig = rig
         self.index = index
-        self.contentCenterY = contentCenterY
+        self.contentTop = metrics.top
+        self.contentRadius = metrics.radius
+    }
+
+    func setMetrics(_ metrics: (top: Float, radius: Float)) {
+        contentTop = metrics.top
+        contentRadius = metrics.radius
     }
 
     var id: UUID { item.id }

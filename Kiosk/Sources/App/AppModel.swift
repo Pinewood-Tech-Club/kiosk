@@ -33,7 +33,20 @@ final class AppModel {
         }
     }
 
-    var screen: Screen = .roleSetup
+    var screen: Screen = .roleSetup {
+        didSet {
+            guard screen != oldValue else { return }
+            leavingScreen = oldValue
+            leavingTask?.cancel()
+            leavingTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(0.6))
+                if !Task.isCancelled { self?.leavingScreen = nil }
+            }
+        }
+    }
+    /// The screen just left, kept for the length of a crossfade so it stays drawn until covered.
+    private(set) var leavingScreen: Screen?
+    @ObservationIgnored private var leavingTask: Task<Void, Never>?
     var builderVisible = false
     private(set) var mode: BuilderMode = .customize
     private(set) var step: BuilderStep = .vessel
@@ -44,6 +57,7 @@ final class AppModel {
     private(set) var pressedCards: Set<CardKey> = []
     private(set) var trayLayoutVersion = 0
     var confirmation: Confirmation?
+    private(set) var sheetDrag: CGFloat = 0
     var notice: Notice?
     var receipt: Receipt?
     var customerName = ""
@@ -433,6 +447,27 @@ final class AppModel {
         stage.presentNewItem(vessel: current.vessel, delay: 0.35)
     }
 
+    /// Matches `Stage.summaryDrag`, so the sheet and its 3D items spring back together.
+    private static let sheetSpring = Animation.spring(response: 0.36, dampingFraction: 0.86)
+
+    func dragSheet(by translation: CGFloat) {
+        guard mode == .summary else { return }
+        sheetDrag = translation >= 0 ? translation : -24 * (1 - 1 / (-translation / 60 + 1))
+        stage.setSummaryDrag(Float(sheetDrag))
+    }
+
+    func endSheetDrag(translation: CGFloat, predicted: CGFloat) {
+        guard mode == .summary else { return }
+        if translation > 150 || predicted > 420 {
+            backToBuilder()
+            stage.setSummaryDrag(0)
+            sheetDrag = 0
+        } else {
+            withAnimation(Self.sheetSpring) { sheetDrag = 0 }
+            stage.releaseSummaryDrag()
+        }
+    }
+
     func completeOrder() {
         guard !items.isEmpty else { return }
         notice = nil
@@ -471,6 +506,7 @@ final class AppModel {
             switch result {
             case .succeeded(let receipt):
                 self.receipt = receipt
+                stage.enterReceipt()
                 withAnimation(.easeInOut(duration: 0.45)) { screen = .confirmation }
             case .failed(let title, let details):
                 notice = Notice(title: title, details: details)
@@ -512,7 +548,9 @@ final class AppModel {
                 mode = .summary
                 screen = .name
             case "confirmation":
-                stage.restore(current: nil, items: [], step: .vessel)
+                stage.restore(current: nil, items: items, step: .vessel, summary: true)
+                stage.enterReceipt()
+                builderVisible = true
                 receipt = .simulated(quote: orderQuote, customerName: customerName.isEmpty ? "Alex" : customerName,
                                      orderNumber: 42, merchantName: square.merchantName)
                 screen = .confirmation

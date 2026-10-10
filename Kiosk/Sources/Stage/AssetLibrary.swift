@@ -110,6 +110,11 @@ final class AssetLibrary {
         return radius > 0 ? radius : (vessel == .cone ? 0.014 : 0.04)
     }
 
+    func vesselHalfWidth(_ vessel: Vessel) -> Float {
+        guard let b = vesselBounds[vessel] else { return vessel == .cup ? 0.044 : 0.028 }
+        return max(abs(b.min.x), abs(b.max.x), abs(b.min.z), abs(b.max.z))
+    }
+
     func vesselTop(_ vessel: Vessel) -> Float {
         vesselBounds[vessel]?.max.y ?? (vessel == .cup ? 0.0463 : 0.136)
     }
