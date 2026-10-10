@@ -1,0 +1,12 @@
+// Copy to Config/Local.xcconfig (gitignored) and fill in.
+// Sandbox credentials: https://developer.squareup.com/apps -> your app -> toggle "Sandbox".
+
+PRODUCT_BUNDLE_IDENTIFIER = com.yourname.kiosk
+DEVELOPMENT_TEAM = ABCDE12345
+
+SQUARE_APPLICATION_ID = sandbox-sq0idb-xxxxxxxxxxxxxxxxxxxxxx
+SQUARE_ACCESS_TOKEN = EAAAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SQUARE_LOCATION_ID = LXXXXXXXXXXXXX
+
+// Shown on the receipt screen (the Square location's business name is shown above it).
+KIOSK_EVENT_NAME = Tech Club Ice Cream

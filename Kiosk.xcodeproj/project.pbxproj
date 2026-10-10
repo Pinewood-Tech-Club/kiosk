@@ -1,0 +1,596 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */; };
+		1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF36BF94972C41A51D71D966 /* KioskApp.swift */; };
+		2B591179C416EC14B3DF661F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF77AD1D7C8D64414EA6DB92 /* Theme.swift */; };
+		2F1D9CFC58D885C3AD6E9BEA /* NotoSerif-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */; };
+		330D40F9722FCB8FC0082573 /* Stage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 955D9B0FEA00CB8CCA27E91D /* Stage.swift */; };
+		38B1CA4705AFB81ABDBA21E7 /* NotoSerif-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */; };
+		565858834D2F23FCC9892AE8 /* LaunchOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5212A82265C88FFEC5453F08 /* LaunchOptions.swift */; };
+		5C03C19E8737AD328AC9C08E /* MockReaderUI in Frameworks */ = {isa = PBXBuildFile; productRef = 71F7D5957E77382361776981 /* MockReaderUI */; };
+		5C4E87910C7013DDFEBDB6ED /* SummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF79193415195B4A4327886 /* SummaryView.swift */; };
+		5E0527E4240E6371F48181A6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7703DC11C0C31F62DC6BD09D /* Assets.xcassets */; };
+		5F9C7D0544857EDEAD4E22C6 /* StageActors.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB1DFC96A2B464467CC2110 /* StageActors.swift */; };
+		6AD8D94397D99092AF46F1B7 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 019AB8B349B0B11885D0A1B1 /* Config.swift */; };
+		7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DFD4680D9AC7197C5C0B25 /* Receipt.swift */; };
+		80F62615D532B17AB4C91758 /* loop.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = CF19FBBFF9063473EF2C011F /* loop.mp4 */; };
+		8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */; };
+		9202055A9FECFAEDCE95CD2D /* BuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A313CBED428256A71A858FEA /* BuilderView.swift */; };
+		9BA8BBFF27C6B6D87613C68E /* AssetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3EB41C1A0D41F89C6D8FE8A /* AssetLibrary.swift */; };
+		9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309806DC452BB62BEE356569 /* DebugBar.swift */; };
+		9FB4EB59530BF0754BDBC1F3 /* SquareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D96DB54BCDC2006C377D8F /* SquareService.swift */; };
+		A193DDDF8212752C4341DAC5 /* Lucide-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 6309D5E2BEA9F305D01718A3 /* Lucide-LICENSE.txt */; };
+		A27FF852B7F37FBECEA57119 /* NameEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37AB58ED0D97D8805BD8DAA1 /* NameEntryView.swift */; };
+		A519F0ABC993AC2479FCF37D /* NotoSerif-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */; };
+		B6946563E5372AC1DE291AFB /* AttractView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3576D0AAEDEAFA110046DA31 /* AttractView.swift */; };
+		B7744B54D84F06776E52ED42 /* SquareMobilePaymentsSDK in Frameworks */ = {isa = PBXBuildFile; productRef = 9296C487775A032980AE7F95 /* SquareMobilePaymentsSDK */; };
+		BC87549B0A11F97F418AB61F /* Layout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 425B72639F56A451EDADC970 /* Layout.swift */; };
+		C0FFE25ACFD95D63EC7D4169 /* Order.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1105750A779779A5507FAF2 /* Order.swift */; };
+		C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */; };
+		C659717E6746E0A1AD7B7C6E /* NotoSerif-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */; };
+		CFA9251FBFBDD52ED6806157 /* 3D in Resources */ = {isa = PBXBuildFile; fileRef = 41288991151D7382A2F4C89D /* 3D */; };
+		D3AB8EFD24B6A0A8DC388F0D /* NotoSerif-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */; };
+		E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */; };
+		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
+		F346DF14280B5329EFF72A73 /* Animation.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB286FAB60CDB38CF35280B /* Animation.swift */; };
+		F86ED738CAD06D788946D97B /* StageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80DA186C645E6612A99CD769 /* StageView.swift */; };
+		FD0A874C890E38BDA7E2144C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64CD3F775C84109C65BEB08B /* AppModel.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		019AB8B349B0B11885D0A1B1 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
+		1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		2B6A6A9019E6492315EB68CA /* Local.xcconfig.example */ = {isa = PBXFileReference; path = Local.xcconfig.example; sourceTree = "<group>"; };
+		309806DC452BB62BEE356569 /* DebugBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugBar.swift; sourceTree = "<group>"; };
+		3576D0AAEDEAFA110046DA31 /* AttractView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttractView.swift; sourceTree = "<group>"; };
+		37AB58ED0D97D8805BD8DAA1 /* NameEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameEntryView.swift; sourceTree = "<group>"; };
+		37DFD4680D9AC7197C5C0B25 /* Receipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Receipt.swift; sourceTree = "<group>"; };
+		3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Regular.ttf"; sourceTree = "<group>"; };
+		41288991151D7382A2F4C89D /* 3D */ = {isa = PBXFileReference; lastKnownFileType = folder; name = 3D; path = Kiosk/Resources/3D; sourceTree = SOURCE_ROOT; };
+		425B72639F56A451EDADC970 /* Layout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Layout.swift; sourceTree = "<group>"; };
+		4BF79193415195B4A4327886 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
+		5212A82265C88FFEC5453F08 /* LaunchOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchOptions.swift; sourceTree = "<group>"; };
+		5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmationView.swift; sourceTree = "<group>"; };
+		5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "NotoSerif-OFL.txt"; sourceTree = "<group>"; };
+		6309D5E2BEA9F305D01718A3 /* Lucide-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Lucide-LICENSE.txt"; sourceTree = "<group>"; };
+		64CD3F775C84109C65BEB08B /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Medium.ttf"; sourceTree = "<group>"; };
+		7703DC11C0C31F62DC6BD09D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		80DA186C645E6612A99CD769 /* StageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageView.swift; sourceTree = "<group>"; };
+		94D96DB54BCDC2006C377D8F /* SquareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareService.swift; sourceTree = "<group>"; };
+		955D9B0FEA00CB8CCA27E91D /* Stage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage.swift; sourceTree = "<group>"; };
+		96A26E074420B8AC97F15E75 /* FrameStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStats.swift; sourceTree = "<group>"; };
+		98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopMesh.swift; sourceTree = "<group>"; };
+		A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Bold.ttf"; sourceTree = "<group>"; };
+		A313CBED428256A71A858FEA /* BuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuilderView.swift; sourceTree = "<group>"; };
+		A4AF753BDA765B17988D4DAB /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
+		B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareAPI.swift; sourceTree = "<group>"; };
+		C1105750A779779A5507FAF2 /* Order.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Order.swift; sourceTree = "<group>"; };
+		CBB1DFC96A2B464467CC2110 /* StageActors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageActors.swift; sourceTree = "<group>"; };
+		CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-SemiBold.ttf"; sourceTree = "<group>"; };
+		CF19FBBFF9063473EF2C011F /* loop.mp4 */ = {isa = PBXFileReference; path = loop.mp4; sourceTree = "<group>"; };
+		D6974443317A2D4E0CE83F79 /* Kiosk.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kiosk.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DF893650C7E0AA1ED76E777E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		ECB286FAB60CDB38CF35280B /* Animation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Animation.swift; sourceTree = "<group>"; };
+		EF36BF94972C41A51D71D966 /* KioskApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KioskApp.swift; sourceTree = "<group>"; };
+		EF77AD1D7C8D64414EA6DB92 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		F3EB41C1A0D41F89C6D8FE8A /* AssetLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetLibrary.swift; sourceTree = "<group>"; };
+		F84857165E0E1562299FB634 /* Kiosk.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Kiosk.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3FE347B3E4A885A69ABDB6AA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B7744B54D84F06776E52ED42 /* SquareMobilePaymentsSDK in Frameworks */,
+				5C03C19E8737AD328AC9C08E /* MockReaderUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1430C0817AA2E33666D07643 /* Order */ = {
+			isa = PBXGroup;
+			children = (
+				C1105750A779779A5507FAF2 /* Order.swift */,
+			);
+			path = Order;
+			sourceTree = "<group>";
+		};
+		22C9F245458D6FD9D2AAD8A7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D6974443317A2D4E0CE83F79 /* Kiosk.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3031DF17343630066974846C /* Square */ = {
+			isa = PBXGroup;
+			children = (
+				37DFD4680D9AC7197C5C0B25 /* Receipt.swift */,
+				B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */,
+				94D96DB54BCDC2006C377D8F /* SquareService.swift */,
+			);
+			path = Square;
+			sourceTree = "<group>";
+		};
+		3B4402C1D6210C1AED87B8B8 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				9B6B583E252FFF938E928346 /* App */,
+				1430C0817AA2E33666D07643 /* Order */,
+				3031DF17343630066974846C /* Square */,
+				88A605EE0CE4F98595B2163B /* Stage */,
+				AFC71389006DF3BE1DD52D48 /* UI */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		57734AC33092867CEA74F48B /* Kiosk */ = {
+			isa = PBXGroup;
+			children = (
+				DF893650C7E0AA1ED76E777E /* Info.plist */,
+				5F38733E14DF3870B6627B68 /* Resources */,
+				3B4402C1D6210C1AED87B8B8 /* Sources */,
+			);
+			path = Kiosk;
+			sourceTree = "<group>";
+		};
+		58677E3FA3CFAFC00D961BF1 = {
+			isa = PBXGroup;
+			children = (
+				6F4192530D8F7C96221C502B /* Config */,
+				57734AC33092867CEA74F48B /* Kiosk */,
+				22C9F245458D6FD9D2AAD8A7 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5F38733E14DF3870B6627B68 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				41288991151D7382A2F4C89D /* 3D */,
+				7703DC11C0C31F62DC6BD09D /* Assets.xcassets */,
+				61C8331B2F25F75437D785DB /* Fonts */,
+				A6233471908EE83B074D0C11 /* Licenses */,
+				BC1E95C435217D90865863F0 /* Video */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		61C8331B2F25F75437D785DB /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */,
+				6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */,
+				3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */,
+				CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		6F4192530D8F7C96221C502B /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				F84857165E0E1562299FB634 /* Kiosk.xcconfig */,
+				A4AF753BDA765B17988D4DAB /* Local.xcconfig */,
+				2B6A6A9019E6492315EB68CA /* Local.xcconfig.example */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		88A605EE0CE4F98595B2163B /* Stage */ = {
+			isa = PBXGroup;
+			children = (
+				ECB286FAB60CDB38CF35280B /* Animation.swift */,
+				F3EB41C1A0D41F89C6D8FE8A /* AssetLibrary.swift */,
+				96A26E074420B8AC97F15E75 /* FrameStats.swift */,
+				98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */,
+				955D9B0FEA00CB8CCA27E91D /* Stage.swift */,
+				CBB1DFC96A2B464467CC2110 /* StageActors.swift */,
+				80DA186C645E6612A99CD769 /* StageView.swift */,
+			);
+			path = Stage;
+			sourceTree = "<group>";
+		};
+		9B6B583E252FFF938E928346 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				64CD3F775C84109C65BEB08B /* AppModel.swift */,
+				019AB8B349B0B11885D0A1B1 /* Config.swift */,
+				EF36BF94972C41A51D71D966 /* KioskApp.swift */,
+				5212A82265C88FFEC5453F08 /* LaunchOptions.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A6233471908EE83B074D0C11 /* Licenses */ = {
+			isa = PBXGroup;
+			children = (
+				6309D5E2BEA9F305D01718A3 /* Lucide-LICENSE.txt */,
+				5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */,
+			);
+			path = Licenses;
+			sourceTree = "<group>";
+		};
+		AFC71389006DF3BE1DD52D48 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				3576D0AAEDEAFA110046DA31 /* AttractView.swift */,
+				A313CBED428256A71A858FEA /* BuilderView.swift */,
+				5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */,
+				309806DC452BB62BEE356569 /* DebugBar.swift */,
+				425B72639F56A451EDADC970 /* Layout.swift */,
+				37AB58ED0D97D8805BD8DAA1 /* NameEntryView.swift */,
+				1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */,
+				4BF79193415195B4A4327886 /* SummaryView.swift */,
+				EF77AD1D7C8D64414EA6DB92 /* Theme.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		BC1E95C435217D90865863F0 /* Video */ = {
+			isa = PBXGroup;
+			children = (
+				CF19FBBFF9063473EF2C011F /* loop.mp4 */,
+			);
+			path = Video;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5442330B6FD85F22557D70C4 /* Kiosk */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E5576AF289535ADEEA9AFD9C /* Build configuration list for PBXNativeTarget "Kiosk" */;
+			buildPhases = (
+				B8AF5F286627874F6FAFB46E /* Sources */,
+				272D0202539AADFD4FD79C72 /* Resources */,
+				3FE347B3E4A885A69ABDB6AA /* Frameworks */,
+				0389A88E51F3674B511F4A3D /* Square MPSDK setup */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Kiosk;
+			packageProductDependencies = (
+				9296C487775A032980AE7F95 /* SquareMobilePaymentsSDK */,
+				71F7D5957E77382361776981 /* MockReaderUI */,
+			);
+			productName = Kiosk;
+			productReference = D6974443317A2D4E0CE83F79 /* Kiosk.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		83BB437219A08F9C07415A6C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					5442330B6FD85F22557D70C4 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 8FE1A1407ACE40FCEB48C31D /* Build configuration list for PBXProject "Kiosk" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 58677E3FA3CFAFC00D961BF1;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D3C6F5611BD4EA0CF059F102 /* XCRemoteSwiftPackageReference "mobile-payments-sdk-ios" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 22C9F245458D6FD9D2AAD8A7 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5442330B6FD85F22557D70C4 /* Kiosk */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		272D0202539AADFD4FD79C72 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CFA9251FBFBDD52ED6806157 /* 3D in Resources */,
+				5E0527E4240E6371F48181A6 /* Assets.xcassets in Resources */,
+				A193DDDF8212752C4341DAC5 /* Lucide-LICENSE.txt in Resources */,
+				38B1CA4705AFB81ABDBA21E7 /* NotoSerif-Bold.ttf in Resources */,
+				2F1D9CFC58D885C3AD6E9BEA /* NotoSerif-Medium.ttf in Resources */,
+				A519F0ABC993AC2479FCF37D /* NotoSerif-OFL.txt in Resources */,
+				D3AB8EFD24B6A0A8DC388F0D /* NotoSerif-Regular.ttf in Resources */,
+				C659717E6746E0A1AD7B7C6E /* NotoSerif-SemiBold.ttf in Resources */,
+				80F62615D532B17AB4C91758 /* loop.mp4 in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		0389A88E51F3674B511F4A3D /* Square MPSDK setup */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Square MPSDK setup";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "SETUP_SCRIPT=\"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/SquareMobilePaymentsSDK.framework/setup\"\nif [ -f \"$SETUP_SCRIPT\" ]; then\n  \"$SETUP_SCRIPT\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B8AF5F286627874F6FAFB46E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F346DF14280B5329EFF72A73 /* Animation.swift in Sources */,
+				FD0A874C890E38BDA7E2144C /* AppModel.swift in Sources */,
+				9BA8BBFF27C6B6D87613C68E /* AssetLibrary.swift in Sources */,
+				B6946563E5372AC1DE291AFB /* AttractView.swift in Sources */,
+				9202055A9FECFAEDCE95CD2D /* BuilderView.swift in Sources */,
+				6AD8D94397D99092AF46F1B7 /* Config.swift in Sources */,
+				8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */,
+				9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */,
+				F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */,
+				1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */,
+				565858834D2F23FCC9892AE8 /* LaunchOptions.swift in Sources */,
+				BC87549B0A11F97F418AB61F /* Layout.swift in Sources */,
+				A27FF852B7F37FBECEA57119 /* NameEntryView.swift in Sources */,
+				C0FFE25ACFD95D63EC7D4169 /* Order.swift in Sources */,
+				7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */,
+				0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */,
+				C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */,
+				E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */,
+				9FB4EB59530BF0754BDBC1F3 /* SquareService.swift in Sources */,
+				330D40F9722FCB8FC0082573 /* Stage.swift in Sources */,
+				5F9C7D0544857EDEAD4E22C6 /* StageActors.swift in Sources */,
+				F86ED738CAD06D788946D97B /* StageView.swift in Sources */,
+				5C4E87910C7013DDFEBDB6ED /* SummaryView.swift in Sources */,
+				2B591179C416EC14B3DF661F /* Theme.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		545CF1B0354FD5EBF5F2BBF3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Kiosk/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Debug;
+		};
+		7E5498FCD73620113DE6D425 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F84857165E0E1562299FB634 /* Kiosk.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CA170C9E6121490E55B409E2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Kiosk/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Release;
+		};
+		FBA626C5ACA1EDCFE8ED0D01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F84857165E0E1562299FB634 /* Kiosk.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8FE1A1407ACE40FCEB48C31D /* Build configuration list for PBXProject "Kiosk" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FBA626C5ACA1EDCFE8ED0D01 /* Debug */,
+				7E5498FCD73620113DE6D425 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E5576AF289535ADEEA9AFD9C /* Build configuration list for PBXNativeTarget "Kiosk" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				545CF1B0354FD5EBF5F2BBF3 /* Debug */,
+				CA170C9E6121490E55B409E2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D3C6F5611BD4EA0CF059F102 /* XCRemoteSwiftPackageReference "mobile-payments-sdk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/square/mobile-payments-sdk-ios";
+			requirement = {
+				kind = exactVersion;
+				version = 2.6.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		71F7D5957E77382361776981 /* MockReaderUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D3C6F5611BD4EA0CF059F102 /* XCRemoteSwiftPackageReference "mobile-payments-sdk-ios" */;
+			productName = MockReaderUI;
+		};
+		9296C487775A032980AE7F95 /* SquareMobilePaymentsSDK */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D3C6F5611BD4EA0CF059F102 /* XCRemoteSwiftPackageReference "mobile-payments-sdk-ios" */;
+			productName = SquareMobilePaymentsSDK;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 83BB437219A08F9C07415A6C /* Project object */;
+}

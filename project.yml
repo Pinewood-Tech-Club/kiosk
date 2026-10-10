@@ -1,0 +1,50 @@
+name: Kiosk
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  SquareMobilePaymentsSDK:
+    url: https://github.com/square/mobile-payments-sdk-ios
+    exactVersion: 2.6.0
+fileGroups:
+  - Config
+configFiles:
+  Debug: Config/Kiosk.xcconfig
+  Release: Config/Kiosk.xcconfig
+targets:
+  Kiosk:
+    type: application
+    platform: iOS
+    sources:
+      - path: Kiosk
+        excludes:
+          - "Resources/3D"
+          - "Resources/3D/**"
+      - path: Kiosk/Resources/3D
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: SquareMobilePaymentsSDK
+        product: SquareMobilePaymentsSDK
+      - package: SquareMobilePaymentsSDK
+        product: MockReaderUI
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "2"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Kiosk/Info.plist
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+    postBuildScripts:
+      - name: Square MPSDK setup
+        basedOnDependencyAnalysis: false
+        script: |
+          SETUP_SCRIPT="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/SquareMobilePaymentsSDK.framework/setup"
+          if [ -f "$SETUP_SCRIPT" ]; then
+            "$SETUP_SCRIPT"
+          fi

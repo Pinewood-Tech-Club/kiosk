@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Kiosk</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>KioskEventName</key>
+	<string>$(KIOSK_EVENT_NAME)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Square uses Bluetooth to connect and communicate with Square readers and compatible accessories.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Square needs to know where transactions take place to reduce risk and minimize payment disputes.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Some Square readers use the microphone to communicate payment card data to your device.</string>
+	<key>SquareAccessToken</key>
+	<string>$(SQUARE_ACCESS_TOKEN)</string>
+	<key>SquareApplicationID</key>
+	<string>$(SQUARE_APPLICATION_ID)</string>
+	<key>SquareLocationID</key>
+	<string>$(SQUARE_LOCATION_ID)</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>NotoSerif-Regular.ttf</string>
+		<string>NotoSerif-Medium.ttf</string>
+		<string>NotoSerif-SemiBold.ttf</string>
+		<string>NotoSerif-Bold.ttf</string>
+	</array>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiresFullScreen</key>
+	<true/>
+	<key>UIStatusBarHidden</key>
+	<true/>
+	<key>UISupportedExternalAccessoryProtocols</key>
+	<array>
+		<string>com.squareup.s020</string>
+		<string>com.squareup.s025</string>
+		<string>com.squareup.s089</string>
+		<string>com.squareup.protocol.stand</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+</dict>
+</plist>
