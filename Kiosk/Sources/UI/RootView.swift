@@ -1,52 +1,84 @@
 import SwiftUI
 
+/// Screens change by fading one opaque layer over another. Only the attract and name overlays ever fade;
+/// whatever they cover appears instantly underneath and stays fully opaque until covered
+/// (`AppModel.leavingScreen`), so no frame shows a half-faded screen over the bare backdrop.
 struct RootView: View {
     @Bindable var app: AppModel
 
-    private var stageOpacity: Double {
-        switch app.screen {
-        case .builder: app.builderVisible ? 1 : 0
-        case .roleSetup, .attract: 1
-        case .name, .confirmation: 0
+    private func shows(_ screen: AppModel.Screen) -> Bool { app.screen == screen || app.leavingScreen == screen }
+    private var builderShown: Bool { shows(.builder) || shows(.name) }
+
+    var body: some View {
+        GeometryReader { proxy in
+            // Full-screen layers must be laid out in a container that has no safe area. Fixed-size
+            // children of an `.ignoresSafeArea()` ZStack are still centered in the safe area, which put
+            // every screen 12.5 pt above the RealityView and left a bar at the bottom.
+            layers.frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .ignoresSafeArea()
+        .ignoresSafeArea(.keyboard)
+        .statusBarHidden(true)
+        .persistentSystemOverlays(.hidden)
+        .background(WindowHook())
+        .sheet(isPresented: $app.showsLog) {
+            LogView(entries: app.square.log)
+        }
+        .onAppear {
+            app.start()
         }
     }
 
-    var body: some View {
+    private var layers: some View {
         ZStack {
             AmbientBackdrop()
 
             app.host.frame(width: 0, height: 0)
 
-            if app.screen == .builder {
+            if builderShown {
                 BuilderBackdrop(app: app)
                     .opacity(app.builderVisible ? 1 : 0)
-                    .transition(.opacity)
+                    .transition(.identity)
             }
 
-            StageView(stage: app.stage)
-                .opacity(stageOpacity)
+            // Beneath the stage so each receipt row's live 3D item draws on the paper.
+            if shows(.confirmation), let receipt = app.receipt {
+                ConfirmationView(app: app, receipt: receipt)
+                    .background(AmbientBackdrop())
+                    .transition(.identity)
+            }
 
-            if app.screen == .builder {
+            // Never hidden: a RealityView left hidden for a while doesn't render again. The opaque screens
+            // above it cover it instead.
+            StageView(stage: app.stage)
+
+            if builderShown, app.screen != .confirmation {
                 BuilderForeground(app: app)
                     .opacity(app.builderVisible ? 1 : 0)
-                    .allowsHitTesting(app.builderVisible)
-                    .transition(.opacity)
+                    .allowsHitTesting(app.screen == .builder && app.builderVisible)
+                    .transition(.identity)
             }
 
-            Group {
-                switch app.screen {
-                case .roleSetup: RoleSetupView(app: app)
-                case .attract: AttractView(app: app)
-                case .builder: EmptyView()
-                case .name: NameEntryView(app: app)
-                case .confirmation:
-                    if let receipt = app.receipt { ConfirmationView(app: app, receipt: receipt) }
-                }
+            if shows(.roleSetup) {
+                RoleSetupView(app: app).transition(.identity)
             }
-            .transition(.opacity)
+
+            if shows(.name) {
+                NameEntryView(app: app)
+                    .background(AmbientBackdrop())
+                    .opacity(app.screen == .name ? 1 : 0)
+                    .allowsHitTesting(app.screen == .name)
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+
+            AttractView(app: app, isActive: app.screen == .attract)
+                .opacity(app.screen == .attract ? 1 : 0)
+                .allowsHitTesting(app.screen == .attract)
+                .zIndex(2)
 
             if app.show3DDebug, app.screen == .builder {
-                StageDebugOverlay(stage: app.stage)
+                StageDebugOverlay(stage: app.stage).zIndex(3)
             }
 
             VStack {
@@ -66,17 +98,9 @@ struct RootView: View {
                 }
                 Spacer()
             }
+            .zIndex(4)
         }
         .coordinateSpace(.named("screen"))
-        .ignoresSafeArea()
-        .ignoresSafeArea(.keyboard)
-        .statusBarHidden(true)
-        .persistentSystemOverlays(.hidden)
-        .background(WindowHook())
-        .sheet(isPresented: $app.showsLog) {
-            LogView(entries: app.square.log)
-        }
-        .onAppear { app.start() }
     }
 }
 
