@@ -5,6 +5,7 @@ struct RigPose {
     var position: SIMD3<Float>
     var scale: Float
     var pitch: Float
+    var roll: Float = 0
     var yaw: Float
 }
 
@@ -17,142 +18,175 @@ extension Entity {
         }
         isEnabled = value > 0.002
     }
+
+    /// Fades render as a flat layer instead of revealing the model's own back faces.
+    func useDepthPrePass() {
+        let group = ModelSortGroup(depthPass: .prePass)
+        func visit(_ entity: Entity) {
+            if entity.components.has(ModelComponent.self) {
+                entity.components.set(ModelSortGroupComponent(group: group, order: 0))
+            }
+            for child in entity.children { visit(child) }
+        }
+        visit(self)
+    }
 }
 
-/// A vessel with its scoops. Transform chain: root (position, scale) → orient (pitch · yaw) → body (−pivot).
+/// A vessel with its scoops.
+/// root (position, scale) → floor (pitch) → rolled (roll) → spun (yaw) → body (−pivot).
 @MainActor
 final class ItemRig {
     let vessel: Vessel
     let root = Entity()
-    let orient = Entity()
+    let floor = Entity()
+    let rolled = Entity()
+    let spun = Entity()
     let body = Entity()
     let pivot: SIMD3<Float>
+    let floorShadow: ModelEntity?
+    let floorShadowFullRoll: Float
     var pose: RigPose
     var scaleMultiplier: Float = 1
-    var squashY: Float = 1
     var scoops: [ScoopActor] = []
     var motion: Tween?
-    var bounceTween: Tween?
+    var appearTween: Tween?
     var opacityTween: Tween?
-    var replenishTween: Tween?
     private(set) var opacity: Float = 1
+    private var shownShadowOpacity: Float = -1
 
-    init(vessel: Vessel, model: Entity, shadow: ModelEntity?, pivot: SIMD3<Float>, pose: RigPose) {
+    init(vessel: Vessel, model: Entity, baseShadow: ModelEntity?, floorShadow: ModelEntity?, floorShadowFullRoll: Float,
+         pivot: SIMD3<Float>, pose: RigPose) {
         self.vessel = vessel
         self.pivot = pivot
         self.pose = pose
+        self.floorShadow = floorShadow
+        self.floorShadowFullRoll = floorShadowFullRoll
         root.name = "rig-\(vessel.rawValue)"
-        root.addChild(orient)
-        orient.addChild(body)
+        root.addChild(floor)
+        floor.addChild(rolled)
+        if let floorShadow { floor.addChild(floorShadow) }
+        rolled.addChild(spun)
+        spun.addChild(body)
         body.position = -pivot
         body.addChild(model)
-        if let shadow { body.addChild(shadow) }
+        if let baseShadow { body.addChild(baseShadow) }
         apply()
     }
 
     func apply() {
         root.position = pose.position
-        let s = pose.scale * scaleMultiplier
-        root.scale = [s, s * squashY, s]
-        orient.orientation = simd_quatf(angle: pose.pitch, axis: [1, 0, 0]) * simd_quatf(angle: pose.yaw, axis: [0, 1, 0])
+        root.scale = .init(repeating: max(pose.scale * scaleMultiplier, 1e-5))
+        floor.orientation = simd_quatf(angle: pose.pitch, axis: [1, 0, 0])
+        rolled.orientation = simd_quatf(angle: pose.roll, axis: [0, 0, 1])
+        spun.orientation = simd_quatf(angle: pose.yaw, axis: [0, 1, 0])
+        if let floorShadow, floorShadowFullRoll != 0 {
+            let amount = Ease.clamp01(abs(pose.roll) / abs(floorShadowFullRoll))
+            if abs(amount - shownShadowOpacity) > 0.004 {
+                shownShadowOpacity = amount
+                floorShadow.setOpacity(amount)
+            }
+        }
     }
 
     func setOpacity(_ value: Float) {
+        guard value != opacity else { return }
         opacity = value
         root.setOpacity(value)
     }
 
     func cancelMotions() {
         motion?.cancel()
-        bounceTween?.cancel()
+        appearTween?.cancel()
         opacityTween?.cancel()
-        replenishTween?.cancel()
     }
 }
 
+/// One scoop. Flights move `root`; `model` (and `ghost` during a slot cross-dissolve) are its children.
 @MainActor
 final class ScoopActor {
+    enum State { case flying, pressing, landed, leaving }
+
     let flavor: Flavor
-    let slot: Int
-    let entity: ModelEntity
+    var slot: Int
+    let root = Entity()
+    var model: ModelEntity
+    var ghost: ModelEntity?
+    var crossfade: Tween?
     var staticPose: String
     var morpher: ScoopMorpher?
     var morphFrom: PoseRef?
     var morphTo = ""
     var morphWeight: Float = 0
     var morphDirty = false
-    var morphTween: Tween?
     var motion: Tween?
-    var squashTween: Tween?
+    var relayout: Tween?
     weak var rig: ItemRig?
     var placementKey = "1"
-    var isLanded = false
+    var state: State = .flying
+    var pressHeight: Float = 0
 
-    init(flavor: Flavor, slot: Int, entity: ModelEntity, pose: String) {
+    init(flavor: Flavor, slot: Int, model: ModelEntity, pose: String) {
         self.flavor = flavor
         self.slot = slot
-        self.entity = entity
+        self.model = model
         self.staticPose = pose
+        root.addChild(model)
     }
+
+    var isLanded: Bool { state == .landed }
 
     func cancelMotions() {
         motion?.cancel()
-        squashTween?.cancel()
-        morphTween?.cancel()
+        motion = nil
+        relayout?.cancel()
+        relayout = nil
     }
 }
 
-/// A flavor selector icon. Two model entities let the icon cross-fade when it switches to the next slot's mesh.
 @MainActor
 final class FlavorIcon {
     let flavor: Flavor
     let holder = Entity()
-    let models: [ModelEntity]
-    var activeModel = 0
-    var slot = 1
-    var baseVisible = false
-    var suppressed = false
-    var opacityTween: Tween?
-    var replenishTween: Tween?
-    var crossfadeTween: Tween?
-    var bounceTween: Tween?
-    var scaleMultiplier: Float = 1
+    let model: ModelEntity
+    var restPosition: SIMD3<Float> = .zero
+    var restOrientation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
     var baseScale: Float = 1
-    private(set) var opacity: Float = 0
+    var appear: Float = 1
+    var appearTween: Tween?
+    var opacityTween: Tween?
+    var baseVisible = false
+    private(set) var opacity: Float = 1
 
-    init(flavor: Flavor, models: [ModelEntity], shadow: ModelEntity) {
+    init(flavor: Flavor, model: ModelEntity, shadow: ModelEntity) {
         self.flavor = flavor
-        self.models = models
+        self.model = model
         holder.name = "flavor-\(flavor.rawValue)"
-        for model in models { holder.addChild(model) }
+        holder.addChild(model)
         holder.addChild(shadow)
-        models[1].setOpacity(0)
     }
-
-    var model: ModelEntity { models[activeModel] }
 
     func setOpacity(_ value: Float) {
+        guard value != opacity else { return }
         opacity = value
         holder.setOpacity(value)
-    }
-
-    func applyScale() {
-        holder.scale = .init(repeating: baseScale * scaleMultiplier)
     }
 }
 
 @MainActor
 final class TrayEntry {
-    let item: IceCreamItem
-    let rig: ItemRig
-    let contentCenterY: Float
+    enum Mode { case tray, summary, flying, editing, removing }
+
+    var item: IceCreamItem
+    var rig: ItemRig?
     var index: Float
     var indexTween: Tween?
-    var isFlying = true
-    var isRemoving = false
+    var mode: Mode = .flying
+    var contentCenterY: Float
     var lastOpacity: Float = -1
+    var spinYaw: Float = -0.55
+    var spinVelocity: Float = 0
 
-    init(item: IceCreamItem, rig: ItemRig, index: Float, contentCenterY: Float) {
+    init(item: IceCreamItem, rig: ItemRig?, index: Float, contentCenterY: Float) {
         self.item = item
         self.rig = rig
         self.index = index

@@ -41,12 +41,22 @@ enum Layout {
 
     static func flavorIconCenter(_ flavor: Flavor) -> CGPoint {
         let card = flavorCardCenter(flavor)
-        return CGPoint(x: card.x, y: card.y + iconOffsetY + 10)
+        return CGPoint(x: card.x, y: card.y + iconOffsetY - 10)
     }
 
     static let captionY: CGFloat = 1106
     static let primaryButtonCenter = CGPoint(x: midX, y: 1158)
     static let primaryButtonSize = CGSize(width: 380, height: 72)
+
+    static let sheetRect = CGRect(x: 0, y: 64, width: 1032, height: 1376)
+    static let summaryListRect = CGRect(x: 0, y: 206, width: 1032, height: 846)
+    static let summaryRowPitch: CGFloat = 172
+    static let summaryRowHeight: CGFloat = 172
+    static let summaryItemCenterX: CGFloat = 176
+
+    static func summaryRowCenterY(_ index: CGFloat) -> CGFloat {
+        summaryListRect.minY + 12 + summaryRowHeight / 2 + index * summaryRowPitch
+    }
 
     static let trayRect = CGRect(x: 24, y: 1218, width: 984, height: 134)
     static let trayItemsRect = CGRect(x: 24, y: 1218, width: 638, height: 134)

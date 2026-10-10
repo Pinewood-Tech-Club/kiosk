@@ -67,6 +67,8 @@ final class AssetLibrary {
     private(set) var environment: EnvironmentResource?
     private(set) var shadowMaterial = UnlitMaterial(applyPostProcessToneMap: false)
     private(set) var report: [String] = []
+    private(set) var contactLift: [String: Float] = [:]
+    private var vesselPoints: [Vessel: [SIMD3<Float>]] = [:]
 
     private static let directory = Bundle.main.resourceURL!.appending(path: "3D")
 
@@ -99,6 +101,14 @@ final class AssetLibrary {
         return [0, bounds.center.y, 0]
     }
 
+    func vesselRadius(_ vessel: Vessel, atHeight y: Float) -> Float {
+        var radius: Float = 0
+        for p in vesselPoints[vessel] ?? [] where abs(p.y - y) < 0.002 {
+            radius = max(radius, simd_length(SIMD2<Float>(p.x, p.z)))
+        }
+        return radius > 0 ? radius : (vessel == .cone ? 0.014 : 0.04)
+    }
+
     func vesselTop(_ vessel: Vessel) -> Float {
         vesselBounds[vessel]?.max.y ?? (vessel == .cup ? 0.0463 : 0.136)
     }
@@ -125,6 +135,10 @@ final class AssetLibrary {
             vesselBounds[vessel] = vessels[vessel]!.visualBounds(relativeTo: nil)
         }
 
+        for vessel in Vessel.allCases {
+            vesselPoints[vessel] = Self.points(of: vessels[vessel]!)
+        }
+
         if let url = url("placements.json"), let data = try? Data(contentsOf: url), let parsed = Placements.parse(data) {
             placements = parsed
             report.append("placements.json: loaded")
@@ -145,6 +159,10 @@ final class AssetLibrary {
             scoopSets.append(set)
         }
         engine.flush()
+
+        let problems = contactProblems()
+        let lifts = await Task.detached(priority: .userInitiated) { ContactSolver.solve(problems) }.value
+        contactLift = lifts
 
         let decoded = await images
         var missing = 0
@@ -198,6 +216,58 @@ final class AssetLibrary {
     }
 
     private func url(named name: String) -> URL? { url(name) }
+
+    private static func points(of entity: Entity) -> [SIMD3<Float>] {
+        var out: [SIMD3<Float>] = []
+        func visit(_ node: Entity) {
+            if let model = node.components[ModelComponent.self] {
+                let toRoot = node.transformMatrix(relativeTo: entity)
+                let contents = model.mesh.contents
+                for instance in contents.instances {
+                    guard let meshModel = contents.models[instance.model] else { continue }
+                    let matrix = toRoot * instance.transform
+                    for part in meshModel.parts {
+                        for p in part.positions.elements {
+                            let w = matrix * SIMD4<Float>(p, 1)
+                            out.append([w.x, w.y, w.z])
+                        }
+                    }
+                }
+            }
+            for child in node.children { visit(child) }
+        }
+        visit(entity)
+        return out
+    }
+
+    /// One problem per landing slot: the slot's ball dropped onto the vessel plus the scoops already
+    /// placed beneath it (in their placed poses).
+    private func contactProblems() -> [ContactSolver.Problem] {
+        var problems: [ContactSolver.Problem] = []
+        for vessel in Vessel.allCases {
+            let keys = vessel == .cup ? ["solo", "1", "2", "3"] : ["1", "2", "3"]
+            for key in keys {
+                let slot = key == "solo" ? 1 : Int(key)!
+                var obstacles = vesselPoints[vessel] ?? []
+                if slot > 1 {
+                    for below in 1..<slot {
+                        let belowKey = String(below)
+                        let pose = vessel == .cone ? "cone" : "cup"
+                        let placement = placements.placement(vessel, key: belowKey)
+                        for v in scoopSets[below - 1].positions(pose, stride: 2) {
+                            obstacles.append(placement.rotation.act(v) + placement.translation)
+                        }
+                    }
+                }
+                let placement = placements.placement(vessel, key: key)
+                problems.append(ContactSolver.Problem(key: "\(vessel.rawValue):\(key)", rotation: placement.rotation,
+                                                      translation: placement.translation,
+                                                      ball: scoopSets[slot - 1].positions("ball", stride: 2),
+                                                      obstacles: obstacles))
+            }
+        }
+        return problems
+    }
 
     private struct ParsedMesh: Sendable {
         var data: ScoopMeshData?

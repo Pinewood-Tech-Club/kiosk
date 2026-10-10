@@ -82,50 +82,69 @@ struct ScriptRunner {
         app.stage.dragEnded()
     }
 
+    private func tap(_ card: CardKey, action: () -> Void) async {
+        app.setPressed(card, true)
+        try? await Task.sleep(for: .seconds(0.09))
+        app.setPressed(card, false)
+        action()
+    }
+
+    private func add(_ flavor: Flavor) async {
+        await tap(.flavor(flavor)) { app.addScoop(flavor) }
+    }
+
+    private func select(_ vessel: Vessel) async {
+        await tap(.vessel(vessel)) { app.selectVessel(vessel) }
+    }
+
     func run(_ script: String) async {
         await wait(1.2)
         log("start \(script)")
         switch script {
         case "vessel-to-cone":
             await wait(1.0)
-            app.selectVessel(.cone)
+            await select(.cone)
             await wait(2.2)
-            app.selectVessel(.cup)
+            await select(.cup)
             await wait(2.2)
         case "vessel-pingpong":
-            app.selectVessel(.cone)
+            await select(.cone)
             await wait(0.4)
-            app.selectVessel(.cup)
+            await select(.cup)
             await wait(0.35)
-            app.selectVessel(.cone)
+            await select(.cone)
             await wait(2.5)
         case "bounce":
             await wait(0.5)
-            app.selectVessel(app.current.vessel)
+            await select(app.current.vessel)
             await wait(1.0)
         case "scoops":
             if app.step != .flavors { app.goForward(); await wait(0.8) }
-            app.addScoop(.vanilla)
+            await add(.vanilla)
             await wait(1.6)
-            app.addScoop(.chocolate)
+            await add(.chocolate)
             await wait(1.6)
-            app.addScoop(.cookies)
+            await add(.cookies)
             await wait(2.0)
-            app.undoScoop()
+            app.removeScoop(.cookies)
             await wait(1.6)
         case "scoops-rapid":
             if app.step != .flavors { app.goForward(); await wait(0.8) }
-            app.addScoop(.cookies)
+            await add(.cookies)
             await wait(0.25)
-            app.addScoop(.chocolate)
+            await add(.chocolate)
             await wait(0.25)
-            app.addScoop(.vanilla)
+            await add(.vanilla)
+            await wait(2.5)
+        case "remove-middle":
+            await wait(0.6)
+            app.removeScoop(.chocolate)
             await wait(2.5)
         case "back-swap":
             await wait(0.5)
             app.goBack()
             await wait(0.8)
-            app.selectVessel(app.current.vessel == .cup ? .cone : .cup)
+            await select(app.current.vessel == .cup ? .cone : .cup)
             await wait(2.5)
         case "add-to-order":
             await wait(0.6)
@@ -139,12 +158,30 @@ struct ScriptRunner {
             await wait(6.0)
             await drag(CGSize(width: -30, height: 12), duration: 0.25)
             await wait(3.0)
+        case "edit":
+            await wait(0.8)
+            if let first = app.items.first { app.tapTrayItem(first.id) }
+            await wait(0.6)
+            if app.confirmation != nil, let confirmation = app.confirmation { app.confirm(confirmation) }
+            await wait(1.6)
+            app.jumpToStep(.flavors)
+            await wait(0.8)
+            await add(.cookies)
+            await wait(1.6)
+            app.jumpToStep(.toppings)
+            await wait(0.8)
+            app.goForward()
+            await wait(2.5)
+        case "summary":
+            await wait(0.8)
+            app.viewOrder()
+            await wait(2.5)
+            app.backToBuilder()
+            await wait(2.5)
         case "tray-remove":
             await wait(0.8)
-            if let target = app.items.dropFirst().first, let center = app.stage.trayItemCenter(target.id) {
-                let hit = app.stage.trayItem(at: center)
-                log("tray hit-test at \(Int(center.x)),\(Int(center.y)) -> \(hit == target.id ? "match" : "MISMATCH")")
-                app.removeItem(target.id)
+            if let target = app.items.dropFirst().first {
+                app.delete(target.id)
             }
             await wait(1.5)
         case "demo":
@@ -153,13 +190,13 @@ struct ScriptRunner {
                 app.beginOrder()
                 await wait(2.2)
             }
-            app.selectVessel(.cone)
+            await select(.cone)
             await wait(1.6)
             app.goForward()
             await wait(0.8)
-            app.addScoop(.chocolate)
+            await add(.chocolate)
             await wait(1.3)
-            app.addScoop(.vanilla)
+            await add(.vanilla)
             await wait(1.5)
             app.goForward()
             await wait(1.0)
@@ -167,7 +204,7 @@ struct ScriptRunner {
             await wait(2.4)
             app.goForward()
             await wait(0.8)
-            app.addScoop(.cookies)
+            await add(.cookies)
             await wait(1.6)
             app.goForward()
             await wait(0.8)

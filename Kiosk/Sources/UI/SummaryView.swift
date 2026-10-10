@@ -1,206 +1,152 @@
 import SwiftUI
 
+/// The order, laid out on the expanded tray sheet. Each row leaves its left column empty: the item's
+/// live 3D model flies up from the tray and spins there (positions come from `Layout.summaryRowCenterY`).
 struct SummaryView: View {
     let app: AppModel
 
     var body: some View {
         let quote = app.orderQuote
-        VStack(spacing: 0) {
-            ZStack {
-                Text("Your Order")
-                    .font(Theme.serif(52))
-                    .foregroundStyle(Theme.ink)
-                HStack {
-                    Button { app.backToBuilder() } label: {
-                        HStack(spacing: 6) {
-                            LucideIcon(name: "chevron-left", size: 26)
-                            Text("Keep ordering").font(Theme.serif(22, .medium))
-                        }
+        ZStack(alignment: .top) {
+            HStack {
+                Button { app.backToBuilder() } label: {
+                    HStack(spacing: 6) {
+                        LucideIcon(name: "chevron-down", size: 24)
+                        Text("Keep ordering")
                     }
-                    .buttonStyle(SecondaryButtonStyle(height: 56))
-                    Spacer()
                 }
+                .buttonStyle(.glassSecondary(height: 60, fontSize: 21))
+                Spacer()
             }
-            .padding(.horizontal, 48)
-            .padding(.top, 84)
+            .padding(.horizontal, 40)
+            .frame(height: 60)
+            .position(x: Layout.midX, y: Layout.backButtonCenter.y)
+
+            Text("Your order")
+                .font(Theme.serif(34))
+                .foregroundStyle(Theme.ink)
+                .position(x: Layout.midX, y: Layout.backButtonCenter.y)
 
             if let notice = app.notice {
-                NoticeBanner(notice: notice)
-                    .padding(.horizontal, 64)
-                    .padding(.top, 28)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                HStack(spacing: 10) {
+                    LucideIcon(name: "circle-alert", size: 20)
+                    Text(([notice.title] + notice.details).joined(separator: " "))
+                        .lineLimit(2)
+                }
+                .font(Theme.sans(17, .medium))
+                .foregroundStyle(Theme.accentDeep)
+                .frame(maxWidth: 820)
+                .position(x: Layout.midX, y: Layout.summaryListRect.minY - 26)
+                .transition(.opacity)
             }
 
             ScrollView {
-                VStack(spacing: 14) {
+                VStack(spacing: 0) {
                     ForEach(Array(quote.lines.enumerated()), id: \.element.id) { index, line in
-                        ItemRow(index: index + 1, line: line) { app.removeItem(line.id) }
+                        SummaryRow(line: line, showsDivider: index > 0,
+                                   edit: { app.tapTrayItem(line.id) },
+                                   remove: { app.requestDelete(line.id) })
+                            .transition(.opacity)
                     }
-                    PricingExplainer(quote: quote)
-                        .padding(.top, 14)
                 }
-                .padding(.horizontal, 64)
-                .padding(.vertical, 28)
+                .padding(.top, 12)
+                .padding(.bottom, 40)
             }
-            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
+            .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y + $0.contentInsets.top }) { _, offset in
+                app.setSummaryScroll(offset)
+            }
+            .frame(width: Layout.summaryListRect.width, height: Layout.summaryListRect.height)
+            .position(x: Layout.summaryListRect.midX, y: Layout.summaryListRect.midY)
 
-            VStack(spacing: 18) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Total").font(Theme.serif(34))
-                    Spacer()
-                    Text(quote.totalCents.formattedAsUSD)
-                        .font(Theme.serif(40, .bold))
-                        .monospacedDigit()
-                }
-                .foregroundStyle(Theme.ink)
-                Text("Sales tax, if any, is added at payment.")
-                    .font(Theme.sans(16))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button { app.completeOrder() } label: {
-                    HStack(spacing: 12) {
-                        Text("Complete Order")
-                        LucideIcon(name: "arrow-right", size: 26)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PrimaryButtonStyle(height: 84, fontSize: 30))
-                .disabled(quote.isEmpty)
-            }
-            .padding(.horizontal, 64)
-            .padding(.top, 24)
-            .padding(.bottom, 44)
-            .background(Theme.background.shadow(.drop(color: Theme.cardShadow, radius: 20, y: -6)))
+            checkout(quote)
+                .frame(width: Layout.screen.width - 112)
+                .position(x: Layout.midX, y: 1214)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.background)
+        .frame(width: Layout.screen.width, height: Layout.screen.height)
+        .animation(.easeInOut(duration: 0.35), value: quote.lines.map(\.id))
         .animation(.easeInOut(duration: 0.3), value: app.notice)
-        .animation(.easeInOut(duration: 0.3), value: quote.lines.map(\.id))
+    }
+
+    private func checkout(_ quote: OrderQuote) -> some View {
+        VStack(spacing: 22) {
+            Rectangle().fill(Theme.inkFaint).frame(height: 1)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Total").font(Theme.serif(30))
+                    Text(breakdown(quote))
+                        .font(Theme.sans(17))
+                        .foregroundStyle(Theme.inkSecondary)
+                }
+                Spacer()
+                Text(quote.totalCents.formattedAsUSD)
+                    .font(Theme.serif(54, .semibold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(quote.totalCents)))
+            }
+            .foregroundStyle(Theme.ink)
+            Button { app.completeOrder() } label: {
+                Text("Checkout").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glassCTA(height: 88, fontSize: 30))
+            .disabled(quote.isEmpty)
+        }
+    }
+
+    private func breakdown(_ quote: OrderQuote) -> String {
+        var parts = ["\(quote.scoopCount) scoop\(quote.scoopCount == 1 ? "" : "s") \(quote.scoopsTotalCents.formattedAsUSD)"]
+        if quote.coneCount > 0 {
+            parts.append("\(quote.coneCount) waffle cone\(quote.coneCount == 1 ? "" : "s") \(quote.conesTotalCents.formattedAsUSD)")
+        }
+        return parts.joined(separator: "  ·  ")
     }
 }
 
-private struct ItemRow: View {
-    let index: Int
+private struct SummaryRow: View {
     let line: OrderQuote.Line
+    let showsDivider: Bool
+    let edit: () -> Void
     let remove: () -> Void
 
     var body: some View {
-        HStack(spacing: 20) {
-            LucideIcon(name: line.item.vessel == .cone ? "ice-cream-cone" : "ice-cream-bowl", size: 34)
-                .foregroundStyle(Theme.ink)
-                .frame(width: 68, height: 68)
-                .background(Theme.backgroundDeep, in: .circle)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(line.item.title)
-                    .font(Theme.serif(26))
-                    .foregroundStyle(Theme.ink)
-                Text(line.item.flavorSummary)
-                    .font(Theme.sans(18))
-                    .foregroundStyle(Theme.inkSecondary)
-                HStack(spacing: 6) {
-                    Text("\(line.item.scoopCount) scoop\(line.item.scoopCount == 1 ? "" : "s") \(line.scoopShareCents.formattedAsUSD)")
-                    if line.vesselCents > 0 {
-                        Text("· waffle cone \(line.vesselCents.formattedAsUSD)")
+        HStack(spacing: 0) {
+            Button(action: edit) {
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: 268)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(line.item.vessel.title)
+                            .font(Theme.serif(30))
+                            .foregroundStyle(Theme.ink)
+                        Text(line.item.flavorSummary)
+                            .font(Theme.serif(22, .regular))
+                            .foregroundStyle(Theme.inkSecondary)
                     }
+                    Spacer(minLength: 16)
+                    Text(line.totalCents.formattedAsUSD)
+                        .font(Theme.serif(28, .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.ink)
                 }
-                .font(Theme.sans(15))
-                .foregroundStyle(Theme.inkSecondary)
+                .contentShape(Rectangle())
             }
-            Spacer()
-            Text(line.totalCents.formattedAsUSD)
-                .font(Theme.serif(26))
-                .monospacedDigit()
-                .foregroundStyle(Theme.ink)
+            .buttonStyle(.plain)
+
             Button(action: remove) {
-                LucideIcon(name: "x", size: 22)
+                LucideIcon(name: "trash-2", size: 22)
                     .foregroundStyle(Theme.inkSecondary)
-                    .frame(width: 52, height: 52)
-                    .background(Theme.backgroundDeep, in: .circle)
-                    .contentShape(.circle)
+                    .frame(width: 64, height: 64)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(PressableStyle())
-            .accessibilityLabel("Remove item \(index)")
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(line.item.vessel.title)")
+            .padding(.leading, 18)
         }
-        .padding(20)
-        .background(Theme.card, in: .rect(cornerRadius: 26, style: .continuous))
-        .shadow(color: Theme.cardShadow, radius: 14, y: 6)
-    }
-}
-
-private struct PricingExplainer: View {
-    let quote: OrderQuote
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("How scoop pricing works")
-                .font(Theme.serif(22))
-                .foregroundStyle(Theme.ink)
-            Text("Scoops are priced by the total number of scoops in your whole order, so every extra scoop gets cheaper.")
-                .font(Theme.sans(17))
-                .foregroundStyle(Theme.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                ForEach(Pricing.tierTable, id: \.scoops) { tier in
-                    tierChip("\(tier.scoops) scoop\(tier.scoops == 1 ? "" : "s")", tier.cents.formattedAsUSD,
-                             active: quote.scoopCount == tier.scoops)
-                }
-                tierChip("Each extra", "+\(Pricing.additionalScoopCents.formattedAsUSD)", active: quote.scoopCount > 3)
-            }
-            Divider().overlay(Theme.inkFaint)
-            row("Your \(quote.scoopCount) scoop\(quote.scoopCount == 1 ? "" : "s")", quote.scoopsTotalCents)
-            if quote.coneCount > 0 {
-                row("Waffle cone\(quote.coneCount == 1 ? "" : "s") \(quote.coneCount) × \(Pricing.waffleConeCents.formattedAsUSD)",
-                    quote.conesTotalCents)
-            }
-            if quote.lines.count > 1 {
-                Text("Item prices above share the scoop price evenly across your scoops.")
-                    .font(Theme.sans(15))
-                    .foregroundStyle(Theme.inkSecondary)
+        .padding(.trailing, 40)
+        .frame(height: Layout.summaryRowHeight)
+        .overlay(alignment: .top) {
+            if showsDivider {
+                Rectangle().fill(Theme.inkFaint).frame(height: 1).padding(.leading, 268).padding(.trailing, 40)
             }
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.backgroundDeep, in: .rect(cornerRadius: 26, style: .continuous))
-    }
-
-    private func tierChip(_ title: String, _ price: String, active: Bool) -> some View {
-        VStack(spacing: 2) {
-            Text(title).font(Theme.sans(14, .medium))
-            Text(price).font(Theme.serif(20))
-        }
-        .foregroundStyle(active ? .white : Theme.ink)
-        .frame(maxWidth: .infinity, minHeight: 64)
-        .background(active ? Theme.ink : Theme.card, in: .rect(cornerRadius: 16, style: .continuous))
-    }
-
-    private func row(_ title: String, _ cents: Int) -> some View {
-        HStack {
-            Text(title).font(Theme.sans(18, .medium))
-            Spacer()
-            Text(cents.formattedAsUSD).font(Theme.sans(18, .semibold)).monospacedDigit()
-        }
-        .foregroundStyle(Theme.ink)
-    }
-}
-
-struct NoticeBanner: View {
-    let notice: AppModel.Notice
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            LucideIcon(name: "circle-alert", size: 28)
-                .foregroundStyle(Theme.accent)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(notice.title).font(Theme.serif(22))
-                ForEach(notice.details, id: \.self) {
-                    Text($0).font(Theme.sans(16)).foregroundStyle(Theme.inkSecondary)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(Theme.ink)
-        .padding(20)
-        .background(Theme.accent.opacity(0.12), in: .rect(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.accent.opacity(0.4), lineWidth: 1))
     }
 }

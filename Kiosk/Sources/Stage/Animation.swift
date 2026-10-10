@@ -9,13 +9,10 @@ enum Ease {
     }
 
     static func outCubic(_ t: Float) -> Float { 1 - pow(1 - t, 3) }
+    static func outQuad(_ t: Float) -> Float { 1 - (1 - t) * (1 - t) }
+    static func inQuad(_ t: Float) -> Float { t * t }
     static func inCubic(_ t: Float) -> Float { t * t * t }
     static func inOutSine(_ t: Float) -> Float { -(cos(.pi * t) - 1) / 2 }
-
-    static func outBack(_ t: Float, overshoot s: Float = 1.70158) -> Float {
-        let u = t - 1
-        return 1 + (s + 1) * u * u * u + s * u * u
-    }
 
     static func segment(_ t: Float, _ a: Float, _ b: Float) -> Float {
         clamp01((t - a) / (b - a))
@@ -44,39 +41,74 @@ struct TimingCurve {
         if x <= 0 { return 0 }
         if x >= 1 { return 1 }
         var t = x
-        for _ in 0..<6 {
+        for _ in 0..<8 {
             let dx = bezier(t, x1, x2) - x
             let d = slope(t, x1, x2)
-            if abs(dx) < 1e-5 { break }
-            if abs(d) < 1e-6 { break }
+            if abs(dx) < 1e-6 || abs(d) < 1e-6 { break }
             t -= dx / d
         }
-        t = Ease.clamp01(t)
-        return bezier(t, y1, y2)
+        var lo: Float = 0, hi: Float = 1
+        if abs(bezier(t, x1, x2) - x) > 1e-4 {
+            t = x
+            for _ in 0..<24 {
+                if bezier(t, x1, x2) < x { lo = t } else { hi = t }
+                t = (lo + hi) / 2
+            }
+        }
+        return bezier(Ease.clamp01(t), y1, y2)
     }
 
     static let standard = TimingCurve(0.45, 0, 0.25, 1)
     static let flight = TimingCurve(0.36, 0, 0.18, 1)
-    /// Arrives with a little residual velocity so landings read as a soft impact rather than a docking.
-    static let impact = TimingCurve(0.42, 0, 0.62, 0.88)
     static let swoop = TimingCurve(0.55, 0, 0.3, 1)
-    static let transfer = TimingCurve(0.22, 0.12, 0.6, 0.9)
+    static let swiftUIEaseIn = TimingCurve(0.42, 0, 1, 1)
+    static let swiftUIEaseOut = TimingCurve(0, 0, 0.58, 1)
+    static let swiftUIEaseInOut = TimingCurve(0.42, 0, 0.58, 1)
 }
 
-/// Underdamped squash used when a scoop lands: 1 at contact, dips, overshoots a little, settles.
-enum Squash {
-    static let duration: Float = 0.55
+/// Damped spring with the same parameterization (and therefore the same motion) as SwiftUI's
+/// `.spring(response:dampingFraction:)`, so a 3D model can move in lockstep with a SwiftUI view.
+struct Spring1D {
+    var value: Float
+    var velocity: Float = 0
+    var target: Float
+    let response: Float
+    let dampingRatio: Float
 
-    static func vertical(_ t: Float, amplitude: Float = 0.27) -> Float {
-        guard t > 0, t < duration else { return 1 }
-        let omega: Float = 2 * .pi * 3.1
-        return 1 - amplitude * exp(-t / 0.12) * sin(omega * t)
+    init(value: Float, response: Float, dampingRatio: Float) {
+        self.value = value
+        self.target = value
+        self.response = response
+        self.dampingRatio = dampingRatio
     }
 
-    static func scale(_ t: Float, amplitude: Float = 0.27) -> SIMD3<Float> {
-        let y = vertical(t, amplitude: amplitude)
-        let xz = 1 / sqrt(y)
-        return [xz, y, xz]
+    var isSettled: Bool { abs(value - target) < 1e-4 && abs(velocity) < 1e-3 }
+
+    mutating func step(_ dt: Float) {
+        guard dt > 0 else { return }
+        if isSettled {
+            value = target
+            velocity = 0
+            return
+        }
+        let omega = 2 * Float.pi / response
+        let zeta = dampingRatio
+        let x0 = value - target
+        let v0 = velocity
+        if zeta < 1 {
+            let wd = omega * sqrt(1 - zeta * zeta)
+            let decay = exp(-zeta * omega * dt)
+            let a = x0
+            let b = (v0 + zeta * omega * x0) / wd
+            let c = cos(wd * dt), s = sin(wd * dt)
+            value = target + decay * (a * c + b * s)
+            velocity = decay * ((b * wd - zeta * omega * a) * c - (a * wd + zeta * omega * b) * s)
+        } else {
+            let decay = exp(-omega * dt)
+            let k = v0 + omega * x0
+            value = target + (x0 + k * dt) * decay
+            velocity = (v0 - omega * k * dt) * decay
+        }
     }
 }
 

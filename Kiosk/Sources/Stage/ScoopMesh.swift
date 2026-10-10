@@ -95,8 +95,43 @@ struct ScoopMeshData: Sendable {
             bounds.append(Bounds(min: lo, max: hi))
         }
 
+        weldSeams(&interleaved, vertexCount: vertexCount, poseCount: poseCount)
         return ScoopMeshData(vertexCount: vertexCount, indexCount: indexCount, poseNames: names,
                              uvs: uvs, indices: indices, poseVertices: interleaved, poseBounds: bounds)
+    }
+
+    /// UV-seam vertices are duplicated; they coincide in the authored rest pose, but a pose can pull the
+    /// copies apart and open a crack. Give every copy of a seam vertex the same position and normal in every pose.
+    private static func weldSeams(_ vertices: inout [Float], vertexCount: Int, poseCount: Int) {
+        var groups: [SIMD3<Int32>: [Int]] = [:]
+        for v in 0..<vertexCount {
+            let o = v * floatsPerPoseVertex
+            let key = SIMD3<Int32>(Int32((vertices[o] * 1e6).rounded()),
+                                   Int32((vertices[o + 1] * 1e6).rounded()),
+                                   Int32((vertices[o + 2] * 1e6).rounded()))
+            groups[key, default: []].append(v)
+        }
+        let seams = groups.values.filter { $0.count > 1 }
+        guard !seams.isEmpty else { return }
+        for pose in 0..<poseCount {
+            let base = pose * vertexCount * floatsPerPoseVertex
+            for members in seams {
+                var position = SIMD3<Float>.zero
+                var normal = SIMD3<Float>.zero
+                for v in members {
+                    let o = base + v * floatsPerPoseVertex
+                    position += SIMD3(vertices[o], vertices[o + 1], vertices[o + 2])
+                    normal += SIMD3(vertices[o + 3], vertices[o + 4], vertices[o + 5])
+                }
+                position /= Float(members.count)
+                normal = simd_length(normal) > 1e-6 ? simd_normalize(normal) : SIMD3(0, 1, 0)
+                for v in members {
+                    let o = base + v * floatsPerPoseVertex
+                    vertices[o] = position.x; vertices[o + 1] = position.y; vertices[o + 2] = position.z
+                    vertices[o + 3] = normal.x; vertices[o + 4] = normal.y; vertices[o + 5] = normal.z
+                }
+            }
+        }
     }
 
     /// Sphere-based stand-in with the same pose structure, used only if a .scoopmesh file is missing.
@@ -290,9 +325,24 @@ final class ScoopMeshSet {
     }
 
     func preloadStaticMeshes() {
-        for name in data.poseNames where name != "ball" {
+        for name in data.poseNames {
             _ = staticMesh(name)
         }
+    }
+
+    func positions(_ name: String, stride step: Int = 1) -> [SIMD3<Float>] {
+        let base = (poseIndex[resolve(name)] ?? 0) * vertexCount * ScoopMeshData.floatsPerPoseVertex
+        var out: [SIMD3<Float>] = []
+        out.reserveCapacity(vertexCount / step + 1)
+        data.poseVertices.withUnsafeBufferPointer { v in
+            var i = 0
+            while i < vertexCount {
+                let o = base + i * ScoopMeshData.floatsPerPoseVertex
+                out.append([v[o], v[o + 1], v[o + 2]])
+                i += step
+            }
+        }
+        return out
     }
 
     func preloadMorphers(_ count: Int) {

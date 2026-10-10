@@ -58,6 +58,8 @@ struct IceCreamItem: Identifiable, Equatable, Sendable {
         "\(vessel.title) · \(scoopCount) scoop\(scoopCount == 1 ? "" : "s")"
     }
 
+    var hasChoices: Bool { !flavors.isEmpty || vessel != .cup }
+
     var flavorSummary: String {
         Self.describe(flavors)
     }
@@ -79,44 +81,39 @@ enum Pricing {
     static let maxScoopsPerItem = 3
     static let waffleConeCents = 150
 
-    static let tierTable: [(scoops: Int, cents: Int)] = [(1, 400), (2, 700), (3, 900)]
-    static let additionalScoopCents = 200
+    /// Scoops are billed by their position in the whole order (one Square catalog line per scoop):
+    /// the order's 1st scoop is $4, the 2nd $3, every later one $2.
+    static func scoopCents(atPosition position: Int) -> Int {
+        switch position {
+        case ...0: 0
+        case 1: 400
+        case 2: 300
+        default: 200
+        }
+    }
 
     static func scoopsTotal(_ count: Int) -> Int {
         guard count > 0 else { return 0 }
-        if let tier = tierTable.first(where: { $0.scoops == count }) { return tier.cents }
-        let top = tierTable[tierTable.count - 1]
-        return top.cents + (count - top.scoops) * additionalScoopCents
+        return (1...count).reduce(0) { $0 + scoopCents(atPosition: $1) }
     }
 
     static func quote(_ items: [IceCreamItem]) -> OrderQuote {
-        let scoopCount = items.reduce(0) { $0 + $1.scoopCount }
-        let scoopsTotal = scoopsTotal(scoopCount)
-        let shares = allocate(scoopsTotal, weights: items.map(\.scoopCount))
-        let lines = zip(items, shares).map { item, share in
-            OrderQuote.Line(item: item, scoopShareCents: share, vesselCents: item.vessel.priceCents)
+        var position = 0
+        let lines = items.map { item in
+            let scoops = item.flavors.indices.reduce(0) { total, _ in
+                position += 1
+                return total + scoopCents(atPosition: position)
+            }
+            return OrderQuote.Line(item: item, scoopShareCents: scoops, vesselCents: item.vessel.priceCents)
         }
-        return OrderQuote(lines: lines, scoopCount: scoopCount, scoopsTotalCents: scoopsTotal)
-    }
-
-    /// Splits `total` proportionally to `weights` with largest-remainder rounding, so the parts always sum to `total`.
-    static func allocate(_ total: Int, weights: [Int]) -> [Int] {
-        let weightSum = weights.reduce(0, +)
-        guard weightSum > 0 else { return weights.map { _ in 0 } }
-        var parts = weights.map { total * $0 / weightSum }
-        let remainders = weights.enumerated().map { ($0.offset, (total * $0.element) % weightSum) }
-        var leftover = total - parts.reduce(0, +)
-        for (index, _) in remainders.sorted(by: { $0.1 > $1.1 || ($0.1 == $1.1 && $0.0 < $1.0) }) where leftover > 0 {
-            parts[index] += 1
-            leftover -= 1
-        }
-        return parts
+        return OrderQuote(lines: lines, scoopCount: position, scoopsTotalCents: scoopsTotal(position))
     }
 }
 
 struct OrderQuote: Sendable {
     struct Line: Identifiable, Sendable {
         let item: IceCreamItem
+        /// What this item's scoops cost given their positions in the order.
         let scoopShareCents: Int
         let vesselCents: Int
 

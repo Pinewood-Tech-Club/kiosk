@@ -6,14 +6,10 @@ struct StageView: View {
     let stage: Stage
 
     var body: some View {
-        GeometryReader { geometry in
-            RealityView { content in
-                content.camera = .virtual
-                content.renderingEffects.antialiasing = .multisample4X
-                stage.attach(to: &content)
-            }
-            .onAppear { stage.setViewport(geometry.size) }
-            .onChange(of: geometry.size) { _, size in stage.setViewport(size) }
+        RealityView { content in
+            content.camera = .virtual
+            content.renderingEffects.antialiasing = .multisample4X
+            stage.attach(to: &content)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
