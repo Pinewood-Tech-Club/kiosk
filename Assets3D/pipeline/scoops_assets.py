@@ -384,9 +384,11 @@ def place(container, kinds, x, seeds=None, solo_lift=None):
     lift = -ZB*r
     if container == "cup":
         cx_, cy_ = x, 0.0
-        base = CUP_FLOOR + lift*0.9 + ((4.0*mm if len(kinds) == 1 else 0.0) if solo_lift is None else solo_lift)
-        base += 6.0*mm if len(kinds) > 1 else 0.0
-        centers = [Vector((0, 0, base)), Vector((0.45*r, 0.30*r, base + 1.12*r)), Vector((-0.22*r, -0.20*r, base + 1.85*r))]
+        s1 = 1.08 if len(kinds) == 1 else 1.04
+        sz1 = 1.13 if len(kinds) == 1 else 1.04
+        base1 = CUP_FLOOR + 0.53*r*sz1 - 1.0*mm
+        base = CUP_FLOOR + lift*0.9 + 3.0*mm
+        centers = [Vector((0, 0, base1)), Vector((0.45*r, 0.30*r, base + 1.12*r)), Vector((-0.22*r, -0.20*r, base + 1.85*r))]
         fn = cup_inner; ztop = (CUP_ZB - 0.2)*mm; zfl = CUP_FLOOR
     else:
         V = np.empty(len(o.data.vertices)*3); o.data.vertices.foreach_get("co", V); V = V.reshape(-1,3)
@@ -425,6 +427,7 @@ def place(container, kinds, x, seeds=None, solo_lift=None):
             so.rotation_quaternion = RIM_TILT @ Euler((0, 0, rng.uniform(0, 6.28))).to_quaternion()
             bpy.context.view_layer.update()
         if i > 0: so.scale = (0.92, 0.92, 0.97); bpy.context.view_layer.update()
+        if container == "cup" and i == 0: so.scale = (s1, s1, sz1); bpy.context.view_layer.update()
         if prev is not None: drape_over(so, prev, 0.80*r)
         if prev is not None: push_smooth(so, prev)
         clamp_to(so, fn, ztop, zfl)
