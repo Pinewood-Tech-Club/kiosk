@@ -56,7 +56,10 @@ def normals_tangents(P, T, UV, pairs):
     w = np.sign((np.cross(N, Tg)*Bg).sum(1)); w[w == 0] = 1
     return N, np.c_[Tg, w]
 
-def smooth_verts(P, T, iters=60, lam=0.6):
+def smooth_verts(P, T, pairs, iters=60, lam=0.6):
+    a_, b_ = pairs
+    weld = np.arange(len(P)); weld[a_] = b_
+    T = weld[T]; T = T[(T[:,0] != T[:,1]) & (T[:,1] != T[:,2]) & (T[:,0] != T[:,2])]
     n = len(P); E = np.r_[T[:,[0,1]], T[:,[1,2]], T[:,[2,0]]]
     E = np.r_[E, E[:,::-1]]
     deg = np.bincount(E[:,0], minlength=n)[:,None].astype(np.float64)
@@ -64,10 +67,11 @@ def smooth_verts(P, T, iters=60, lam=0.6):
     for _ in range(iters):
         acc = np.zeros_like(S); np.add.at(acc, E[:,0], S[E[:,1]])
         S = S + lam*(acc/np.maximum(deg, 1) - S)
+        S[a_] = S[b_]
     return S
 
-def ball_pose(P_icon, T, blend=0.65):
-    smooth = smooth_verts(P_icon, T)
+def ball_pose(P_icon, T, pairs, blend=0.65):
+    smooth = smooth_verts(P_icon, T, pairs)
     detail = P_icon - smooth
     c = np.array([smooth[:,0].mean(), smooth[:,1].mean(), 0.0])
     c[2] = smooth[:,2].min() + (smooth[:,2].max() - smooth[:,2].min())*0.5
@@ -78,6 +82,7 @@ def ball_pose(P_icon, T, blend=0.65):
     f = (smooth[:,2] - smooth[:,2].min())/(np.ptp(smooth[:,2]) + 1e-9)
     w = np.clip((f - 0.35)/0.3, 0, 1)[:,None]
     B = smooth + (blend + 0.2*(1 - w))*(sphere - smooth) + detail*(0.35 + 0.65*w)
+    B[pairs[0]] = B[pairs[1]] = 0.5*(B[pairs[0]] + B[pairs[1]])
     B[:,2] -= B[:,2].min()
     return B
 
@@ -109,7 +114,7 @@ for mi in seeds:
     h = -raw[:,2].min(); heights[mi] = h
     icon = raw + np.array([0, 0, h])
     poses[mi]["icon"] = icon
-    poses[mi]["ball"] = ball_pose(icon, mesh_arrays(scoop_meshes[mi])[1])
+    poses[mi]["ball"] = ball_pose(icon, mesh_arrays(scoop_meshes[mi])[1], seam_pairs(scoop_meshes[mi]))
 
 def record(obj, mi, key, slotname, container):
     bpy.context.view_layer.update()
