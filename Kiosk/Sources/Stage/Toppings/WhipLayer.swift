@@ -67,7 +67,7 @@ final class WhipLayer: ToppingLayer {
         entity.setOpacity(1)
         sweepMix = -1
         shown = WhipState(mix: -1, reveal: -1, deflate: -1)
-        let resources = WhipMesh.shared(ridges: style.ridges)
+        let resources = WhipMesh(ridges: style.ridges)
         buffers = resources
         model.model = ModelComponent(mesh: resources.resource, materials: [resources.material])
         update(now: now)
@@ -145,8 +145,6 @@ final class WhipLayer: ToppingLayer {
         let t = Ease.clamp01((x - a) / (b - a))
         return t * t * (3 - 2 * t)
     }
-
-    // MARK: Geometry
 
     /// Fine centerline samples as currently shown (revealed, deflated), with the head's rounded end.
     private func tubes() -> [WhipTube] {
@@ -588,8 +586,7 @@ struct WhipSweep {
     }
 }
 
-/// The shared vertex/index buffers and material for one ridge count; every whip of that count rebuilds into
-/// its own copy of the mesh, so the static parts (indices, UVs, material) are made once.
+/// One whip's mesh, rebuilt in place every animated frame; the material is shared per ridge count.
 @MainActor
 final class WhipMesh {
     nonisolated static let squash: Float = 0.86
@@ -612,11 +609,7 @@ final class WhipMesh {
 
     private static var materials: [Int: PhysicallyBasedMaterial] = [:]
 
-    static func shared(ridges: Int) -> WhipMesh {
-        WhipMesh(ridges: ridges)
-    }
-
-    private init(ridges: Int) {
+    init(ridges: Int) {
         let count = ridges * Self.samplesPerRidge
         profile = (0..<count).map { j in
             let angle = 2 * Float.pi * Float(j) / Float(count)
