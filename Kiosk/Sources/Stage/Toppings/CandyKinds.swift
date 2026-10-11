@@ -39,7 +39,7 @@ final class CandyLibrary {
             let rods = try Sprinkles.variants.map {
                 try CandyMeshes.sprinkle(length: $0.length * 0.001, radius: $0.diameter * 0.0005, bend: $0.bend)
             }
-            let library = CandyLibrary(gummyBears: GummyBears(shell: bear, texture: try? await JellyTexture.make()), candyLentils: CandyLentils(pieces: lentils),
+            let library = CandyLibrary(gummyBears: await GummyBears.make(shell: bear), candyLentils: CandyLentils(pieces: lentils),
                                        sprinkles: Sprinkles(pieces: rods))
             return (library, report)
         } catch {
@@ -80,9 +80,22 @@ struct GummyBears: ScatterKind {
 
     var count: Int { 8 }
 
-    init(shell: CandyMeshes.Built, texture: JellyTexture?) {
-        bear = .init(mesh: (try? Self.withCore(shell.mesh)) ?? shell.mesh, halfExtents: shell.halfExtents)
-        materials = Flavor.allCases.map { Self.materials($0, texture: texture) }
+    private init(bear: CandyMeshes.Built, materials: [[PhysicallyBasedMaterial]]) {
+        self.bear = bear
+        self.materials = materials
+    }
+
+    static func make(shell: CandyMeshes.Built) async -> GummyBears {
+        let bear = CandyMeshes.Built(mesh: (try? withCore(shell.mesh)) ?? shell.mesh, halfExtents: shell.halfExtents)
+        let texture = try? JellyTexture()
+        var materials: [[PhysicallyBasedMaterial]] = []
+        for flavor in Flavor.allCases {
+            let recipe = recipe(flavor)
+            let glow = try? await texture?.glow(recipe.color)
+            let bumps = try? await texture?.bumps()
+            materials.append(jelly(recipe, glow: glow, bumps: bumps))
+        }
+        return GummyBears(bear: bear, materials: materials)
     }
 
     func makePieces(rng: inout ToppingRandom) -> [ScatterPiece] {
@@ -151,13 +164,20 @@ struct GummyBears: ScatterKind {
         return try MeshResource.generate(from: contents)
     }
 
-    private static func materials(_ flavor: Flavor, texture: JellyTexture?) -> [PhysicallyBasedMaterial] {
+    private struct Recipe {
+        let color: SIMD3<Float>
+        let shell: Float
+        let core: Float
+        let glow: Float
+    }
+
+    private static func recipe(_ flavor: Flavor) -> Recipe {
         switch flavor {
-        case .raspberry: jelly(0.88, 0.03, 0.04, shell: 0.8, core: 0.85, glow: 0.7, texture: texture)
-        case .orange: jelly(1.0, 0.50, 0.0, shell: 0.8, core: 0.85, glow: 0.7, texture: texture)
-        case .lemon: jelly(1.0, 0.84, 0.05, shell: 0.8, core: 0.85, glow: 0.7, texture: texture)
-        case .strawberry: jelly(0.16, 0.52, 0.02, shell: 0.8, core: 0.85, glow: 0.7, texture: texture)
-        case .pineapple: jelly(0.95, 0.86, 0.6, shell: 0.45, core: 0.55, glow: 0.4, texture: texture)
+        case .raspberry: Recipe(color: [0.92, 0.04, 0.03], shell: 0.85, core: 0.9, glow: 2.2)
+        case .orange: Recipe(color: [1.0, 0.60, 0.04], shell: 0.85, core: 0.9, glow: 2.0)
+        case .lemon: Recipe(color: [1.0, 0.86, 0.08], shell: 0.85, core: 0.9, glow: 1.9)
+        case .strawberry: Recipe(color: [0.18, 0.55, 0.03], shell: 0.85, core: 0.9, glow: 2.2)
+        case .pineapple: Recipe(color: [1.0, 0.89, 0.6], shell: 0.45, core: 0.62, glow: 1.6)
         }
     }
 
@@ -165,45 +185,45 @@ struct GummyBears: ScatterKind {
     /// washes a tinted shell out to pastel where real jelly filters light and stays saturated. So a bright,
     /// self-lit, mottled core sits inside a deeper glossy shell: the body glows from within, the rims stay
     /// deeper, and emissive rather than diffuse color keeps it colored instead of painted.
-    private static func jelly(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat, shell shellOpacity: Float,
-                              core coreOpacity: Float, glow: Float, texture: JellyTexture?) -> [PhysicallyBasedMaterial] {
-        let deep = UIColor(red: red, green: green, blue: blue, alpha: 1)
-        let light = UIColor(red: red + (1 - red) * 0.04, green: green + (1 - green) * 0.04, blue: blue + (1 - blue) * 0.04, alpha: 1)
-        let diffuse = UIColor(red: red * 0.4, green: green * 0.4, blue: blue * 0.4, alpha: 1)
+    private static func jelly(_ recipe: Recipe, glow: TextureResource?, bumps: TextureResource?) -> [PhysicallyBasedMaterial] {
+        let c = recipe.color
+        let deep = UIColor(red: CGFloat(c.x), green: CGFloat(c.y), blue: CGFloat(c.z), alpha: 1)
+        let diffuse = UIColor(red: CGFloat(c.x * 0.25), green: CGFloat(c.y * 0.25), blue: CGFloat(c.z * 0.25), alpha: 1)
         var core = PhysicallyBasedMaterial()
         core.baseColor = .init(tint: diffuse)
         core.metallic = 0.0
-        core.roughness = 0.6
-        core.specular = 0.1
-        core.emissiveColor = .init(color: light, texture: texture.map { .init($0.glow) })
-        core.emissiveIntensity = glow
-        core.blending = .transparent(opacity: .init(floatLiteral: coreOpacity))
+        core.roughness = 1.0
+        core.specular = 0.0
+        // A textured emissive ignores its tint, so the glow texture carries the color itself.
+        core.emissiveColor = glow.map { .init(texture: .init($0)) } ?? .init(color: deep)
+        core.emissiveIntensity = recipe.glow
+        core.blending = .transparent(opacity: .init(floatLiteral: recipe.core))
         core.faceCulling = .back
 
         var shell = PhysicallyBasedMaterial()
         shell.baseColor = .init(tint: diffuse)
         shell.metallic = 0.0
         shell.roughness = 0.15
-        shell.specular = 0.5
-        shell.clearcoat = 1.0
+        shell.specular = 0.25
+        shell.clearcoat = 0.35
         shell.clearcoatRoughness = 0.06
-        if let texture { shell.normal = .init(texture: .init(texture.bumps)) }
+        if let bumps { shell.normal = .init(texture: .init(bumps)) }
         shell.emissiveColor = .init(color: deep)
-        shell.emissiveIntensity = glow * 0.5
-        shell.blending = .transparent(opacity: .init(floatLiteral: shellOpacity))
+        shell.emissiveIntensity = recipe.glow * 0.45
+        shell.blending = .transparent(opacity: .init(floatLiteral: recipe.shell))
         shell.faceCulling = .back
         return [core, shell]
     }
 }
 
-/// Tileable speckle of soft blobs, like the bubbles and starch-mold texture inside a gummy: a brightness
-/// map for the glowing core and matching bumps for the shell.
+/// Tileable speckle of soft blobs, like the bubbles and starch-mold texture inside a gummy: a colored
+/// brightness map for the glowing core and matching bumps for the shell.
 struct JellyTexture {
-    let glow: TextureResource
-    let bumps: TextureResource
+    static let size = 256
+    let height: [Float]
 
-    static func make() async throws -> JellyTexture {
-        let size = 256
+    init() throws {
+        let size = Self.size
         var height = [Float](repeating: 0, count: size * size)
         var rng = ToppingRandom(seed: 7)
         for index in 0..<420 {
@@ -223,32 +243,41 @@ struct JellyTexture {
             }
         }
         let lo = height.min()!, hi = height.max()!
-        height = height.map { ($0 - lo) / (hi - lo) }
+        self.height = height.map { ($0 - lo) / (hi - lo) }
+    }
 
-        var glow = [UInt8](repeating: 255, count: size * size * 4)
-        var bumps = [UInt8](repeating: 255, count: size * size * 4)
+    func glow(_ color: SIMD3<Float>) async throws -> TextureResource {
+        var bytes = [UInt8](repeating: 255, count: height.count * 4)
+        for (i, h) in height.enumerated() {
+            let lit: SIMD3<Float> = color * (0.5 + 0.5 * h)
+            let sparkle: SIMD3<Float> = (SIMD3<Float>(repeating: 1) - color) * (0.22 * h * h * h)
+            let c = simd_clamp(lit + sparkle, SIMD3<Float>(repeating: 0), SIMD3<Float>(repeating: 1))
+            bytes[i * 4] = UInt8(255 * c.x)
+            bytes[i * 4 + 1] = UInt8(255 * c.y)
+            bytes[i * 4 + 2] = UInt8(255 * c.z)
+        }
+        return try await Self.texture(bytes, semantic: .color)
+    }
+
+    func bumps() async throws -> TextureResource {
+        let size = Self.size
+        var bytes = [UInt8](repeating: 255, count: height.count * 4)
         for y in 0..<size {
             for x in 0..<size {
                 let i = y * size + x
-                let g = UInt8(255 * (0.62 + 0.38 * height[i]))
-                glow[i * 4] = g
-                glow[i * 4 + 1] = g
-                glow[i * 4 + 2] = g
                 let dx = height[y * size + (x + 1) % size] - height[y * size + (x + size - 1) % size]
                 let dy = height[((y + 1) % size) * size + x] - height[((y + size - 1) % size) * size + x]
                 let n = simd_normalize(SIMD3<Float>(-dx * 2.2, dy * 2.2, 1))
-                bumps[i * 4] = UInt8(255 * (n.x * 0.5 + 0.5))
-                bumps[i * 4 + 1] = UInt8(255 * (n.y * 0.5 + 0.5))
-                bumps[i * 4 + 2] = UInt8(255 * (n.z * 0.5 + 0.5))
+                bytes[i * 4] = UInt8(255 * (n.x * 0.5 + 0.5))
+                bytes[i * 4 + 1] = UInt8(255 * (n.y * 0.5 + 0.5))
+                bytes[i * 4 + 2] = UInt8(255 * (n.z * 0.5 + 0.5))
             }
         }
-        return JellyTexture(glow: try await texture(glow, size: size, semantic: .color),
-                            bumps: try await texture(bumps, size: size, semantic: .normal))
+        return try await Self.texture(bytes, semantic: .normal)
     }
 
-    private static func texture(_ bytes: [UInt8], size: Int, semantic: TextureResource.Semantic) async throws -> TextureResource {
-        let data = Data(bytes) as CFData
-        guard let provider = CGDataProvider(data: data),
+    private static func texture(_ bytes: [UInt8], semantic: TextureResource.Semantic) async throws -> TextureResource {
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
               let image = CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: size * 4,
                                   space: CGColorSpace(name: semantic == .color ? CGColorSpace.sRGB : CGColorSpace.linearSRGB)!,
                                   bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
