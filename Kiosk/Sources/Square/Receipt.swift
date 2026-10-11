@@ -41,6 +41,10 @@ struct Receipt: Sendable {
             if line.item.vessel == .cone {
                 lines.append(Line(title: "Waffle Cone", detail: "#\(index + 1)", quantity: 1, baseCents: line.vesselCents, cents: line.vesselCents))
             }
+            for topping in line.item.toppings {
+                lines.append(Line(title: "Topping", detail: "\(label): \(topping.title)", quantity: 1,
+                                  baseCents: topping.priceCents, cents: topping.priceCents))
+            }
         }
         return lines
     }

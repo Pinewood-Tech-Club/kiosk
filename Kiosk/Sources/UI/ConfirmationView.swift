@@ -168,7 +168,7 @@ struct ReceiptItem: Identifiable {
         return Pricing.quote(items).lines.enumerated().map { index, line in
             ReceiptItem(id: line.item.id, number: index + 1, item: line.item, vesselTitle: line.item.vessel.title,
                         vesselCents: line.vesselCents, scoopCount: line.item.scoopCount, scoopCents: line.scoopShareCents,
-                        toppingCount: 0, toppingCents: 0)
+                        toppingCount: line.item.toppings.count, toppingCents: line.toppingCents)
         }
     }
 }

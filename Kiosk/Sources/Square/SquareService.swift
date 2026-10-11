@@ -156,6 +156,8 @@ final class SquareService: NSObject {
             [IceCreamItem(vessel: .cone, flavors: [.vanilla, .chocolate]), IceCreamItem(vessel: .cup, flavors: [.cookies, .cookies, .vanilla])],
             [IceCreamItem(vessel: .cone, flavors: [.vanilla, .vanilla, .chocolate]), IceCreamItem(vessel: .cone, flavors: [.cookies, .chocolate, .vanilla])],
             [IceCreamItem(vessel: .cup, flavors: [.vanilla]), IceCreamItem(vessel: .cone, flavors: [.chocolate]), IceCreamItem(vessel: .cup, flavors: [.cookies])],
+            [IceCreamItem(vessel: .cone, flavors: [.vanilla, .chocolate], toppings: [.whip, .chocolate, .sprinkles]),
+             IceCreamItem(vessel: .cup, flavors: [.cookies], toppings: [.gummies])],
         ]
         for (index, basket) in baskets.enumerated() {
             let quote = Pricing.quote(basket)
@@ -163,7 +165,7 @@ final class SquareService: NSObject {
                 let order = try await api.createOrder(quote: quote, catalog: catalog, customerName: "Verify", referenceID: "verify-\(index + 1)", sourceName: "\(Config.eventName) Kiosk")
                 let subtotal = order.totalCents - order.taxCents
                 let verdict = subtotal == quote.totalCents ? "MATCH" : "MISMATCH"
-                record("VERIFY basket \(index + 1): \(quote.scoopCount) scoops, \(quote.coneCount) cones, kiosk \(quote.totalCents) square \(order.totalCents) tax \(order.taxCents) catalog=\(order.usedCatalog) \(verdict)")
+                record("VERIFY basket \(index + 1): \(quote.scoopCount) scoops, \(quote.coneCount) cones, \(quote.toppingCount) toppings, kiosk \(quote.totalCents) square \(order.totalCents) tax \(order.taxCents) catalog=\(order.usedCatalog) \(verdict)")
                 let local = Receipt.chargedLines(for: quote).map { "\($0.title)|\($0.detail)|\($0.cents)" }
                 let remote = order.lines.map { "\($0.title)|\($0.detail)|\($0.cents)" }
                 record("VERIFY lines basket \(index + 1): \(local == remote ? "SAME" : "DIFFERENT") \(remote.joined(separator: " ; "))")

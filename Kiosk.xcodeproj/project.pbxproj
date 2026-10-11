@@ -53,6 +53,7 @@
 		C659717E6746E0A1AD7B7C6E /* NotoSerif-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */; };
 		CFA9251FBFBDD52ED6806157 /* 3D in Resources */ = {isa = PBXBuildFile; fileRef = 41288991151D7382A2F4C89D /* 3D */; };
 		D3AB8EFD24B6A0A8DC388F0D /* NotoSerif-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */; };
+		DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */; };
 		DF96ED4630E78827B560EDCB /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A6A3D2C8370D7698E2E811 /* Glass.swift */; };
 		E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */; };
 		E4F831145DF772EE0B60DCBF /* BoothConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C430771D6BEE6DF3E2F669E /* BoothConnection.swift */; };
@@ -61,12 +62,24 @@
 		F346DF14280B5329EFF72A73 /* Animation.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB286FAB60CDB38CF35280B /* Animation.swift */; };
 		F86ED738CAD06D788946D97B /* StageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80DA186C645E6612A99CD769 /* StageView.swift */; };
 		FD0A874C890E38BDA7E2144C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64CD3F775C84109C65BEB08B /* AppModel.swift */; };
+		FE0C1C733FBF872A34848749 /* ToppingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48740B6EF1BC55783B05082A /* ToppingLayer.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3FF55A2CD283DC0FD729CBAB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83BB437219A08F9C07415A6C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5442330B6FD85F22557D70C4;
+			remoteInfo = Kiosk;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		019AB8B349B0B11885D0A1B1 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		032C0963C55D1F2DDA3E4886 /* SquareCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareCatalog.swift; sourceTree = "<group>"; };
 		0709C534BE54B5155CA2586D /* BoothAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothAPI.swift; sourceTree = "<group>"; };
+		0B1947CA65BE6B0AE411C69D /* KioskUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KioskUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		1D0BD8A918E962602B31E95B /* TrayTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrayTiles.swift; sourceTree = "<group>"; };
 		26416F94519A9065695E9BE2 /* StageTray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageTray.swift; sourceTree = "<group>"; };
@@ -79,6 +92,7 @@
 		3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Regular.ttf"; sourceTree = "<group>"; };
 		41288991151D7382A2F4C89D /* 3D */ = {isa = PBXFileReference; lastKnownFileType = folder; name = 3D; path = Kiosk/Resources/3D; sourceTree = SOURCE_ROOT; };
 		425B72639F56A451EDADC970 /* Layout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Layout.swift; sourceTree = "<group>"; };
+		48740B6EF1BC55783B05082A /* ToppingLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingLayer.swift; sourceTree = "<group>"; };
 		48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothProtocol.swift; sourceTree = "<group>"; };
 		4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageScoops.swift; sourceTree = "<group>"; };
 		4BF79193415195B4A4327886 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
@@ -112,6 +126,7 @@
 		CBB1DFC96A2B464467CC2110 /* StageActors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageActors.swift; sourceTree = "<group>"; };
 		CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-SemiBold.ttf"; sourceTree = "<group>"; };
 		CF19FBBFF9063473EF2C011F /* loop.mp4 */ = {isa = PBXFileReference; path = loop.mp4; sourceTree = "<group>"; };
+		D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SheetDragUITests.m; sourceTree = "<group>"; };
 		D6974443317A2D4E0CE83F79 /* Kiosk.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kiosk.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF893650C7E0AA1ED76E777E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E3D9A0CFAC70BA8E576B608E /* HelpButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpButton.swift; sourceTree = "<group>"; };
@@ -148,8 +163,17 @@
 			isa = PBXGroup;
 			children = (
 				D6974443317A2D4E0CE83F79 /* Kiosk.app */,
+				0B1947CA65BE6B0AE411C69D /* KioskUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		2B5940CF87051748A5C5B710 /* KioskUITests */ = {
+			isa = PBXGroup;
+			children = (
+				D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */,
+			);
+			path = KioskUITests;
 			sourceTree = "<group>";
 		};
 		3031DF17343630066974846C /* Square */ = {
@@ -192,6 +216,7 @@
 			children = (
 				6F4192530D8F7C96221C502B /* Config */,
 				57734AC33092867CEA74F48B /* Kiosk */,
+				2B5940CF87051748A5C5B710 /* KioskUITests */,
 				22C9F245458D6FD9D2AAD8A7 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -261,8 +286,17 @@
 				26416F94519A9065695E9BE2 /* StageTray.swift */,
 				B353824019534A970B3D1DE6 /* StageVessels.swift */,
 				80DA186C645E6612A99CD769 /* StageView.swift */,
+				933EFE036EC4FB9DBB0AC00F /* Toppings */,
 			);
 			path = Stage;
+			sourceTree = "<group>";
+		};
+		933EFE036EC4FB9DBB0AC00F /* Toppings */ = {
+			isa = PBXGroup;
+			children = (
+				48740B6EF1BC55783B05082A /* ToppingLayer.swift */,
+			);
+			path = Toppings;
 			sourceTree = "<group>";
 		};
 		9B6B583E252FFF938E928346 /* App */ = {
@@ -336,6 +370,24 @@
 			productReference = D6974443317A2D4E0CE83F79 /* Kiosk.app */;
 			productType = "com.apple.product-type.application";
 		};
+		623C9E148DF8918861EE9AB6 /* KioskUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4201CEBA99E6BFFC5D1EEB8 /* Build configuration list for PBXNativeTarget "KioskUITests" */;
+			buildPhases = (
+				5A7AEF6A666EEF9FC8FB5BD7 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7EAB18905C0FBDBBFC5EF234 /* PBXTargetDependency */,
+			);
+			name = KioskUITests;
+			packageProductDependencies = (
+			);
+			productName = KioskUITests;
+			productReference = 0B1947CA65BE6B0AE411C69D /* KioskUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -348,6 +400,11 @@
 					5442330B6FD85F22557D70C4 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
+					};
+					623C9E148DF8918861EE9AB6 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+						TestTargetID = 5442330B6FD85F22557D70C4;
 					};
 				};
 			};
@@ -369,6 +426,7 @@
 			projectRoot = "";
 			targets = (
 				5442330B6FD85F22557D70C4 /* Kiosk */,
+				623C9E148DF8918861EE9AB6 /* KioskUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -415,6 +473,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		5A7AEF6A666EEF9FC8FB5BD7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B8AF5F286627874F6FAFB46E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -461,11 +527,20 @@
 				F86ED738CAD06D788946D97B /* StageView.swift in Sources */,
 				5C4E87910C7013DDFEBDB6ED /* SummaryView.swift in Sources */,
 				2B591179C416EC14B3DF661F /* Theme.swift in Sources */,
+				FE0C1C733FBF872A34848749 /* ToppingLayer.swift in Sources */,
 				6735B223D0F752A9B4C1C427 /* TrayTiles.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7EAB18905C0FBDBBFC5EF234 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5442330B6FD85F22557D70C4 /* Kiosk */;
+			targetProxy = 3FF55A2CD283DC0FD729CBAB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		545CF1B0354FD5EBF5F2BBF3 /* Debug */ = {
@@ -487,6 +562,23 @@
 				TARGETED_DEVICE_FAMILY = 2;
 			};
 			name = Debug;
+		};
+		6704BA46E422AFBB4FAF46C0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 2;
+				TEST_TARGET_NAME = Kiosk;
+			};
+			name = Release;
 		};
 		7E5498FCD73620113DE6D425 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -544,6 +636,23 @@
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
+		};
+		A01EDF42D8DE6B97E1461D9C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 2;
+				TEST_TARGET_NAME = Kiosk;
+			};
+			name = Debug;
 		};
 		CA170C9E6121490E55B409E2 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -637,6 +746,15 @@
 			buildConfigurations = (
 				FBA626C5ACA1EDCFE8ED0D01 /* Debug */,
 				7E5498FCD73620113DE6D425 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E4201CEBA99E6BFFC5D1EEB8 /* Build configuration list for PBXNativeTarget "KioskUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A01EDF42D8DE6B97E1461D9C /* Debug */,
+				6704BA46E422AFBB4FAF46C0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

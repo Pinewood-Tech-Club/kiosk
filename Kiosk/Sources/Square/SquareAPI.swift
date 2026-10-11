@@ -81,6 +81,13 @@ struct SquareAPI {
                     "note": "#\(index + 1)",
                 ])
             }
+            for topping in line.item.toppings {
+                lines.append([
+                    "catalog_object_id": catalog.topping.variationID,
+                    "quantity": "1",
+                    "note": "\(label): \(topping.title)",
+                ])
+            }
         }
         return lines
     }
@@ -103,6 +110,9 @@ struct SquareAPI {
             }
             for (flavor, count) in counts {
                 modifiers.append(["name": flavor.title, "quantity": String(count), "base_price_money": money(0)])
+            }
+            for topping in item.toppings {
+                modifiers.append(["name": topping.title, "base_price_money": money(topping.priceCents)])
             }
             return [
                 "name": "Ice cream, \(item.scoopCount) scoop\(item.scoopCount == 1 ? "" : "s")",
