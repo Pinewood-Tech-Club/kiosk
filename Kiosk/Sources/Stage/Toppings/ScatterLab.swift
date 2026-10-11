@@ -26,6 +26,7 @@ final class ScatterLab {
     let start: Double
     let freeze: Double?
     let yaw: Float
+    let pitch: Float?
     let base: HeightfieldSurface
     let whip: WhipDome
     let whipEntity: ModelEntity
@@ -41,6 +42,7 @@ final class ScatterLab {
         start = stage.now
         freeze = defaults.object(forKey: "kioskLabFreeze") != nil ? defaults.double(forKey: "kioskLabFreeze") : nil
         yaw = defaults.object(forKey: "kioskLabYaw") != nil ? Float(defaults.double(forKey: "kioskLabYaw")) : 0.5
+        pitch = defaults.object(forKey: "kioskLabPitch") != nil ? Float(defaults.double(forKey: "kioskLabPitch")) : nil
         base = HeightfieldSurface(rig: rig, assets: assets)
         whip = WhipDome(base: base)
         var cream = PhysicallyBasedMaterial()
@@ -51,6 +53,16 @@ final class ScatterLab {
         rig.body.addChild(whipEntity)
         stage.log(String(format: "ScatterLab: scene %@ apex (%.4f, %.4f, %.4f) radius %.4f", scene,
                          base.apex.x, base.apex.y, base.apex.z, base.radius))
+        for actor in rig.scoops {
+            let bounds = actor.model.visualBounds(relativeTo: rig.body)
+            let mid = bounds.center
+            stage.log(String(format: "ScatterLab: scoop %@ pose %@ visual max y %.4f center (%.4f, %.4f) field there %.4f", actor.flavor.rawValue,
+                             actor.staticPose, bounds.max.y, mid.x, mid.z, base.sample(x: mid.x, z: mid.z)?.height ?? -1))
+        }
+        for shape in [PlaceholderScatterKind.Shape.gummy, .lentil, .sprinkle] {
+            var rng = ToppingRandom(seed: 1)
+            timed("make pieces", stage) { _ = PlaceholderScatterKind(shape: shape).makePieces(rng: &rng) }
+        }
         build(stage)
         setWhip(scene == "down" ? 1 : 0)
     }
@@ -144,10 +156,18 @@ final class ScatterLab {
             stage.log(String(format: "ScatterLab: layer update avg %.1f µs/frame", updateTime / Double(updateFrames) * 1e6))
         }
         if let freeze, t >= freeze, stage.timeScale > 0 {
+            for layer in layers {
+                stage.log("ScatterLab: rest " + layer.footprints.map { f in
+                    let r = simd_distance(f.center, SIMD2(base.apex.x, base.apex.z)) / base.radius
+                    let s = base.sample(x: f.center.x, z: f.center.y)
+                    return String(format: "r%.2f n%.2f above%.1fmm", r, s?.normal.y ?? -1, (f.top - (s?.height ?? 0)) * 1000)
+                }.joined(separator: " | "))
+            }
             stage.timeScale = 0
             stage.log(String(format: "ScatterLab: frozen at %.2f s", t))
         }
         rig.pose.yaw = yaw
+        if let pitch { rig.pose.pitch = pitch }
         rig.apply()
     }
 }
