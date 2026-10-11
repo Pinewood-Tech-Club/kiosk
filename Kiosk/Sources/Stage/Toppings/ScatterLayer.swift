@@ -9,6 +9,8 @@ struct ScatterFootprint {
     var halfLength: Float
     var radius: Float
     var top: Float = 0
+    /// The resting piece's own up, which a piece landing on it lies along.
+    var up = SIMD3<Float>(0, 1, 0)
 
     func contains(_ point: SIMD2<Float>) -> Bool {
         let along = simd_clamp(simd_dot(point - center, axis), -halfLength, halfLength)
@@ -24,7 +26,9 @@ struct ScatterFootprint {
 ///     mms.occupied = gummies.footprints
 ///     sprinkles.occupied = gummies.footprints + mms.footprints
 ///
-/// New pieces then land clear of those, or on top of them where the crown is too crowded. `footprints` always describes where this layer's pieces rest
+/// New pieces then land clear of those, or on top of them where the crown is too crowded. When an
+/// earlier scatter layer is removed, give the later ones their new `occupied` and `resurface` them
+/// onto the same surface so pieces that were resting on the removed ones drop. `footprints` always describes where this layer's pieces rest
 /// or are heading, so after a resurface feed the layers in the same order again.
 @MainActor
 final class ScatterLayer: ToppingLayer {
@@ -71,7 +75,8 @@ final class ScatterLayer: ToppingLayer {
         let fall: Double
         let post: Double
         let dropHeight: Float
-        let drift: SIMD2<Float>
+        /// How far out from the axis it starts falling, per unit of its distance from the axis.
+        let drift: Float
         let spinAxis: SIMD3<Float>
         let spinAngle: Float
         let wobbleAxis: SIMD3<Float>
@@ -90,6 +95,7 @@ final class ScatterLayer: ToppingLayer {
     private var pieces: [Piece] = []
     private var animating = false
     private var surfaceRadius: Float = 0.03
+    private var apexXZ = SIMD2<Float>.zero
 
     static let maxReach: Float = 0.97
     /// Cosine of the steepest slope a piece stays on.
@@ -158,7 +164,7 @@ final class ScatterLayer: ToppingLayer {
             let delay = Double(along) * spread + Double.random(in: 0...0.1, using: &rng)
             let fall = Double.random(in: 0.22...0.3, using: &rng)
             let dropHeight = surfaceRadius * Float.random(in: 0.7...1.1, using: &rng)
-            let drift = Self.unit2(Float.random(in: 0..<(2 * .pi), using: &rng)) * surfaceRadius * Float.random(in: 0.05...0.18, using: &rng)
+            let drift = surfaceRadius * Float.random(in: 0.25...0.45, using: &rng)
             let spinAxis = Self.randomUnit(&rng)
             let spinAngle = Float.random(in: (small ? 2.5 : 1.2)...(small ? 5 : 2.6), using: &rng) * .pi
                 * (Bool.random(using: &rng) ? 1 : -1)
@@ -182,7 +188,7 @@ final class ScatterLayer: ToppingLayer {
             pieces.append(piece)
         }
 
-        let apexXZ = Self.xz(surface.apex)
+        apexXZ = Self.xz(surface.apex)
         var xzs = pieces.map { apexXZ + $0.canonical * surfaceRadius }
         relax(&xzs, on: surface, passes: 8)
         settleAll(&xzs, on: surface)
@@ -208,7 +214,7 @@ final class ScatterLayer: ToppingLayer {
     func resurface(to surface: ToppingSurface, duration: Double, now: Double) {
         guard !pieces.isEmpty else { return }
         surfaceRadius = max(surface.radius, 1e-3)
-        let apexXZ = Self.xz(surface.apex)
+        apexXZ = Self.xz(surface.apex)
         var xzs = pieces.map { apexXZ + $0.canonical * surfaceRadius }
         relax(&xzs, on: surface, passes: 4)
         settleAll(&xzs, on: surface)
@@ -287,7 +293,8 @@ final class ScatterLayer: ToppingLayer {
         let impact = piece.path.first ?? piece.rest
         if t < piece.fall {
             let s = Float(t / piece.fall)
-            let top = impact.position + SIMD3(piece.drift.x, piece.dropHeight, piece.drift.y)
+            let out = (SIMD2(impact.position.x, impact.position.z) - apexXZ) / surfaceRadius * piece.drift
+            let top = impact.position + SIMD3(out.x, piece.dropHeight, out.y)
             var position = simd_mix(top, impact.position, SIMD3(s, s * s, s))
             position.y = max(position.y, impact.position.y)
             let spin = simd_quatf(angle: piece.spinAngle * (1 - s), axis: piece.spinAxis)
@@ -424,6 +431,10 @@ final class ScatterLayer: ToppingLayer {
                 }
                 attempt += 1
             }
+            if stacked > 0.3 * thinnest,
+               let support = below.filter({ Self.separation(footprint, $0) != nil }).max(by: { $0.top < $1.top }) {
+                (rest, footprint) = settle(xzs[index], piece: piece, on: surface, over: below, lying: support.up)
+            }
             piece.rest = rest
             footprints.append(footprint)
             if piece.slider {
@@ -446,10 +457,10 @@ final class ScatterLayer: ToppingLayer {
     /// reads as resting rather than hovering. A tipped piece that could only clear the slope by
     /// hanging in the air under its middle is tipped less until it rests.
     private func settle(_ xz: SIMD2<Float>, piece: Piece, on surface: ToppingSurface,
-                        over pieces: [ScatterFootprint]) -> (Pose, ScatterFootprint) {
+                        over pieces: [ScatterFootprint], lying up: SIMD3<Float>? = nil) -> (Pose, ScatterFootprint) {
         let center = surface.sample(x: xz.x, z: xz.y) ?? (surface.apex.y, SIMD3<Float>(0, 1, 0))
         let span = max(max(piece.half.x, piece.half.z) * 0.6, 0.001)
-        let align = simd_quatf(from: [0, 1, 0], to: simd_normalize(Self.fittedNormal(xz, span: span, surface: surface) ?? center.normal))
+        let align = simd_quatf(from: [0, 1, 0], to: simd_normalize(up ?? Self.fittedNormal(xz, span: span, surface: surface) ?? center.normal))
         let thinnest = min(piece.half.x, min(piece.half.y, piece.half.z))
         let nestle = 0.08 * thinnest
         let reachable = pieces.filter { simd_distance($0.center, xz) < $0.halfLength + $0.radius + simd_length(piece.half) }
@@ -474,6 +485,7 @@ final class ScatterLayer: ToppingLayer {
                 found = true
             }
             footprint.top = height - nestle + reach * 0.92
+            footprint.up = rotation.act([0, 1, 0])
             result = (Pose(position: [xz.x, height - nestle, xz.y], rotation: rotation), footprint)
             let hang = height - depth - floorUnder
             if hang < 0.3 * thinnest + 0.0004 { break }
