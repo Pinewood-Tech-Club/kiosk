@@ -157,7 +157,31 @@ struct BuilderBackdrop: View {
             }
             .transition(stepFade)
         case .toppings:
-            EmptyView()
+            ZStack {
+                ForEach(Topping.allCases) { topping in
+                    let card = Layout.toppingCardFrame(topping)
+                    let icon = Layout.toppingIconFrame(topping)
+                    ZStack {
+                        CardBackground(highlighted: app.hasTopping(topping), cornerRadius: Layout.toppingCardRadius)
+                            .frame(width: card.width, height: card.height)
+                        if !app.stageDrawsToppingIcons {
+                            ToppingGlyph(topping: topping, size: icon.height)
+                                .offset(x: icon.midX - card.midX, y: icon.midY - card.midY)
+                        }
+                    }
+                    .modifier(PressEffect(pressed: app.pressedToppings.contains(topping)))
+                    .position(x: card.midX, y: card.midY)
+
+                    Color.clear
+                        .frame(width: icon.width, height: icon.height)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                            app.setToppingIconFrame(topping, frame)
+                        }
+                        .position(x: icon.midX, y: icon.midY)
+                        .allowsHitTesting(false)
+                }
+            }
+            .transition(stepFade)
         }
     }
 }
@@ -268,7 +292,7 @@ struct BuilderForeground: View {
             switch app.step {
             case .vessel: vesselCards.transition(stepFade)
             case .flavors: flavorCards.transition(stepFade)
-            case .toppings: EmptyView()
+            case .toppings: toppingCards.transition(stepFade)
             }
 
             previousStepButton
@@ -305,9 +329,6 @@ struct BuilderForeground: View {
                 .foregroundStyle(Theme.text)
                 .contentTransition(.opacity)
                 .position(x: Layout.midX, y: Layout.titleY)
-
-            subtitle
-                .position(x: Layout.midX, y: Layout.subtitleY + 10)
         }
         .animation(.easeInOut(duration: 0.3), value: app.step)
         .animation(.easeInOut(duration: 0.3), value: app.isEditing)
@@ -324,17 +345,7 @@ struct BuilderForeground: View {
         switch app.step {
         case .vessel: "Cup or cone?"
         case .flavors: "Pick your scoops"
-        case .toppings: "Toppings"
-        }
-    }
-
-    @ViewBuilder
-    private var subtitle: some View {
-        if app.step == .toppings {
-            Text("Coming soon")
-                .font(Theme.serif(22, .regular))
-                .foregroundStyle(Theme.text.opacity(0.6))
-                .transition(.opacity)
+        case .toppings: "Any toppings?"
         }
     }
 
@@ -420,6 +431,67 @@ struct BuilderForeground: View {
         }
         .animation(.easeInOut(duration: 0.25), value: full)
         .animation(.easeInOut(duration: 0.25), value: app.nextScoopCents)
+    }
+
+    private var toppingCards: some View {
+        ZStack {
+            ForEach(ToppingGroup.allCases) { group in
+                let header = Layout.toppingGroupHeader(group)
+                Text(group.title)
+                    .font(Theme.serif(20, .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: header.width, height: header.height, alignment: .topLeading)
+                    .padding(.leading, 6)
+                    .position(x: header.midX, y: header.midY)
+            }
+
+            ForEach(Topping.allCases) { topping in
+                let frame = Layout.toppingCardFrame(topping)
+                let selected = app.hasTopping(topping)
+                Button { app.toggleTopping(topping) } label: {
+                    VStack(spacing: 1) {
+                        Spacer()
+                        Text(topping.title)
+                            .font(Theme.serif(18))
+                            .foregroundStyle(Theme.text)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Text("+\(topping.priceCents.formattedAsUSD)")
+                            .font(Theme.sans(15, .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 11)
+                    .frame(width: frame.width, height: frame.height)
+                    .overlay(alignment: .topTrailing) {
+                        if selected {
+                            CheckBadge()
+                                .padding(17)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .contentShape(.rect(cornerRadius: Layout.toppingCardRadius))
+                }
+                .buttonStyle(CardPressStyle { app.setPressed(topping, $0) })
+                .modifier(PressEffect(pressed: app.pressedToppings.contains(topping)))
+                .accessibilityLabel(topping.title)
+                .accessibilityValue(selected ? "Added" : "+\(topping.priceCents.formattedAsUSD)")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .position(x: frame.midX, y: frame.midY)
+
+                ZStack {
+                    if selected {
+                        GlassIconButton(icon: "minus", size: 40, iconSize: 17) { app.removeTopping(topping) }
+                            .accessibilityLabel("Remove \(topping.title)")
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    }
+                }
+                .frame(width: 56, height: 56)
+                .position(x: frame.minX + 32, y: frame.minY + 32)
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: app.current.toppings)
     }
 
     private var primaryButton: some View {

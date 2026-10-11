@@ -66,6 +66,11 @@ final class AppModel {
     var assetsFailed: Bool { assetLoadFailed || forcedError == .assets }
     var forcedError: ForcedError?
     private(set) var pressedCards: Set<CardKey> = []
+    private(set) var pressedToppings: Set<Topping> = []
+    /// Screen frames of the topping cards' icon areas, as laid out, for the stage's 3D topping icons.
+    @ObservationIgnored private(set) var toppingIconFrames: [Topping: CGRect] = [:]
+    /// The cards draw a flat glyph in each icon area until the stage draws its 3D icons there.
+    var stageDrawsToppingIcons = false
     var confirmation: Confirmation?
     var notice: Notice?
     var receipt: Receipt?
@@ -206,6 +211,7 @@ final class AppModel {
         mode = .customize
         step = .vessel
         pressedCards = []
+        pressedToppings = []
         confirmation = nil
         notice = nil
         receipt = nil
@@ -232,6 +238,18 @@ final class AppModel {
         stage.setPressed(card, pressed)
     }
 
+    func setPressed(_ topping: Topping, _ pressed: Bool) {
+        if pressed {
+            pressedToppings.insert(topping)
+        } else {
+            pressedToppings.remove(topping)
+        }
+    }
+
+    func setToppingIconFrame(_ topping: Topping, _ frame: CGRect) {
+        toppingIconFrames[topping] = frame
+    }
+
     func selectVessel(_ vessel: Vessel) {
         guard screen == .builder, mode == .customize, step == .vessel, vessel != current.vessel else { return }
         current.vessel = vessel
@@ -250,6 +268,29 @@ final class AppModel {
         guard screen == .builder, mode == .customize, let index = current.flavors.lastIndex(of: flavor) else { return }
         current.flavors.remove(at: index)
         stage.removeScoop(at: index)
+    }
+
+    func hasTopping(_ topping: Topping) -> Bool {
+        current.toppings.contains(topping)
+    }
+
+    func toggleTopping(_ topping: Topping) {
+        hasTopping(topping) ? removeTopping(topping) : addTopping(topping)
+    }
+
+    func addTopping(_ topping: Topping) {
+        guard screen == .builder, mode == .customize, step == .toppings, current.scoopCount > 0,
+              !hasTopping(topping) else { return }
+        setToppings(current.toppings + [topping])
+    }
+
+    func removeTopping(_ topping: Topping) {
+        guard screen == .builder, mode == .customize, hasTopping(topping) else { return }
+        setToppings(current.toppings.filter { $0 != topping })
+    }
+
+    private func setToppings(_ toppings: [Topping]) {
+        current.toppings = toppings
     }
 
     func canJump(to target: BuilderStep) -> Bool {
@@ -434,6 +475,7 @@ final class AppModel {
         current = IceCreamItem()
         step = .vessel
         pressedCards = []
+        pressedToppings = []
         stage.resetBuilderUnderSheet()
     }
 

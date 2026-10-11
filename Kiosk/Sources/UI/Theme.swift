@@ -47,12 +47,13 @@ struct LucideIcon: View {
 struct CardBackground: View {
     var highlighted = false
     var dimmed = false
+    var cornerRadius = Layout.cardCornerRadius
 
     var body: some View {
-        RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(Theme.surface)
             .overlay {
-                RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(highlighted ? Theme.text : Theme.hairline, lineWidth: highlighted ? 3 : 1)
             }
             .opacity(dimmed ? 0.55 : 1)
@@ -73,5 +74,14 @@ struct CountBadge: View {
             .frame(minWidth: 42, minHeight: 34)
             .background(Theme.text, in: .capsule)
             .animation(.snappy, value: count)
+    }
+}
+
+struct CheckBadge: View {
+    var body: some View {
+        LucideIcon(name: "check", size: 16)
+            .foregroundStyle(Theme.onText)
+            .frame(width: 30, height: 30)
+            .background(Theme.text, in: .circle)
     }
 }

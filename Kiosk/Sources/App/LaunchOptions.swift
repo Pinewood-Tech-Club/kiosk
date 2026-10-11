@@ -51,14 +51,20 @@ struct LaunchOptions {
         return options
     }
 
-    /// `cone:vanilla,chocolate` or `cup` (no scoops).
+    /// `cone:vanilla,chocolate`, `cup` (no scoops), or with toppings in the order added:
+    /// `cup:cookies+whip+gummies`.
     static func parseItem(_ text: String) -> IceCreamItem? {
-        let parts = text.split(separator: ":", maxSplits: 1).map(String.init)
+        let segments = text.split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
+        let parts = (segments.first ?? "").split(separator: ":", maxSplits: 1).map(String.init)
         guard let first = parts.first, let vessel = Vessel(rawValue: first.trimmingCharacters(in: .whitespaces)) else { return nil }
         let flavors = parts.count > 1
             ? parts[1].split(separator: ",").compactMap { Flavor(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
             : []
-        return IceCreamItem(vessel: vessel, flavors: Array(flavors.prefix(Pricing.maxScoopsPerItem)))
+        var toppings: [Topping] = []
+        for topping in segments.dropFirst().compactMap(Topping.init(rawValue:)) where !toppings.contains(topping) {
+            toppings.append(topping)
+        }
+        return IceCreamItem(vessel: vessel, flavors: Array(flavors.prefix(Pricing.maxScoopsPerItem)), toppings: toppings)
     }
 }
 
