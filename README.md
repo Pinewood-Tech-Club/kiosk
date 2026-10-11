@@ -61,6 +61,7 @@ Pass in the scheme or with `xcrun simctl launch <udid> com.adamxu.kiosk -kioskSc
 | `-kioskName Alex` | Prefill the name. |
 | `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `remove-middle`, `vessel-new`, `edit`, `edit-scroll`, `edit-done`, `edit-new`, `edit-switch`, `edit-empty`, `fresh`, `summary`, `pay`, `pull-down`, `press-hold`, `swap-continue`, `vessel-spam`, `demo`. |
 | `-kioskScript stress\|stress-tray` | Rapid random taps (cup/cone, flavors, minus, steps; `stress-tray` adds New item, tray edits, deletes and the order sheet), then a check that the settled 3D scene matches the order. Results go to the log as `Stress:` lines. `-kioskSeed N` and `-kioskStressRounds N` make a run repeatable. |
+| `-kioskScript sheet-stress` | Thousands of randomized pull-down updates on the order sheet (slow oscillation, reversals, past the open position and below the tray, holds, flings, second-finger taps, cancellations), checking that the sheet tracks the finger, always comes to rest open or closed with its items on it, and that the main thread never stalls. Results go to the log as `SheetDrag:` lines; `-kioskSeed` and `-kioskStressRounds` (gestures) apply. `sheet-oscillate` is a slow, recordable version. |
 | `-kioskAutoplay YES` | Same as `-kioskScript demo`: the whole flow through a simulated payment. |
 | `-kioskSlowmo 0.25` | Slow motion. |
 | `-kioskDebug3D YES` | 3D debug overlay and frame-stat logging. |
@@ -71,6 +72,14 @@ Pass in the scheme or with `xcrun simctl launch <udid> com.adamxu.kiosk -kioskSc
 | `-kioskSquarePrompt YES\|NO` | Same as *Use Square's payment screen*. |
 
 Example: `xcrun simctl launch booted com.adamxu.kiosk -kioskCurrent cup -kioskStep flavors -kioskScript scoops -kioskSlowmo 0.25`
+
+## UI tests
+
+`KioskUITests` pulls the order sheet with real touches in the simulator (to the bottom and held, back up, slow oscillation through the whole travel, flings, a second finger), then checks the sheet came to rest and the app still responds. Paths that hold and reverse within one touch use XCUIAutomation's private `XCPointerEventPath`, as WebDriverAgent does.
+
+```sh
+xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
+```
 
 ## Testing payments
 

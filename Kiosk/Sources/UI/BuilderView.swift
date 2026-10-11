@@ -179,22 +179,34 @@ private struct SheetGlass: View {
 /// sheet takes the pull-down; the gesture is measured on screen because the content moves under the finger.
 private struct OrderSheetContent: View {
     let app: AppModel
+    @GestureState private var pulling = false
 
     var body: some View {
         let geometry = SheetGeometry(progress: app.stage.sheetModel.progress)
-        if geometry.contentOpacity > 0 {
-            SummaryView(app: app)
-                .offset(y: geometry.contentOffset)
-                .opacity(geometry.contentOpacity)
-                .clipShape(SheetShape(geometry: geometry))
-                .contentShape(SheetShape(geometry: geometry))
-                .gesture(pullDown)
-                .allowsHitTesting(app.mode == .summary)
+        ZStack {
+            // Not just while visible: the content is fully faded below 30%, and unmounting it mid-pull drops
+            // the gesture without `onEnded`, freezing the sheet with nothing left to touch.
+            if app.orderSheetMounted || pulling {
+                SummaryView(app: app)
+                    .offset(y: geometry.contentOffset)
+                    .opacity(geometry.contentOpacity)
+                    .clipShape(SheetShape(geometry: geometry))
+                    .contentShape(SheetShape(geometry: geometry))
+                    .gesture(pullDown)
+                    .allowsHitTesting(app.mode == .summary)
+            }
+        }
+        .onChange(of: pulling) { _, isPulling in
+            // Gesture state also resets when the system cancels the touch, where `onEnded` never comes. After
+            // a normal release `onEnded` has already settled the sheet by the next turn of the run loop.
+            guard !isPulling else { return }
+            DispatchQueue.main.async { app.abandonSheetDrag() }
         }
     }
 
     private var pullDown: some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .global)
+            .updating($pulling) { _, pulling, _ in pulling = true }
             .onChanged { app.dragSheet(by: $0.translation.height) }
             .onEnded {
                 app.endSheetDrag(translation: $0.translation.height, predicted: $0.predictedEndTranslation.height,

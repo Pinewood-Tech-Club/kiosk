@@ -342,13 +342,24 @@ extension Stage {
         if let velocity { sheet.velocity = velocity }
     }
 
-    /// Follows a pull-down, `offset` points below where it was grabbed.
+    /// Follows a pull-down, `offset` points below where it was grabbed. Above the open position the sheet
+    /// resists; below the tray it waits there until the finger comes back up.
     func dragSheet(by offset: CGFloat) {
-        if sheetGrab == nil { sheetGrab = sheet.value }
-        let value = (sheetGrab ?? 1) - Float(offset / SheetGeometry.travel)
+        guard offset.isFinite else { return }
+        let grab = sheetGrab ?? sheet.value
+        sheetGrab = grab
+        let value = Float(sheetProgress(grabbedAt: grab, offset: offset))
         sheet.value = value
         sheet.target = value
         sheet.velocity = 0
+    }
+
+    func sheetProgress(grabbedAt grab: Float, offset: CGFloat) -> CGFloat {
+        let travel = SheetGeometry.travel
+        let raw = CGFloat(grab) - offset / travel
+        guard raw > 1 else { return max(raw, 0) }
+        let excess = (raw - 1) * travel
+        return 1 + 24 * (1 - 1 / (excess / 60 + 1)) / travel
     }
 
     func snapSheet(open: Bool) {
@@ -364,6 +375,14 @@ extension Stage {
 
     func stepSheet(_ dt: Float) {
         sheet.step(dt)
+        let range = SheetGeometry.progressRange
+        if sheet.value < Float(range.lowerBound) {
+            sheet.value = Float(range.lowerBound)
+            sheet.velocity = max(sheet.velocity, 0)
+        } else if sheet.value > Float(range.upperBound) {
+            sheet.value = Float(range.upperBound)
+            sheet.velocity = min(sheet.velocity, 0)
+        }
         let covered = summaryActive && sheet.value >= 0.995
         if covered != sheetCovered {
             sheetCovered = covered

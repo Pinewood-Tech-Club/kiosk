@@ -88,6 +88,8 @@ struct SheetGeometry {
     let progress: CGFloat
 
     static let travel = Layout.trayGlassRect.minY - Layout.sheetRect.minY
+    /// Below 0 means nothing; above the top end the sheet's bottom edge would rise into view.
+    static let progressRange: ClosedRange<CGFloat> = 0...(1 + (Layout.sheetRect.maxY - Layout.screen.height) / travel)
 
     var t: CGFloat { min(max(progress, 0), 1) }
     private var lift: CGFloat { max(progress - 1, 0) * Self.travel }

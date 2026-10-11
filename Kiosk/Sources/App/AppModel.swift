@@ -450,13 +450,21 @@ final class AppModel {
         -Float(velocity / SheetGeometry.travel) / Float(max(slowMotion, 0.01))
     }
 
+    /// The order's content, and with it the pull-down, stays mounted for as long as the order is up.
+    var orderSheetMounted: Bool {
+        mode == .summary || SheetGeometry(progress: stage.sheetModel.progress).contentOpacity > 0
+    }
+
+    var isPullingSheet: Bool { stage.sheetGrab != nil }
+
     func dragSheet(by translation: CGFloat) {
         guard mode == .summary else { return }
-        stage.dragSheet(by: translation >= 0 ? translation : -24 * (1 - 1 / (-translation / 60 + 1)))
+        stage.dragSheet(by: translation)
     }
 
     func endSheetDrag(translation: CGFloat, predicted: CGFloat, velocity: CGFloat) {
-        guard mode == .summary else { return }
+        guard mode == .summary, isPullingSheet else { return }
+        let velocity = velocity.isFinite ? velocity : 0
         if predicted > 280 || (translation > 150 && velocity > -100) {
             backToBuilder(velocity: velocity)
         } else {
@@ -464,8 +472,20 @@ final class AppModel {
         }
     }
 
+    /// Settles a pull-down that ended without a release (the system cancelled the touch), as if the finger
+    /// had lifted where it was without a fling.
+    func abandonSheetDrag() {
+        guard isPullingSheet else { return }
+        guard mode == .summary else {
+            stage.settleSheet(open: false, velocity: nil)
+            return
+        }
+        let pulled = (1 - CGFloat(stage.sheet.value)) * SheetGeometry.travel
+        endSheetDrag(translation: pulled, predicted: pulled, velocity: 0)
+    }
+
     func completeOrder() {
-        guard !items.isEmpty else { return }
+        guard !items.isEmpty, !isPullingSheet else { return }
         booth.checkReaderBeforePayment()
         notice = nil
         withAnimation(.easeInOut(duration: 0.4)) { screen = .name }

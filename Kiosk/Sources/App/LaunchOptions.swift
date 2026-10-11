@@ -1,4 +1,6 @@
 import Foundation
+import QuartzCore
+import simd
 import SwiftUI
 
 /// Testing hooks, read from launch arguments such as `-kioskScreen builder -kioskStep flavors`.
@@ -326,6 +328,10 @@ struct ScriptRunner {
             offset = await pullSheet(from: 0, to: 260, seconds: 0.35)
             app.endSheetDrag(translation: offset, predicted: offset + 180, velocity: 900 * app.slowMotion)
             await wait(2.0)
+        case "sheet-oscillate":
+            await sheetOscillation()
+        case "sheet-stress":
+            await SheetDragStress(app: app).run()
         case "summary":
             await wait(0.8)
             app.viewOrder()
@@ -415,6 +421,32 @@ struct ScriptRunner {
         log("end \(script)")
     }
 
+    /// One finger held on the order sheet throughout: slow pulls up and down, past the open position, all the
+    /// way to the tray and a hold there, then a release at the bottom; then a pull to the bottom, a hold and a
+    /// slow climb back that releases open.
+    private func sheetOscillation() async {
+        if app.mode != .summary { app.viewOrder() }
+        await wait(2.2)
+        var offset: CGFloat = 0
+        let legs: [(CGFloat, Double)] = [(320, 1.2), (90, 0.9), (720, 1.6), (260, 1.1), (-70, 0.9), (1250, 2.2),
+                                         (1250, 1.0), (520, 1.5), (1000, 1.2), (180, 1.6), (1250, 2.0), (1250, 1.0)]
+        for (target, seconds) in legs {
+            offset = await pullSheet(from: offset, to: target, seconds: seconds)
+        }
+        app.endSheetDrag(translation: offset, predicted: offset, velocity: 0)
+        await wait(2.0)
+        log("released at the bottom: \(app.mode == .summary ? "open" : "closed"), progress \(app.stage.sheet.value)")
+        app.viewOrder()
+        await wait(2.2)
+        offset = 0
+        for (target, seconds) in [(CGFloat(1250), 2.0), (1250, 1.2), (40, 2.2)] as [(CGFloat, Double)] {
+            offset = await pullSheet(from: offset, to: target, seconds: seconds)
+        }
+        app.endSheetDrag(translation: offset, predicted: offset - 20, velocity: -80 * app.slowMotion)
+        await wait(2.0)
+        log("released after climbing back: \(app.mode == .summary ? "open" : "closed"), progress \(app.stage.sheet.value)")
+    }
+
     /// Every way a scoop moves against a vessel: adds into each slot, transfers with 1-3 scoops both ways,
     /// top, middle and bottom removals, in the cup and the cone. Pair with the clip check's log lines.
     private func clipTour() async {
@@ -491,7 +523,7 @@ struct StressRunner {
     let app: AppModel
     let includeTray: Bool
 
-    private struct SplitMix {
+    fileprivate struct SplitMix: RandomNumberGenerator {
         var state: UInt64
         mutating func next() -> UInt64 {
             state &+= 0x9E37_79B9_7F4A_7C15
@@ -631,5 +663,288 @@ struct StressRunner {
                 return ">"
             }
         }
+    }
+}
+
+/// Feeds the order sheet's pull-down handlers everything a finger and the gesture system can: long slow
+/// oscillations, reversals, pulls past the open position and below the tray, holds, flings, second-finger taps
+/// and cancellations. While a pull is live the sheet must sit exactly under the finger; after each one it must
+/// come to rest open or closed with its items on it. Every frame its progress must be finite and in range, and
+/// the main thread must never stall.
+@MainActor
+struct SheetDragStress {
+    let app: AppModel
+
+    private enum Ending: CaseIterable {
+        case release, fling, cancel, releaseThenCancel, cancelThenLateRelease, keepOrderingTap, checkOutTap, editTap
+    }
+
+    /// Pings the main thread from another every 20 ms; a reply that takes long is a stall.
+    private final class Watch: @unchecked Sendable {
+        private let lock = NSLock()
+        private var worst = 0.0
+        private let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInteractive))
+
+        func start() {
+            timer.schedule(deadline: .now(), repeating: .milliseconds(20))
+            timer.setEventHandler { [self] in
+                let sent = CACurrentMediaTime()
+                DispatchQueue.main.async { [self] in
+                    let lag = CACurrentMediaTime() - sent
+                    lock.lock()
+                    worst = max(worst, lag)
+                    lock.unlock()
+                }
+            }
+            timer.resume()
+        }
+
+        /// The longest main-thread lag since the last call.
+        func take() -> Double {
+            lock.lock()
+            defer { worst = 0; lock.unlock() }
+            return worst
+        }
+
+        func stop() { timer.cancel() }
+    }
+
+    private struct Lags {
+        var worst = 0.0
+        var stalls = 0
+
+        mutating func add(_ lag: Double) {
+            worst = max(worst, lag)
+            if lag > 0.1 { stalls += 1 }
+        }
+    }
+
+    private final class Tally {
+        var updates = 0
+        var frames = 0
+        var issues: [String] = []
+        var running = true
+    }
+
+    private func log(_ message: String) { app.square.record("SheetDrag: \(message)") }
+
+    private func sleep(_ seconds: Double) async {
+        try? await Task.sleep(for: .seconds(seconds))
+    }
+
+    func run() async {
+        let defaults = UserDefaults.standard
+        let seed = defaults.object(forKey: "kioskSeed") != nil ? UInt64(defaults.integer(forKey: "kioskSeed")) : UInt64(Date().timeIntervalSince1970)
+        let gestures = defaults.object(forKey: "kioskStressRounds") != nil ? defaults.integer(forKey: "kioskStressRounds") : 60
+        var rng = StressRunner.SplitMix(state: seed)
+        log("seed \(seed), \(gestures) gestures")
+        let tally = Tally()
+        let watch = Watch()
+        watch.start()
+        let monitor = Task { @MainActor in
+            while tally.running {
+                checkFrame(tally)
+                try? await Task.sleep(for: .milliseconds(8))
+            }
+        }
+        if app.mode != .summary { app.viewOrder() }
+        await settle(tally, "start")
+        var failures = 0
+        var dragLags = Lags()
+        var settleLags = Lags()
+        for index in 0..<gestures {
+            let before = tally.issues.count
+            _ = watch.take()
+            let (trace, ending) = await gesture(&rng, tally)
+            let dragLag = watch.take()
+            await settle(tally, "gesture \(index)")
+            if app.mode != .summary {
+                app.viewOrder()
+                await settle(tally, "reopen after gesture \(index)")
+            }
+            let settleLag = watch.take()
+            dragLags.add(dragLag)
+            settleLags.add(settleLag)
+            let lags = String(format: "(main-thread lag %.0f ms dragging, %.0f ms settling)", dragLag * 1000, settleLag * 1000)
+            let found = tally.issues[before...]
+            if found.isEmpty {
+                log("gesture \(index) OK: \(trace) \(ending) \(lags)")
+            } else {
+                failures += 1
+                log("gesture \(index) FAIL: \(trace) \(ending) \(lags): \(found.prefix(6).joined(separator: "; "))")
+            }
+        }
+        tally.running = false
+        _ = await monitor.value
+        watch.stop()
+        log(String(format: "done: %d/%d gestures clean, %d drag updates, %d frames checked; worst main-thread lag %.0f ms while dragging (%d gestures over 100 ms), %.0f ms while settling or reopening (%d over 100 ms); seed %llu",
+                   gestures - failures, gestures, tally.updates, tally.frames, dragLags.worst * 1000, dragLags.stalls,
+                   settleLags.worst * 1000, settleLags.stalls, seed))
+    }
+
+    private func checkFrame(_ tally: Tally) {
+        tally.frames += 1
+        let value = CGFloat(app.stage.sheet.value)
+        let published = app.stage.sheetModel.progress
+        let range = SheetGeometry.progressRange
+        if !value.isFinite || !published.isFinite {
+            tally.issues.append("progress not finite (\(value), published \(published))")
+        } else if value < range.lowerBound - 1e-6 || value > range.upperBound + 1e-6 {
+            tally.issues.append("progress \(value) out of \(range)")
+        }
+        if app.isPullingSheet, !app.orderSheetMounted {
+            tally.issues.append("pull live at \(value) with the sheet's gesture unmounted")
+        }
+    }
+
+    /// One touch, from the first update the gesture reports (past its 12 pt minimum distance) to its end.
+    private func gesture(_ rng: inout StressRunner.SplitMix, _ tally: Tally) async -> (String, Ending) {
+        let rate = 1.0 / 120
+        var offset: CGFloat = Bool.random(using: &rng) ? 12 : -12
+        var lastStep: CGFloat = 0
+        var expected: Float?
+        var trace: [String] = []
+
+        func move(to target: CGFloat) {
+            if let expected, app.isPullingSheet, abs(app.stage.sheet.value - expected) > 1e-5 {
+                tally.issues.append("sheet moved to \(app.stage.sheet.value) under a still finger at \(expected)")
+            }
+            lastStep = target - offset
+            offset = target
+            app.dragSheet(by: offset)
+            tally.updates += 1
+            guard app.isPullingSheet, let grab = app.stage.sheetGrab else {
+                expected = nil
+                return
+            }
+            let want = Float(app.stage.sheetProgress(grabbedAt: grab, offset: offset))
+            if abs(app.stage.sheet.value - want) > 1e-5 {
+                tally.issues.append("sheet at \(app.stage.sheet.value), finger says \(want)")
+            }
+            expected = app.stage.sheet.value
+        }
+
+        func glide(to target: CGFloat, seconds: Double) async {
+            let from = offset
+            let steps = max(Int(seconds / rate), 1)
+            for i in 1...steps {
+                let u = CGFloat(i) / CGFloat(steps)
+                move(to: from + (target - from) * u * u * (3 - 2 * u))
+                await sleep(rate)
+            }
+        }
+
+        move(to: offset)
+        let segments = 1 + Int(rng.next() % 8)
+        for _ in 0..<segments {
+            switch rng.next() % 7 {
+            case 0:
+                let center = CGFloat.random(in: 100...900, using: &rng)
+                let amplitude = CGFloat.random(in: 30...500, using: &rng)
+                let period = Double.random(in: 0.6...2.5, using: &rng)
+                let cycles = Double.random(in: 1...4, using: &rng)
+                trace.append("osc(\(Int(center))±\(Int(amplitude)))")
+                let start = offset
+                let steps = Int(period * cycles / rate)
+                for i in 1...max(steps, 1) {
+                    let t = Double(i) * rate
+                    let wave = center + amplitude * CGFloat(sin(2 * .pi * t / period))
+                    let blend = CGFloat(min(t / 0.3, 1))
+                    move(to: start + (wave - start) * blend)
+                    await sleep(rate)
+                }
+            case 1:
+                let target = CGFloat.random(in: 1100...1600, using: &rng)
+                trace.append("bottom(\(Int(target)))")
+                await glide(to: target, seconds: Double.random(in: 0.4...2.5, using: &rng))
+            case 2:
+                let target = CGFloat.random(in: -500 ... -20, using: &rng)
+                trace.append("above(\(Int(target)))")
+                await glide(to: target, seconds: Double.random(in: 0.3...1.5, using: &rng))
+            case 3:
+                let seconds = Double.random(in: 0.1...1.5, using: &rng)
+                trace.append(String(format: "hold(%.1fs)", seconds))
+                await sleep(seconds)
+            case 4:
+                let target = CGFloat.random(in: -200...1500, using: &rng)
+                trace.append("jump(\(Int(target)))")
+                move(to: target)
+                await sleep(rate)
+            case 5:
+                trace.append("jitter")
+                for _ in 0..<Int(0.5 / rate) {
+                    move(to: offset + CGFloat.random(in: -3...3, using: &rng))
+                    await sleep(rate)
+                }
+            default:
+                let target = CGFloat.random(in: -100...1300, using: &rng)
+                trace.append("glide(\(Int(target)))")
+                await glide(to: target, seconds: Double.random(in: 0.2...3, using: &rng))
+            }
+        }
+
+        let ending = Ending.allCases[Int(rng.next() % UInt64(Ending.allCases.count))]
+        var velocity = lastStep / CGFloat(rate)
+        if trace.last?.hasPrefix("hold") == true { velocity = 0 }
+        if ending == .fling { velocity = CGFloat.random(in: -4000...4000, using: &rng) }
+        let predicted = offset + velocity * 0.25
+        func release() { app.endSheetDrag(translation: offset, predicted: predicted, velocity: velocity) }
+        switch ending {
+        case .release, .fling:
+            release()
+        case .cancel:
+            await Task.yield()
+            app.abandonSheetDrag()
+        case .releaseThenCancel:
+            release()
+            app.abandonSheetDrag()
+        case .cancelThenLateRelease:
+            app.abandonSheetDrag()
+            release()
+        case .keepOrderingTap:
+            app.backToBuilder()
+            await glide(to: offset + 200, seconds: 0.3)
+            release()
+        case .checkOutTap:
+            app.completeOrder()
+            if app.screen != .builder {
+                tally.issues.append("Check Out went through mid-pull")
+                app.backToSummary()
+            }
+            await glide(to: offset - 150, seconds: 0.3)
+            release()
+        case .editTap:
+            if let item = app.items.randomElement(using: &rng) { app.tapTrayItem(item.id) }
+            await glide(to: offset + 100, seconds: 0.2)
+            release()
+        }
+        return (trace.joined(separator: " "), ending)
+    }
+
+    private func settle(_ tally: Tally, _ label: String) async {
+        var waited = 0.0
+        while !app.stage.isSettled, waited < 8 {
+            await sleep(0.05)
+            waited += 0.05
+        }
+        await sleep(0.05)
+        let stage = app.stage
+        var issues: [String] = []
+        if !stage.isSettled {
+            issues.append("never settled (progress \(stage.sheet.value), target \(stage.sheet.target), pulling \(app.isPullingSheet))")
+        }
+        let open = app.mode == .summary
+        if open != stage.summaryActive { issues.append("mode \(app.mode) but sheet active \(stage.summaryActive)") }
+        if abs(stage.sheet.value - (open ? 1 : 0)) > 1e-4 { issues.append("came to rest at \(stage.sheet.value) while \(open ? "open" : "closed")") }
+        if abs(stage.sheetModel.progress - CGFloat(stage.sheet.value)) > 1e-4 { issues.append("SwiftUI sees \(stage.sheetModel.progress)") }
+        for entry in stage.tray where entry.mode == .docked {
+            guard let rig = entry.rig else { continue }
+            if simd_length(rig.pose.position - stage.dockedPose(entry).pose.position) > 1e-4 {
+                issues.append("item \(Int(entry.index)) left its \(open ? "row" : "slot")")
+            }
+        }
+        issues += stage.consistencyIssues(current: open ? nil : app.current, items: app.items, editingID: app.editingID,
+                                          showsCards: !open)
+        tally.issues += issues.map { "\(label): \($0)" }
     }
 }

@@ -48,3 +48,27 @@ targets:
           if [ -f "$SETUP_SCRIPT" ]; then
             "$SETUP_SCRIPT"
           fi
+  KioskUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: KioskUITests
+    dependencies:
+      - target: Kiosk
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "2"
+        CODE_SIGN_STYLE: Automatic
+        TEST_TARGET_NAME: Kiosk
+schemes:
+  Kiosk:
+    build:
+      targets:
+        Kiosk: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - KioskUITests
