@@ -2,6 +2,7 @@ import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test"
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src";
+import { STAFF_ROLES } from "../src/staff-roles";
 import { summarize } from "../src/stats";
 
 const KIOSK = "test-kiosk-token";
@@ -17,29 +18,75 @@ async function call(path: string, init: RequestInit = {}) {
   return { status: response.status, text, headers: response.headers, webSocket: (response as any).webSocket as WebSocket | null };
 }
 
+let session: string | null = null;
+
 async function signIn(): Promise<string> {
+  if (session) return session;
   const response = await call("/dashboard/login", {
     method: "POST",
     headers: { Origin: BASE, "Content-Type": "application/x-www-form-urlencoded" },
     body: "pin=2468",
   });
-  return response.headers.get("Set-Cookie")!.split(";")[0];
+  session = response.headers.get("Set-Cookie")!.split(";")[0];
+  return session;
 }
 
 describe("dashboard page", () => {
-  it("shows only the sign-in form without a session", async () => {
-    const response = await call("/dashboard");
+  it("sends /dashboard to the page picker and asks for the PIN without a session", async () => {
+    const legacy = await call("/dashboard");
+    expect(legacy.status).toBe(303);
+    expect(legacy.headers.get("Location")).toBe("/staff");
+    const picker = await call("/staff");
+    expect(picker.text).toContain('name="pin"');
+    expect(picker.text).not.toContain("/staff/counter");
+    const response = await call("/staff/counter");
     expect(response.status).toBe(200);
     expect(response.text).toContain('name="pin"');
     expect(response.text).toContain('inputmode="numeric"');
+    expect(response.text).toContain('name="next" value="/staff/counter"');
     expect(response.text).not.toContain("WebSocket");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("Referrer-Policy")).toBe("same-origin");
   });
 
+  it("lists every role page on the picker and refuses unknown roles", async () => {
+    const cookie = await signIn();
+    const picker = await call("/staff", { headers: { Cookie: cookie } });
+    expect(picker.status).toBe(200);
+    for (const id of Object.keys(STAFF_ROLES)) expect(picker.text).toContain(`href="/staff/${id}"`);
+    const unknown = await call("/staff/nope", { headers: { Cookie: cookie } });
+    expect(unknown.status).toBe(404);
+    expect(unknown.text).toContain("There is no");
+  });
+
+  it("returns to the page the PIN was asked on, and only to staff pages", async () => {
+    const login = (next: string) => call("/dashboard/login", {
+      method: "POST",
+      headers: { Origin: BASE, "Content-Type": "application/x-www-form-urlencoded" },
+      body: `pin=2468&next=${encodeURIComponent(next)}`,
+    });
+    expect((await login("/staff/organizer")).headers.get("Location")).toBe("/staff/organizer");
+    expect((await login("https://evil.test/")).headers.get("Location")).toBe("/staff");
+    expect((await login("//evil.test/staff")).headers.get("Location")).toBe("/staff");
+  });
+
+  it("shows each role only its own sections", async () => {
+    const cookie = await signIn();
+    const counter = (await call("/staff/counter", { headers: { Cookie: cookie } })).text;
+    expect(counter).toContain('id="orders"');
+    expect(counter).toContain('id="soldout"');
+    expect(counter).not.toContain('id="tOrders"');
+    expect(counter).not.toContain('id="feed"');
+    const organizer = (await call("/staff/organizer", { headers: { Cookie: cookie } })).text;
+    expect(organizer).toContain('id="tOrders"');
+    expect(organizer).toContain('id="feed"');
+    expect(organizer).toContain('id="alerts"');
+    expect(organizer).not.toContain('id="orders"');
+  });
+
   it("serves a self-contained live page to a signed-in session", async () => {
     const cookie = await signIn();
-    const response = await call("/dashboard", { headers: { Cookie: cookie } });
+    const response = await call("/staff/counter", { headers: { Cookie: cookie } });
     expect(response.status).toBe(200);
     expect(response.text).toContain("new WebSocket");
     expect(response.text).toContain('id="orders"');
@@ -54,7 +101,7 @@ describe("dashboard page", () => {
     expect(response.text).toContain(`<script nonce="${nonce}">`);
     expect(csp).toContain("connect-src 'self' wss://booth.test");
     expect(csp).toContain("media-src blob:");
-    const second = await call("/dashboard", { headers: { Cookie: cookie } });
+    const second = await call("/staff/counter", { headers: { Cookie: cookie } });
     expect(second.headers.get("Content-Security-Policy")).not.toBe(csp);
   });
 

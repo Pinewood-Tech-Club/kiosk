@@ -1,4 +1,5 @@
 import { escapeHtml } from "./http";
+import { STAFF_ROLES, type StaffRole, type StaffSection } from "./staff-roles";
 
 const STYLE = `
 :root{color-scheme:light dark;
@@ -80,15 +81,29 @@ button.pill.attn{background:var(--accent);color:#fff;border-color:transparent}
 .urow .btn,.uhead .btn{min-height:2.75rem;padding:.4rem .9rem;font-size:.95rem}
 .urow.more-n{color:var(--dim);justify-content:center;min-height:2.5rem}
 .updates.more{border-left-color:var(--bad)}.updates.more .urow{color:var(--bad)}
-.tabs{display:flex;gap:.5rem;background:var(--panel2);padding:.3rem;border-radius:1rem;width:max-content;max-width:100%}
-.tabs button{min-height:2.9rem;padding:.45rem 1.3rem;border:0;border-radius:.75rem;background:none;font-weight:700;display:inline-flex;gap:.5rem;align-items:center;color:var(--dim)}
-.tabs button[aria-selected=true]{background:var(--panel);color:var(--text);box-shadow:var(--shadow)}
 .grid{display:grid;gap:1rem;grid-template-columns:minmax(0,1fr);align-items:start}
 .col{display:grid;gap:1rem;min-width:0}
-body[data-tab=counter] .pane-stats,body[data-tab=stats] .pane-counter{display:none}
-@media(min-width:700px){.grid{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}.pane-stats{grid-column:1/-1}}
-@media(min-width:1400px){.tabs{display:none}.grid{grid-template-columns:minmax(0,5fr) minmax(0,3.4fr) minmax(0,3.6fr)}.pane-stats{grid-column:auto}
-body[data-tab] .pane-stats,body[data-tab] .pane-counter{display:grid}}
+@media(min-width:700px){.grid.cols-2,.grid.cols-3{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}.grid.cols-3>.col:first-child{grid-column:1/-1}}
+@media(min-width:1180px){.grid.cols-3{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) minmax(0,1fr)}.grid.cols-3>.col:first-child{grid-column:auto}}
+.picker{max-width:44rem}
+.picker h2{margin:.5rem 0 0;font-size:1.4rem}
+.roles{display:grid;gap:.9rem}
+.role{display:flex;align-items:center;gap:1.1rem;padding:1.2rem 1.3rem;min-height:5.5rem;border-radius:1.2rem;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);color:var(--text);text-decoration:none}
+.role:active{transform:scale(.99)}
+.role>span:nth-child(2){flex:1;display:grid;gap:.2rem}
+.role b{font-size:1.3rem}
+.role span span{color:var(--dim)}
+.role .ric{display:grid;place-items:center;width:3.2rem;height:3.2rem;border-radius:1rem;background:var(--accent-soft);color:var(--accent);font-size:1.3rem;flex:none}
+a.pill{color:var(--dim);text-decoration:none}
+.err{color:var(--bad);font-weight:600;display:flex;gap:.5rem;align-items:center}
+.frow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.15rem .9rem;padding:.7rem 0;border-top:1px solid var(--line);align-items:baseline}
+.frow:first-child{border-top:0}
+.frow .num{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums;min-width:2.8rem}
+.frow .who{font-weight:700;font-size:1.1rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.frow .total{font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
+.frow .items{grid-column:2;color:var(--dim)}
+.frow .when{grid-column:3;color:var(--dim);font-size:.9rem;text-align:right;white-space:nowrap}
+.frow.sim{opacity:.6}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:1.2rem;padding:1rem 1.1rem;box-shadow:var(--shadow);min-width:0}
 .card h2{margin:0 0 .75rem;font-size:.95rem;color:var(--dim);font-weight:700;letter-spacing:.05em;text-transform:uppercase;display:flex;gap:.5rem;align-items:center}
 .card h2 .count{margin-left:auto;background:var(--panel2);color:var(--text);border-radius:99rem;padding:.1rem .7rem;font-size:.95rem;letter-spacing:0}
@@ -187,6 +202,7 @@ const ICONS: Record<string, string> = {
   loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
   list: '<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
+  layout: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
 };
 
 export function icon(name: string): string {
@@ -200,28 +216,29 @@ export function shell(title: string, body: string, nonce: string, script = ""): 
 <title>${escapeHtml(title)}</title><style nonce="${nonce}">${STYLE}</style></head><body>${body}${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
 }
 
-export function loginBody(message: string | null): string {
+export function loginBody(message: string | null, next = "/staff"): string {
   const error = message ? `<p class="err" role="alert">${icon("alert")} ${escapeHtml(message)}</p>` : "";
-  return `<div class="login"><form method="post" action="/dashboard/login"><h1>${icon("cone")} Booth counter</h1>${error}<label for="pin">Staff PIN</label><input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" required autofocus><button class="btn primary big">${icon("lock")} Sign in</button></form></div>`;
+  return `<div class="login"><form method="post" action="/dashboard/login"><h1>${icon("cone")} Booth staff</h1>${error}<input type="hidden" name="next" value="${escapeHtml(next)}"><label for="pin">Staff PIN</label><input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" required autofocus><button class="btn primary big">${icon("lock")} Sign in</button></form></div>`;
 }
 
-export function dashboardBody(): string {
-  return `<div class="sticky"><header class="top"><h1>${icon("cone")}<span class="lbl">Booth counter</span></h1>
-<div class="status"><span class="pill" id="link" role="status"></span><span class="pill" id="kioskPill"></span>
-<button class="pill" id="sound" type="button" hidden></button>
-<form method="post" action="/dashboard/logout" class="web-only"><button class="pill muted" aria-label="Sign out">${icon("logOut")}<span class="lbl">Sign out</span></button></form></div></header>
-<div id="banner" class="banner" hidden role="status"></div></div>
-<div class="wrap">
-<section class="alerts" id="alerts" aria-live="assertive"></section>
-<nav class="tabs" role="tablist"><button role="tab" data-tab="counter" aria-selected="true">${icon("list")} Counter</button><button role="tab" data-tab="stats" aria-selected="false">${icon("chart")} Stats</button></nav>
-<main class="grid">
-<div class="col pane-counter"><section class="card"><h2>${icon("receipt")} Orders <span class="count" id="openCount">0</span></h2><div id="orders"></div><details class="done" id="doneWrap"><summary>${icon("chevron")} <span id="doneTitle">Finished</span></summary><div id="done"></div></details></section></div>
-<div class="col pane-counter">
-<section class="card"><h2>${icon("ban")} Sold out</h2><div class="flavors" id="soldout"></div></section>
-<section class="card"><h2>${icon("tablet")} Kiosk</h2><div class="health" id="health"></div></section>
-</div>
-<div class="col pane-stats">
-<div class="tiles">
+function signOut(): string {
+  return `<form method="post" action="/dashboard/logout" class="web-only"><button class="pill muted" aria-label="Sign out">${icon("logOut")}<span class="lbl">Sign out</span></button></form>`;
+}
+
+export function pickerBody(message: string | null = null): string {
+  const cards = Object.entries(STAFF_ROLES).map(([id, role]: [string, StaffRole]) =>
+    `<a class="role" href="/staff/${id}"><span class="ric">${icon(role.icon)}</span><span><b>${escapeHtml(role.title)}</b><span>${escapeHtml(role.summary)}</span></span>${icon("chevron")}</a>`).join("");
+  const error = message ? `<p class="err" role="alert">${icon("alert")} ${escapeHtml(message)}</p>` : "";
+  return `<div class="sticky"><header class="top"><h1>${icon("cone")}<span>Booth staff</span></h1><div class="status">${signOut()}</div></header></div>
+<div class="wrap picker"><h2>Which page do you need?</h2>${error}<nav class="roles">${cards}</nav></div>`;
+}
+
+const SECTIONS: Record<StaffSection, () => string> = {
+  queue: () => `<section class="card"><h2>${icon("receipt")} Orders <span class="count" id="openCount">0</span></h2><div id="orders"></div><details class="done" id="doneWrap"><summary>${icon("chevron")} <span id="doneTitle">Finished</span></summary><div id="done"></div></details></section>`,
+  feed: () => `<section class="card"><h2>${icon("list")} All orders <span class="count" id="feedCount">0</span></h2><div id="feed"></div></section>`,
+  soldout: () => `<section class="card"><h2>${icon("ban")} Sold out</h2><div class="flavors" id="soldout"></div></section>`,
+  kiosk: () => `<section class="card"><h2>${icon("tablet")} Kiosk</h2><div class="health" id="health"></div></section>`,
+  stats: () => `<div class="tiles">
 <div class="tile"><div class="label">${icon("receipt")} Orders</div><div class="value" id="tOrders">0</div><div class="sub" id="tOrdersSub"></div></div>
 <div class="tile"><div class="label">${icon("dollar")} Revenue</div><div class="value" id="tRevenue">$0</div><div class="sub" id="tAvg"></div></div>
 <div class="tile"><div class="label">${icon("cone")} Scoops</div><div class="value" id="tScoops">0</div><div class="sub" id="tVessels"></div></div>
@@ -230,9 +247,19 @@ export function dashboardBody(): string {
 <section class="card"><h2>${icon("cone")} Scoops by flavor</h2><div id="flavorBars"></div></section>
 <section class="card"><h2>${icon("sparkles")} Toppings</h2><div id="toppingBars"></div></section>
 <section class="card"><h2>${icon("chart")} Orders per hour</h2><div class="hours" id="hourBars"></div></section>
-<div class="foot"><span id="updated"></span><a href="/v1/square/oauth/start" class="web-only">Connect Square</a></div>
-</div>
-</main></div>
+<div class="foot"><span id="updated"></span><a href="/v1/square/oauth/start" class="web-only">Connect Square</a></div>`,
+};
+
+export function dashboardBody(roleId: string, role: StaffRole): string {
+  const columns = role.columns.map((sections) => `<div class="col">${sections.map((s) => SECTIONS[s]()).join("")}</div>`).join("");
+  return `<div class="sticky"><header class="top"><h1>${icon(role.icon)}<span class="lbl">${escapeHtml(role.title)}</span></h1>
+<div class="status"><span class="pill" id="link" role="status"></span><span class="pill" id="kioskPill"></span>
+<button class="pill" id="sound" type="button" hidden></button>
+<a class="pill muted web-only" href="/staff" aria-label="Switch page">${icon("layout")}<span class="lbl">Pages</span></a>${signOut()}</div></header>
+<div id="banner" class="banner" hidden role="status"></div></div>
+<div class="wrap" data-role="${escapeHtml(roleId)}">
+${role.alerts ? `<section class="alerts" id="alerts" aria-live="assertive"></section>` : ""}
+<main class="grid cols-${role.columns.length}">${columns}</main></div>
 <div id="toast" class="toast" hidden role="status"></div>
 <dialog id="confirm"><h3 id="confirmTitle"></h3><p id="confirmText"></p><div class="row"><button class="btn quiet big" id="confirmNo" type="button">Keep order</button><button class="btn urgent" id="confirmYes" type="button">${icon("x")} Cancel order</button></div></dialog>`;
 }
@@ -240,9 +267,10 @@ export function dashboardBody(): string {
 const SCRIPT = String.raw`
 "use strict";
 var ICONS = __ICONS__;
+var BASE_TITLE = document.title;
 var IN_APP = /BoothStaffApp\//.test(navigator.userAgent);
 var ACTOR = IN_APP ? "Counter iPad" : "Dashboard";
-var OUTBOX_KEY = "booth.outbox.v1", DEVICE_KEY = "booth.device", TAB_KEY = "booth.tab", MUTE_KEY = "booth.muted";
+var OUTBOX_KEY = "booth.outbox.v1", DEVICE_KEY = "booth.device", MUTE_KEY = "booth.muted";
 var MAX_QUEUE_AGE = 60 * 60000, SETTLE_GRACE = 5000;
 var NEXT = { paid: "preparing", preparing: "ready", ready: "collected" };
 var STATUS_LABEL = { paid: "New", preparing: "Making", ready: "Ready", collected: "Collected", canceled: "Canceled" };
@@ -515,6 +543,7 @@ window.addEventListener("pageshow",function(e){if(e.persisted)reconnectNow();});
 function dayStart(){var d=new Date();d.setHours(0,0,0,0);return d.getTime();}
 function scheduleStats(delay){clearTimeout(statsTimer);statsTimer=setTimeout(loadStats,delay);}
 function loadStats(){
+  if(!HAS.stats)return;
   clearTimeout(statsTimer);
   statsTimer=setTimeout(loadStats,30000);
   fetch("/v1/stats?since="+dayStart(),{credentials:"same-origin",cache:"no-store"}).then(function(r){
@@ -559,17 +588,18 @@ function urgentOpen(){
 }
 
 function soundTick(){
+  if(!HAS.alerts)return;
   var open=urgentOpen();
   var fresh=open.filter(function(a){return !heard[a.id+":"+a.count];});
   open.forEach(function(a){heard[a.id+":"+a.count]=true;});
   if(fresh.length&&Date.now()-lastChimeAt>1500)chime(false);
   else if(open.length&&Date.now()-lastChimeAt>=30000)chime(false);
-  document.title=open.length?"("+open.length+") Needs attention - Booth counter":"Booth counter";
+  document.title=open.length?"("+open.length+") Needs attention - "+BASE_TITLE:BASE_TITLE;
 }
 
 function renderSound(){
   var b=$("sound");
-  b.hidden=IN_APP&&soundState==="on";
+  b.hidden=!HAS.alerts||(IN_APP&&soundState==="on");
   if(soundState==="locked"){b.className="pill attn";b.innerHTML=ico("volumeX")+'<span>Enable sound</span>';b.setAttribute("aria-label","Enable alert sound");}
   else if(soundState==="on"){b.className="pill";b.innerHTML=ico("volume")+'<span class="lbl">Sound on</span>';b.setAttribute("aria-label","Alert sound on, tap to mute");}
   else{b.className="pill muted";b.innerHTML=ico("volumeX")+'<span class="lbl">Muted</span>';b.setAttribute("aria-label","Alert sound muted, tap to turn on");}
@@ -737,26 +767,39 @@ function renderKiosk(){
     if(h.lastError)rows.push(["Last error",h.lastError,"warn-t"]);
     rows.push(["App",h.appVersion,""]);
   } else rows.push(["Health","No report yet","warn-t"]);
-  $("health").innerHTML=rows.map(function(r){
+  if(HAS.health)$("health").innerHTML=rows.map(function(r){
     return '<div><span>'+esc(r[0])+'</span><span class="'+r[2]+'">'+(r[3]?r[3]:esc(r[1]))+"</span></div>";
   }).join("");
 }
+
+var HAS={alerts:!!$("alerts"),orders:!!$("orders"),feed:!!$("feed"),soldout:!!$("soldout"),health:!!$("health"),stats:!!$("tOrders")};
 
 function render(){
   renderLink();renderSound();
   if(!state){
     var waiting='<div class="empty">'+ico("loader")+" Waiting for the booth</div>";
-    if(!$("orders").innerHTML)$("orders").innerHTML=waiting;
+    ["orders","feed","soldout","health"].forEach(function(id){if(HAS[id]&&!$(id).innerHTML)$(id).innerHTML=waiting;});
     return;
   }
-  renderAlerts();renderOrders();renderKiosk();renderSoldOut();
+  if(HAS.alerts)renderAlerts();
+  if(HAS.orders)renderOrders();
+  if(HAS.feed)renderFeed();
+  if(HAS.soldout)renderSoldOut();
+  renderKiosk();
 }
 
-function setTab(tab){
-  document.body.setAttribute("data-tab",tab);
-  document.querySelectorAll(".tabs button").forEach(function(b){b.setAttribute("aria-selected",String(b.dataset.tab===tab));});
-  store(TAB_KEY,tab);
-  if(tab==="stats")scheduleStats(0);
+function renderFeed(){
+  var list=state.orders.slice().sort(function(a,b){return b.paidAt-a.paidAt;});
+  $("feedCount").textContent=list.filter(function(o){return !o.simulated;}).length;
+  if(!list.length){$("feed").innerHTML='<div class="empty">No orders yet. They appear here the moment a customer pays.</div>';return;}
+  $("feed").innerHTML=list.map(function(o){
+    var st=orderStatus(o);
+    var items=o.items.map(function(it){
+      var t=it.toppings&&it.toppings.length?" + "+it.toppings.map(titleCase).join(", "):"";
+      return (it.vessel==="cone"?"Waffle cone":titleCase(it.vessel))+": "+(it.flavors.map(flavorName).join(", ")||"no flavor")+t;
+    }).join("; ");
+    return '<div class="frow'+(o.simulated?" sim":"")+'"><span class="num">'+(o.orderNumber!=null?"#"+o.orderNumber:"")+'</span><span class="who">'+esc(o.customerName||"Guest")+' <span class="chip '+st+'">'+(o.simulated?"Test, ":"")+STATUS_LABEL[st]+"</span>"+pendingTag("order:"+o.id)+'</span><span class="total">'+money(o.totalCents)+'</span><span class="items">'+esc(items)+'</span><span class="when">'+clock(o.paidAt)+"</span></div>";
+  }).join("");
 }
 
 function setStatus(id,to,withUndo){
@@ -794,7 +837,6 @@ document.addEventListener("click",function(e){
   }
   else if(el.dataset.order&&el.dataset.to){setStatus(el.dataset.order,el.dataset.to,true);}
   else if(el.dataset.cancel){askCancel(el.dataset.cancel);}
-  else if(el.dataset.tab){setTab(el.dataset.tab);}
   else if(el.id==="sound"){
     if(soundState==="on"){soundState="off";store(MUTE_KEY,"1");renderSound();}
     else{store(MUTE_KEY,null);soundState="on";chime(true);renderSound();}
@@ -804,7 +846,6 @@ document.addEventListener("click",function(e){
 });
 
 restoreOutbox();
-setTab(load(TAB_KEY)==="stats"?"stats":"counter");
 render();
 connect();
 loadStats();
