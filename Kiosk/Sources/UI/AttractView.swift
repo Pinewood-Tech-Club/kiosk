@@ -145,12 +145,25 @@ struct RoleSetupView: View {
                 }
             }
             .buttonStyle(.glassCTA(height: 88, fontSize: 30))
+            .disabled(!app.canChooseKiosk)
             .padding(.top, 56)
 
-            Text("Order Queue and Stats are coming soon.")
-                .font(Theme.sans(17))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.top, 40)
+            Button { app.chooseStaffRole() } label: {
+                HStack(spacing: 12) {
+                    Text("Staff")
+                    LucideIcon(name: "chevron-right", size: 22)
+                }
+            }
+            .buttonStyle(.glassSecondary())
+            .disabled(!app.canChooseStaff)
+            .padding(.top, 24)
+
+            if !app.canChooseStaff {
+                Text("This iPad is running as the kiosk. Relaunch the app to use it for staff.")
+                    .font(Theme.sans(17))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 16)
+            }
         }
         .frame(width: 720, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

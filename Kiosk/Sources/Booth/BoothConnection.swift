@@ -86,12 +86,17 @@ final class BoothConnection {
 
     @discardableResult
     func ack(alertID: String, by name: String) -> String {
-        enqueue(BoothAction(id: UUID().uuidString, type: "ack", alertId: alertID, flavor: nil, soldOut: nil, by: name))
+        enqueue(BoothAction(id: UUID().uuidString, type: "ack", alertId: alertID, flavor: nil, soldOut: nil, orderId: nil, status: nil, by: name))
     }
 
     @discardableResult
     func setSoldOut(_ flavor: String, soldOut: Bool, by name: String) -> String {
-        enqueue(BoothAction(id: UUID().uuidString, type: "setSoldOut", alertId: nil, flavor: flavor, soldOut: soldOut, by: name))
+        enqueue(BoothAction(id: UUID().uuidString, type: "setSoldOut", alertId: nil, flavor: flavor, soldOut: soldOut, orderId: nil, status: nil, by: name))
+    }
+
+    @discardableResult
+    func setOrderStatus(_ orderID: String, status: String, by name: String) -> String {
+        enqueue(BoothAction(id: UUID().uuidString, type: "setOrderStatus", alertId: nil, flavor: nil, soldOut: nil, orderId: orderID, status: status, by: name))
     }
 
     func requestSync() {
@@ -369,6 +374,14 @@ final class BoothConnection {
             }
         case .kiosk(let kiosk):
             current.kiosk = kiosk
+        case .order(let order):
+            if let index = current.orders.firstIndex(where: { $0.id == order.id }) {
+                current.orders[index] = order
+            } else {
+                current.orders.insert(order, at: 0)
+                current.orders.sort { $0.paidAt > $1.paidAt }
+                if current.orders.count > 100 { current.orders.removeLast(current.orders.count - 100) }
+            }
         case .unknown:
             break
         }

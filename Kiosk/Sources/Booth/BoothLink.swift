@@ -114,6 +114,7 @@ final class BoothLink {
     private func bootstrap(_ config: BoothConfig) async {
         let deviceID = await outbox.device()
         let api = BoothAPI(config: config, deviceID: deviceID)
+        square?.attachBooth(api)
         await outbox.attach(api: api) { [weak self] message in
             Task { @MainActor in self?.log(message) }
         }

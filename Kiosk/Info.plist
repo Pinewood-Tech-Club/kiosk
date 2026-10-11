@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BoothStaffToken</key>
+	<string>$(BOOTH_STAFF_TOKEN)</string>
 	<key>BoothToken</key>
 	<string>$(BOOTH_TOKEN)</string>
 	<key>BoothURL</key>
@@ -28,6 +30,8 @@
 	<string>1</string>
 	<key>KioskEventName</key>
 	<string>$(KIOSK_EVENT_NAME)</string>
+	<key>KioskRole</key>
+	<string>$(KIOSK_ROLE)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>

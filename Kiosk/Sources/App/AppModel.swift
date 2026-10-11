@@ -4,7 +4,8 @@ import SwiftUI
 @Observable
 @MainActor
 final class AppModel {
-    enum Screen: Equatable { case roleSetup, attract, builder, name, confirmation }
+    enum Screen: Equatable { case roleSetup, attract, builder, name, confirmation, staff }
+    enum DeviceRole: String { case kiosk, staff }
     enum BuilderMode: Equatable { case customize, summary }
 
     struct Notice: Equatable {
@@ -44,6 +45,7 @@ final class AppModel {
     var screen: Screen = .roleSetup {
         didSet {
             guard screen != oldValue else { return }
+            if screen == .attract { square.reauthorizeIfIdle() }
             leavingScreen = oldValue
             leavingTask?.cancel()
             leavingTask = Task { [weak self] in
@@ -86,6 +88,9 @@ final class AppModel {
 
     let square = SquareService()
     let booth = BoothLink()
+    let staff = StaffLink()
+    private(set) var role: DeviceRole?
+    private var kioskServicesStarted = false
     @ObservationIgnored let stage = Stage()
     @ObservationIgnored let host = ViewControllerHost()
     @ObservationIgnored private var started = false
@@ -147,12 +152,12 @@ final class AppModel {
         guard !started else { return }
         started = true
         stage.log = { [weak self] in self?.square.record($0) }
-        booth.start(square: square, app: self)
         stage.onSheetCovered = { [weak self] in self?.resetBuilderUnderSheet() }
-        if UserDefaults.standard.bool(forKey: "kioskNoSquare") {
-            square.record("Square disabled by -kioskNoSquare")
-        } else {
-            square.start()
+        square.canReauthorize = { [weak self] in self?.screen == .attract || self?.screen == .roleSetup }
+        switch LaunchOptions.current.role {
+        case DeviceRole.staff.rawValue: chooseStaffRole()
+        case DeviceRole.kiosk.rawValue: startKioskServices()
+        default: break
         }
         Task {
             while true {
@@ -175,13 +180,46 @@ final class AppModel {
             } else {
                 assetLoadFailed = true
                 square.record(forcedError == .assets ? "3D assets failed to load (forced)" : "3D assets failed to load")
-                if LaunchOptions.current.role == "kiosk", screen == .roleSetup { screen = .attract }
+                if LaunchOptions.current.role == DeviceRole.kiosk.rawValue, screen == .roleSetup { enterKioskRole(animated: false) }
             }
         }
     }
 
+    /// Square and the kiosk's booth link run only on the kiosk iPad: a staff iPad must never report itself as the kiosk.
+    private func startKioskServices() {
+        guard !kioskServicesStarted, role != .staff else { return }
+        kioskServicesStarted = true
+        role = .kiosk
+        booth.start(square: square, app: self)
+        if UserDefaults.standard.bool(forKey: "kioskNoSquare") {
+            square.record("Square disabled by -kioskNoSquare")
+        } else {
+            square.start()
+        }
+    }
+
+    var canChooseStaff: Bool { !kioskServicesStarted }
+    var canChooseKiosk: Bool { role != .staff }
+
     func chooseKioskRole() {
-        withAnimation(.easeInOut(duration: 0.5)) { screen = .attract }
+        enterKioskRole(animated: true)
+    }
+
+    private func enterKioskRole(animated: Bool) {
+        guard canChooseKiosk else { return }
+        startKioskServices()
+        if animated {
+            withAnimation(.easeInOut(duration: 0.5)) { screen = .attract }
+        } else {
+            screen = .attract
+        }
+    }
+
+    func chooseStaffRole() {
+        guard canChooseStaff else { return }
+        role = .staff
+        staff.start { [weak self] in self?.square.record($0) }
+        withAnimation(.easeInOut(duration: 0.5)) { screen = .staff }
     }
 
     func changeRole() {
@@ -510,6 +548,7 @@ final class AppModel {
         booth.checkReaderBeforePayment()
         let quote = orderQuote
         let number = nextOrderNumber()
+        let checkout = CheckoutIdentity.make()
         Task {
             let result: PaymentResult
             if let forcedError, forcedError != .assets {
@@ -518,9 +557,10 @@ final class AppModel {
                 square.record("Simulating payment for order #\(number) (\(quote.totalCents.formattedAsUSD))")
                 try? await Task.sleep(for: .seconds(1.2))
                 result = .succeeded(.simulated(quote: quote, customerName: name, orderNumber: number,
-                                               merchantName: square.merchantName))
+                                               merchantName: square.merchantName, checkout: checkout))
             } else {
-                result = await square.pay(quote: quote, customerName: name, orderNumber: number, from: host.presenter)
+                result = await square.pay(quote: quote, customerName: name, orderNumber: number, checkout: checkout,
+                                          from: host.presenter)
             }
             isPaying = false
             switch result {
@@ -545,7 +585,7 @@ final class AppModel {
         if options.debug3D { show3DDebug = true }
         if let simulate = options.simulatePayment { simulatePayment = simulate }
         if let hide = options.hideDebugBar { debugBarHidden = hide }
-        if options.role == "kiosk", screen == .roleSetup { screen = .attract }
+        if options.role == DeviceRole.kiosk.rawValue, screen == .roleSetup { enterKioskRole(animated: false) }
 
         if let screenName = options.screen {
             items = options.items

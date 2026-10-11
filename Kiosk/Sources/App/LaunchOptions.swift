@@ -20,7 +20,7 @@ struct LaunchOptions {
     static var current: LaunchOptions {
         let defaults = UserDefaults.standard
         var options = LaunchOptions()
-        options.role = defaults.string(forKey: "kioskRole")
+        options.role = defaults.string(forKey: "kioskRole") ?? configuredRole
         options.screen = defaults.string(forKey: "kioskScreen")
         options.script = defaults.string(forKey: "kioskScript")
         if defaults.bool(forKey: "kioskAutoplay") { options.script = "demo" }
@@ -49,6 +49,11 @@ struct LaunchOptions {
         }
         if options.screen != nil, options.role == nil { options.role = "kiosk" }
         return options
+    }
+
+    private static var configuredRole: String? {
+        let raw = (Bundle.main.object(forInfoDictionaryKey: "KioskRole") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return raw.isEmpty || raw.hasPrefix("$(") ? nil : raw.lowercased()
     }
 
     /// `cone:vanilla,chocolate` or `cup` (no scoops).

@@ -6,9 +6,30 @@ struct BoothConfig: Sendable {
     let token: String
 
     static let current: BoothConfig? = {
-        let defaults = UserDefaults.standard
-        guard var host = clean(defaults.string(forKey: "boothURL")) ?? plistValue("BoothURL"),
-              let token = clean(defaults.string(forKey: "boothToken")) ?? plistValue("BoothToken") else { return nil }
+        guard let token = clean(UserDefaults.standard.string(forKey: "boothToken")) ?? plistValue("BoothToken") else { return nil }
+        return make(token: token)
+    }()
+
+    static let staffSessionAccount = "boothStaffSession"
+
+    /// The staff role's token: `-boothStaffToken`, then `BOOTH_STAFF_TOKEN`, then a staff session saved after a PIN sign-in.
+    static func staff() -> BoothConfig? {
+        let session = Keychain.data(for: staffSessionAccount).flatMap { String(data: $0, encoding: .utf8) }
+        guard let token = clean(UserDefaults.standard.string(forKey: "boothStaffToken")) ?? plistValue("BoothStaffToken") ?? clean(session)
+        else { return nil }
+        return make(token: token)
+    }
+
+    static var publicBaseURL: URL? { anonymous()?.baseURL }
+
+    static func anonymous() -> BoothConfig? { make(token: "") }
+
+    private static var host: String? {
+        clean(UserDefaults.standard.string(forKey: "boothURL")) ?? plistValue("BoothURL")
+    }
+
+    private static func make(token: String) -> BoothConfig? {
+        guard var host else { return nil }
         if !host.contains("://") { host = "https://" + host }
         guard var components = URLComponents(string: host), components.host?.isEmpty == false else { return nil }
         components.path = ""
@@ -18,7 +39,7 @@ struct BoothConfig: Sendable {
         components.path = "/v1/ws"
         guard let socket = components.url else { return nil }
         return BoothConfig(baseURL: base, socketURL: socket, token: token)
-    }()
+    }
 
     private static func clean(_ raw: String?) -> String? {
         let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

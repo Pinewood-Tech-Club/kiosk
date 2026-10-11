@@ -149,7 +149,6 @@ export function adHocLineItems(q: Quote): SquareLineItem[] {
   });
 }
 
-/** What the receipt shows for a quote, matching the lines Square returns for catalog orders. */
 export function chargedLines(q: Quote): ReceiptLine[] {
   const lines: ReceiptLine[] = [];
   let position = 0;

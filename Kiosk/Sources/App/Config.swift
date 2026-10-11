@@ -7,10 +7,6 @@ enum Config {
     static let categoryName = value("SquareCategoryName")
     static let eventName = value("KioskEventName") ?? "Tech Club Ice Cream"
 
-    static var isComplete: Bool {
-        squareApplicationID != nil && accessToken != nil && locationID != nil
-    }
-
     private static func value(_ key: String) -> String? {
         guard let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

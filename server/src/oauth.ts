@@ -1,5 +1,5 @@
 import { authenticate, base64url, escapeHtml, fromBase64url, html, HttpError, json, randomToken, withRetry, type Route } from "./http";
-import { listLocations, pickLocation, squareEnvironment, squareRequest, type SquareEnvironment } from "./square";
+import { listLocations, pickLocation, squareBaseUrl, squareEnvironment, squareRequest, type SquareEnvironment } from "./square";
 
 export const OAUTH_SCOPES = [
   "MERCHANT_PROFILE_READ",
@@ -70,8 +70,6 @@ export function callbackUrl(origin: string): string {
   return `${origin}/v1/square/oauth/callback`;
 }
 
-// MARK: Encryption at rest
-
 async function tokenKey(env: Env): Promise<CryptoKey> {
   const secret = env.SQUARE_APPLICATION_SECRET?.trim();
   if (!secret) throw new Error("SQUARE_APPLICATION_SECRET isn't set");
@@ -97,8 +95,6 @@ export async function openToken(env: Env, sealed: string): Promise<string> {
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromBase64url(iv) }, await tokenKey(env), fromBase64url(data));
   return new TextDecoder().decode(plain);
 }
-
-// MARK: Storage
 
 async function loadToken(env: Env, environment: SquareEnvironment): Promise<StoredToken | null> {
   const row = await env.DB.prepare("SELECT * FROM square_tokens WHERE environment = ?").bind(environment).first<TokenRow>();
@@ -144,8 +140,6 @@ function parseExpiry(value: string | undefined): number | null {
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? null : parsed;
 }
-
-// MARK: Credentials
 
 async function staticLocation(env: Env, environment: SquareEnvironment, accessToken: string): Promise<string | null> {
   const configured = env.SQUARE_LOCATION_ID?.trim();
@@ -202,8 +196,6 @@ export function refreshDue(token: { refreshed_at: number; expires_at: number | n
   return token.expires_at !== null && token.expires_at - now <= REFRESH_BEFORE_EXPIRY_MS;
 }
 
-// MARK: Flow
-
 export async function startAuthorization(env: Env, origin: string, by: string, now = Date.now()) {
   const { applicationId } = requireOAuth(env);
   const environment = squareEnvironment(env);
@@ -214,9 +206,8 @@ export async function startAuthorization(env: Env, origin: string, by: string, n
       .bind(state, environment, now, expiresAt, by)
       .run(),
   );
-  const base = environment === "sandbox" ? "https://connect.squareupsandbox.com" : "https://connect.squareup.com";
   const params = new URLSearchParams({ client_id: applicationId, scope: OAUTH_SCOPES.join(" "), session: "false", state });
-  return { url: `${base}/oauth2/authorize?${params}`, environment, expiresAt, redirectUrl: callbackUrl(origin) };
+  return { url: `${squareBaseUrl(environment)}/oauth2/authorize?${params}`, environment, expiresAt, redirectUrl: callbackUrl(origin) };
 }
 
 type CallbackOutcome = { ok: true; merchantId: string; locationId: string; locationName: string; expiresAt: number | null } | { ok: false; status: number; message: string };
@@ -392,8 +383,6 @@ export async function squareStatus(env: Env, origin: string, verify: boolean, no
     verified,
   };
 }
-
-// MARK: Routes
 
 function page(title: string, message: string, ok: boolean): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

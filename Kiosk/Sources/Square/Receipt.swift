@@ -23,6 +23,12 @@ struct Receipt: Sendable {
     let taxCents: Int
     let totalCents: Int
     let isSimulated: Bool
+    let checkoutID: String
+    let receiptToken: String
+
+    var receiptURL: URL? {
+        BoothConfig.publicBaseURL?.appending(path: "r/\(receiptToken)")
+    }
 
     var displayLines: [(title: String, detail: String, amountCents: Int)] {
         lines.map { ($0.title, $0.detail, $0.cents) }
@@ -57,7 +63,8 @@ struct Receipt: Sendable {
         }
     }
 
-    static func simulated(quote: OrderQuote, customerName: String, orderNumber: Int, merchantName: String) -> Receipt {
+    static func simulated(quote: OrderQuote, customerName: String, orderNumber: Int, merchantName: String,
+                          checkout: CheckoutIdentity = .make()) -> Receipt {
         func randomID(_ length: Int) -> String {
             let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789")
             return String((0..<length).map { _ in alphabet.randomElement()! })
@@ -65,6 +72,7 @@ struct Receipt: Sendable {
         return Receipt(merchantName: merchantName, eventName: Config.eventName, date: Date(), orderNumber: orderNumber,
                        customerName: customerName, squareOrderID: "SIM-" + randomID(22), paymentID: "SIM-" + randomID(22),
                        cardDescription: "Visa •••• 1111", lines: chargedLines(for: quote), subtotalCents: quote.totalCents,
-                       taxCents: 0, totalCents: quote.totalCents, isSimulated: true)
+                       taxCents: 0, totalCents: quote.totalCents, isSimulated: true, checkoutID: checkout.id,
+                       receiptToken: checkout.receiptToken)
     }
 }

@@ -261,11 +261,56 @@ struct KioskState: Codable, Equatable, Sendable {
     }
 }
 
+struct BoothOrderSummary: Codable, Equatable, Identifiable, Sendable {
+    struct Item: Codable, Equatable, Sendable {
+        var vessel: String
+        var flavors: [String]
+        var toppings: [String]
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: AnyKey.self)
+            vessel = c.lenient(AnyKey("vessel"), "cup")
+            flavors = c.lenient(AnyKey("flavors"), [])
+            toppings = c.lenient(AnyKey("toppings"), [])
+        }
+    }
+
+    var id: String
+    var orderNumber: Int?
+    var customerName: String?
+    var items: [Item]
+    var totalCents: Int
+    var simulated: Bool
+    var paidAt: Double
+    var receivedAt: Double
+    var status: String
+    var statusAt: Double
+    var statusBy: String?
+
+    var isOpen: Bool { ["paid", "preparing", "ready"].contains(status) }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        id = c.lenient(AnyKey("id"), "")
+        orderNumber = c.lenientOptional(AnyKey("orderNumber"))
+        customerName = c.lenientOptional(AnyKey("customerName"))
+        items = c.lenient(AnyKey("items"), [])
+        totalCents = c.lenient(AnyKey("totalCents"), 0)
+        simulated = c.lenient(AnyKey("simulated"), false)
+        paidAt = c.lenient(AnyKey("paidAt"), 0)
+        receivedAt = c.lenient(AnyKey("receivedAt"), 0)
+        status = c.lenient(AnyKey("status"), "paid")
+        statusAt = c.lenient(AnyKey("statusAt"), 0)
+        statusBy = c.lenientOptional(AnyKey("statusBy"))
+    }
+}
+
 struct BoothState: Codable, Equatable, Sendable {
     var rev: Int
     var flavors: [BoothFlavorState]
     var kiosk: KioskState
     var alerts: [BoothAlert]
+    var orders: [BoothOrderSummary]
     var serverTime: Double
 
     init(from decoder: Decoder) throws {
@@ -274,6 +319,7 @@ struct BoothState: Codable, Equatable, Sendable {
         flavors = c.lenient(AnyKey("flavors"), [])
         kiosk = c.lenient(AnyKey("kiosk"), KioskState())
         alerts = c.lenient(AnyKey("alerts"), [])
+        orders = c.lenient(AnyKey("orders"), [])
         serverTime = c.lenient(AnyKey("serverTime"), 0)
     }
 }
@@ -282,6 +328,7 @@ enum BoothChange: Sendable {
     case flavors([BoothFlavorState])
     case alert(BoothAlert)
     case kiosk(KioskState)
+    case order(BoothOrderSummary)
     case unknown
 }
 
@@ -295,6 +342,8 @@ extension BoothChange: Decodable {
             self = c.lenientOptional(AnyKey("alert")).map(BoothChange.alert) ?? .unknown
         case "kiosk":
             self = c.lenientOptional(AnyKey("kiosk")).map(BoothChange.kiosk) ?? .unknown
+        case "order":
+            self = c.lenientOptional(AnyKey("order")).map(BoothChange.order) ?? .unknown
         default:
             self = .unknown
         }
@@ -429,6 +478,8 @@ struct BoothAction: Codable, Equatable, Sendable {
     var alertId: String?
     var flavor: String?
     var soldOut: Bool?
+    var orderId: String?
+    var status: String?
     var by: String
 }
 
@@ -436,6 +487,7 @@ struct BoothOrder: Codable, Equatable, Sendable {
     struct Item: Codable, Equatable, Sendable {
         let vessel: String
         let flavors: [String]
+        let toppings: [String]?
     }
 
     struct Line: Codable, Equatable, Sendable {
@@ -456,11 +508,12 @@ struct BoothOrder: Codable, Equatable, Sendable {
     let simulated: Bool
     let paidAt: String
     let appVersion: String
+    let receiptToken: String?
     let items: [Item]
     let lines: [Line]
 
     init(receipt: Receipt, quote: OrderQuote) {
-        id = UUID().uuidString
+        id = receipt.checkoutID
         orderNumber = receipt.orderNumber
         squareOrderId = receipt.squareOrderID
         squarePaymentId = receipt.paymentID
@@ -473,7 +526,10 @@ struct BoothOrder: Codable, Equatable, Sendable {
         simulated = receipt.isSimulated
         paidAt = receipt.date.formatted(Date.ISO8601FormatStyle())
         appVersion = BoothIdentity.appVersion
-        items = quote.lines.map { Item(vessel: $0.item.vessel.rawValue, flavors: $0.item.flavors.map(\.rawValue)) }
+        receiptToken = receipt.receiptToken
+        items = quote.lines.map {
+            Item(vessel: $0.item.vessel.rawValue, flavors: $0.item.flavors.map(\.rawValue), toppings: $0.item.toppings.map(\.rawValue))
+        }
         lines = receipt.lines.map { Line(title: $0.title, detail: $0.detail, cents: $0.cents) }
     }
 }

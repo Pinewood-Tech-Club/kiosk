@@ -5,6 +5,9 @@ PRODUCT_BUNDLE_IDENTIFIER = com.yourname.kiosk
 DEVELOPMENT_TEAM = ABCDE12345
 
 SQUARE_APPLICATION_ID = sandbox-sq0idb-xxxxxxxxxxxxxxxxxxxxxx
+
+// Dev fallback only. The kiosk gets its access token and location from the booth backend (Square OAuth) and caches
+// them in the Keychain; these two are used only when it has never reached the backend.
 SQUARE_ACCESS_TOKEN = EAAAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 SQUARE_LOCATION_ID = LXXXXXXXXXXXXX
 
@@ -18,3 +21,8 @@ KIOSK_EVENT_NAME = Tech Club Ice Cream
 // Staff dashboard backend. BOOTH_URL is a bare host because `//` starts a comment in an xcconfig file.
 BOOTH_URL = your-worker.example.workers.dev
 BOOTH_TOKEN = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+// Optional. A staff iPad: KIOSK_ROLE = staff skips role setup and opens the staff screen, which connects with
+// BOOTH_STAFF_TOKEN (or a staff session from a PIN sign-in). Leave both empty on the kiosk iPad.
+KIOSK_ROLE =
+BOOTH_STAFF_TOKEN =

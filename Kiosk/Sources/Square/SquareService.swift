@@ -48,13 +48,18 @@ final class SquareService: NSObject {
     private(set) var merchantName = Config.eventName
     private(set) var catalogStatus: CatalogStatus = .notConfigured
     @ObservationIgnored private(set) var catalog: SquareCatalog?
+    private(set) var credentialSource: SquareCredentials.Source?
+    @ObservationIgnored let credentials = SquareCredentialStore()
+    @ObservationIgnored var canReauthorize: () -> Bool = { true }
+    @ObservationIgnored private var checkoutClient: BoothCheckoutClient?
+    @ObservationIgnored private var reauthorizationPending = false
 
     private var sdk: any SDKManager { MobilePaymentsSDK.shared }
     @ObservationIgnored private let locationManager = CLLocationManager()
     @ObservationIgnored private var bluetoothManager: CBCentralManager?
     @ObservationIgnored private var paymentHandle: PaymentHandle?
     @ObservationIgnored private var continuation: CheckedContinuation<PaymentResult, Never>?
-    @ObservationIgnored private var pending: (quote: OrderQuote, name: String, number: Int, order: SquareAPI.CreatedOrder)?
+    @ObservationIgnored private var pending: (quote: OrderQuote, name: String, number: Int, checkout: CheckoutIdentity, order: SquareAPI.CreatedOrder)?
     #if canImport(MockReaderUI)
     @ObservationIgnored private var mockReader: MockReaderUI?
     #endif
@@ -69,40 +74,90 @@ final class SquareService: NSObject {
     }
 
     deinit {
-        guard isStarted, Config.isComplete else { return }
+        guard isStarted, Config.squareApplicationID != nil else { return }
         sdk.authorizationManager.remove(self)
         sdk.readerManager.remove(self)
     }
 
-    var isConfigured: Bool { Config.isComplete }
-    var isSandbox: Bool { isConfigured && sdk.settingsManager.sdkSettings.environment == .sandbox }
-    var environmentName: String { isConfigured ? (isSandbox ? "Sandbox" : "Production") : "No credentials" }
+    private var hasApplicationID: Bool { Config.squareApplicationID != nil }
+    var isConfigured: Bool { hasApplicationID && credentialSource != nil }
+    var isSandbox: Bool { hasApplicationID && sdk.settingsManager.sdkSettings.environment == .sandbox }
+    var environmentName: String { hasApplicationID ? (isSandbox ? "Sandbox" : "Production") : "No credentials" }
     var isAuthorized: Bool { authorizationState == .authorized }
+
+    private static let authorizedFingerprintKey = "squareAuthorizedFingerprint"
 
     func start() {
         guard !isStarted else { return }
         isStarted = true
-        guard isConfigured else {
-            record("Square credentials missing; only simulated payments are available")
+        credentialSource = credentials.current?.source
+        guard hasApplicationID else {
+            record("Square application ID missing; only simulated payments are available")
             return
         }
+        credentials.onChange = { [weak self] credentials in self?.credentialsChanged(credentials) }
         sdk.authorizationManager.add(self)
         sdk.readerManager.add(self)
         authorizationState = sdk.authorizationManager.state
         readers = sdk.readerManager.readers
-        record("SDK \(sdk.settingsManager.sdkSettings.version), environment: \(environmentName)")
+        record("SDK \(sdk.settingsManager.sdkSettings.version), environment: \(environmentName), credentials: \(credentials.sourceDescription)")
         requestPermissions()
+        guard let current = credentials.current else {
+            record("Waiting for Square credentials from the booth")
+            return
+        }
+        if isAuthorized, authorizedFingerprint(fallback: current) != current.fingerprint {
+            reauthorizationPending = true
+            reauthorizeIfIdle()
+        }
         authorize()
         loadLocation()
         loadCatalog()
     }
 
+    func attachBooth(_ api: BoothAPI) {
+        checkoutClient = BoothCheckoutClient(api: api) { [weak self] in self?.record($0) }
+        credentials.attach(api: api) { [weak self] in self?.record($0) }
+    }
+
+    /// Builds from before the booth handed out tokens authorized with the bundled one, so that is what an unrecorded
+    /// authorization used.
+    private func authorizedFingerprint(fallback: SquareCredentials) -> String? {
+        UserDefaults.standard.string(forKey: Self.authorizedFingerprintKey) ?? (fallback.source == .bundled ? fallback.fingerprint : nil)
+    }
+
+    private func credentialsChanged(_ new: SquareCredentials?) {
+        credentialSource = new?.source
+        guard isStarted, hasApplicationID, let new else { return }
+        switch sdk.authorizationManager.state {
+        case .notAuthorized:
+            authorize()
+        case .authorized:
+            if authorizedFingerprint(fallback: new) != new.fingerprint {
+                reauthorizationPending = true
+                reauthorizeIfIdle()
+            }
+        default:
+            reauthorizationPending = true
+        }
+        loadLocation()
+        loadCatalog()
+    }
+
+    /// Swapping the SDK's token means deauthorizing, so it waits until no customer is mid-order.
+    func reauthorizeIfIdle() {
+        guard reauthorizationPending, phase == .idle, canReauthorize(), sdk.authorizationManager.state == .authorized else { return }
+        reauthorizationPending = false
+        record("Re-authorizing Square with the new token")
+        sdk.authorizationManager.deauthorize { [weak self] in self?.authorize() }
+    }
+
     private var api: SquareAPI? {
-        guard let token = Config.accessToken, let locationID = Config.locationID else { return nil }
+        guard let credentials = credentials.current else { return nil }
         return SquareAPI(
             baseURL: URL(string: isSandbox ? "https://connect.squareupsandbox.com" : "https://connect.squareup.com")!,
-            accessToken: token,
-            locationID: locationID
+            accessToken: credentials.accessToken,
+            locationID: credentials.locationID
         )
     }
 
@@ -192,16 +247,14 @@ final class SquareService: NSObject {
     }
 
     func authorize() {
-        guard sdk.authorizationManager.state == .notAuthorized,
-              let token = Config.accessToken,
-              let locationID = Config.locationID
-        else { return }
+        guard sdk.authorizationManager.state == .notAuthorized, let credentials = credentials.current else { return }
 
-        record("Authorizing for location \(locationID)…")
-        sdk.authorizationManager.authorize(withAccessToken: token, locationID: locationID) { [weak self] error in
+        record("Authorizing for location \(credentials.locationID) with the \(self.credentials.sourceDescription) token…")
+        sdk.authorizationManager.authorize(withAccessToken: credentials.accessToken, locationID: credentials.locationID) { [weak self] error in
             if let error {
                 self?.record("Authorization failed: \(Self.describe(error))")
             } else {
+                UserDefaults.standard.set(credentials.fingerprint, forKey: Self.authorizedFingerprintKey)
                 self?.record("Authorized")
             }
         }
@@ -235,7 +288,8 @@ final class SquareService: NSObject {
     // MARK: Payment
 
     @MainActor
-    func pay(quote: OrderQuote, customerName: String, orderNumber: Int, from viewController: UIViewController) async -> PaymentResult {
+    func pay(quote: OrderQuote, customerName: String, orderNumber: Int, checkout: CheckoutIdentity,
+             from viewController: UIViewController) async -> PaymentResult {
         guard phase == .idle else {
             return refuse(.stillFinishing, because: Self.alreadyInProgressReason)
         }
@@ -257,13 +311,20 @@ final class SquareService: NSObject {
         phase = .creatingOrder
         record("Creating order \(referenceID) for \(customerName) (\(quote.lines.count) items, local total \(quote.totalCents.formattedAsUSD))…")
 
+        let sourceName = "\(Config.eventName) Kiosk"
         let order: SquareAPI.CreatedOrder
-        do {
-            order = try await api.createOrder(quote: quote, catalog: catalog, customerName: customerName, referenceID: referenceID,
-                                              sourceName: "\(Config.eventName) Kiosk")
-        } catch {
-            phase = .idle
-            return orderFailed(error)
+        if credentials.current?.source == .booth, let checkoutClient,
+           let remote = await checkoutClient.createOrder(quote: quote, customerName: customerName, orderNumber: orderNumber,
+                                                         checkout: checkout, locationID: api.locationID, sourceName: sourceName) {
+            order = remote
+        } else {
+            do {
+                order = try await api.createOrder(quote: quote, catalog: catalog, customerName: customerName, referenceID: referenceID,
+                                                  sourceName: sourceName, idempotencyKey: "\(checkout.id)-device", checkoutID: checkout.id)
+            } catch {
+                phase = .idle
+                return orderFailed(error)
+            }
         }
         record("Order \(order.id) created (\(order.usedCatalog ? "catalog" : "ad-hoc") line items), total \(order.totalCents.formattedAsUSD) (tax \(order.taxCents.formattedAsUSD))")
         if order.totalCents - order.taxCents != quote.totalCents {
@@ -272,7 +333,7 @@ final class SquareService: NSObject {
 
         return await withCheckedContinuation { continuation in
             self.continuation = continuation
-            self.pending = (quote, customerName, orderNumber, order)
+            self.pending = (quote, customerName, orderNumber, checkout, order)
             let parameters = PaymentParameters(
                 paymentAttemptID: UUID().uuidString,
                 amountMoney: Money(amount: UInt(order.totalCents), currency: .USD),
@@ -463,7 +524,7 @@ extension SquareService: PaymentManagerDelegate {
             customerName: pending.name, squareOrderID: payment.orderID ?? pending.order.id, paymentID: paymentID,
             cardDescription: card, lines: pending.order.lines,
             subtotalCents: total - pending.order.taxCents, taxCents: pending.order.taxCents, totalCents: total,
-            isSimulated: false
+            isSimulated: false, checkoutID: pending.checkout.id, receiptToken: pending.checkout.receiptToken
         )
         finish(.succeeded(receipt))
     }

@@ -63,6 +63,10 @@ struct RootView: View {
                 RoleSetupView(app: app).transition(.identity)
             }
 
+            if shows(.staff) {
+                StaffView(app: app).transition(.identity)
+            }
+
             if shows(.name) {
                 NameEntryView(app: app)
                     .background(Theme.background)
@@ -82,7 +86,9 @@ struct RootView: View {
             }
 
             VStack {
-                if app.debugBarHidden {
+                if app.screen == .staff {
+                    EmptyView()
+                } else if app.debugBarHidden {
                     HStack {
                         Color.clear
                             .frame(width: 96, height: 96)

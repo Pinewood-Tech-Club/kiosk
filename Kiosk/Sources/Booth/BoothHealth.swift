@@ -96,6 +96,7 @@ extension AppModel.Screen {
         case .builder: "builder"
         case .name: "name"
         case .confirmation: "confirmation"
+        case .staff: "staff"
         }
     }
 }

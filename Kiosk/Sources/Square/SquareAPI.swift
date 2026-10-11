@@ -123,27 +123,27 @@ struct SquareAPI {
         }
     }
 
-    func createOrder(quote: OrderQuote, catalog: SquareCatalog? = nil, customerName: String, referenceID: String, sourceName: String) async throws -> CreatedOrder {
-        let body: [String: Any] = [
-            "idempotency_key": UUID().uuidString,
-            "order": [
-                "location_id": locationID,
-                "reference_id": referenceID,
-                "ticket_name": customerName,
-                "source": ["name": sourceName],
-                "pricing_options": ["auto_apply_taxes": true],
-                "line_items": catalog.map { Self.catalogLineItems(for: quote, catalog: $0) } ?? Self.lineItems(for: quote),
-                "fulfillments": [[
-                    "type": "PICKUP",
-                    "state": "PROPOSED",
-                    "pickup_details": [
-                        "recipient": ["display_name": customerName],
-                        "schedule_type": "ASAP",
-                        "prep_time_duration": "PT5M",
-                    ],
-                ]],
-            ] as [String: Any],
+    func createOrder(quote: OrderQuote, catalog: SquareCatalog? = nil, customerName: String, referenceID: String, sourceName: String,
+                     idempotencyKey: String = UUID().uuidString, checkoutID: String? = nil) async throws -> CreatedOrder {
+        var orderBody: [String: Any] = [
+            "location_id": locationID,
+            "reference_id": referenceID,
+            "ticket_name": customerName,
+            "source": ["name": sourceName],
+            "pricing_options": ["auto_apply_taxes": true],
+            "line_items": catalog.map { Self.catalogLineItems(for: quote, catalog: $0) } ?? Self.lineItems(for: quote),
+            "fulfillments": [[
+                "type": "PICKUP",
+                "state": "PROPOSED",
+                "pickup_details": [
+                    "recipient": ["display_name": customerName],
+                    "schedule_type": "ASAP",
+                    "prep_time_duration": "PT5M",
+                ],
+            ]],
         ]
+        if let checkoutID { orderBody["metadata"] = ["checkout_id": checkoutID] }
+        let body: [String: Any] = ["idempotency_key": idempotencyKey, "order": orderBody]
 
         let json = try await request("v2/orders", method: "POST", body: body)
         guard let order = json["order"] as? [String: Any],
