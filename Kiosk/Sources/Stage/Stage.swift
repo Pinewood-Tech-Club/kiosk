@@ -248,6 +248,16 @@ final class Stage {
             rig.apply()
             group.addChild(rig.root)
         }
+        if let candy = assets.candy {
+            var rng = ToppingRandom(seed: 1)
+            let kinds: [any ScatterKind] = [candy.gummyBears, candy.candyLentils, candy.sprinkles]
+            for (index, kind) in kinds.enumerated() {
+                let pile = kind.makeIconPile(rng: &rng)
+                applyLighting(pile)
+                pile.position = [0.3 + Float(index) * 0.05, 0.1, 0]
+                group.addChild(pile)
+            }
+        }
         // Tiny and tucked under the debug-bar corner: it only has to be drawn, not seen.
         group.scale = .init(repeating: 0.04)
         group.position = world(CGPoint(x: 1010, y: 12))

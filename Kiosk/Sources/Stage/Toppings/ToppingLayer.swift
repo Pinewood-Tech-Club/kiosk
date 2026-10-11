@@ -56,4 +56,7 @@ struct ScatterPiece {
 protocol ScatterKind {
     var count: Int { get }
     func makePieces(rng: inout ToppingRandom) -> [ScatterPiece]
+    /// A few pieces composed as the topping card's icon: real size (about 25 mm across), resting on y = 0, centered
+    /// on the Y axis, composed to be seen from the front (+Z) and a little above. Needs the stage's lighting applied.
+    func makeIconPile(rng: inout ToppingRandom) -> Entity
 }

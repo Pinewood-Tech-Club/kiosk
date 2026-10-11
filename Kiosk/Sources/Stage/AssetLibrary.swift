@@ -65,6 +65,7 @@ final class AssetLibrary {
     private(set) var placements = Placements.fallback
     private(set) var scoopMaterials: [[Flavor: PhysicallyBasedMaterial]] = []
     private(set) var environment: EnvironmentResource?
+    private(set) var candy: CandyLibrary?
     private(set) var report: [String] = []
     private(set) var contactLift: [String: Float] = [:]
     /// Height of the bottom of each vessel's opening (the cup's floor; below it the cone is solid waffle).
@@ -156,6 +157,10 @@ final class AssetLibrary {
             vesselGeometry[vessel] = ContactSolver.VesselGeometry(points: geometry.points, triangles: geometry.triangles)
             cavityFloor[vessel] = Self.floorHeight(geometry.triangles, top: vesselTop(vessel), radius: vesselHalfWidth(vessel))
         }
+
+        let (candy, candyReport) = await CandyLibrary.load(gummyBearURL: url("GummyBear.usdz"))
+        self.candy = candy
+        report += candyReport
 
         if let url = url("placements.json"), let data = try? Data(contentsOf: url), let parsed = Placements.parse(data) {
             placements = parsed
