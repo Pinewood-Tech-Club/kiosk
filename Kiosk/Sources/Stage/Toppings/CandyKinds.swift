@@ -498,8 +498,8 @@ struct Sprinkles: ScatterKind {
         let radius: Float = 0.013
         let height: Float = 0.0075
         var entries: [(MeshResource, [any RealityKit.Material], simd_quatf, SIMD3<Float>)] = []
-        for index in 0..<52 {
-            let r = radius * sqrt(Float(index) / 52) * Float.random(in: 0.85...1.0, using: &rng)
+        for index in 0..<72 {
+            let r = radius * sqrt(Float(index) / 72) * Float.random(in: 0.85...1.0, using: &rng)
             let a = Float(index) * 2.39996 + Float.random(in: -0.3...0.3, using: &rng)
             let top = height * (1 - (r / radius) * (r / radius))
             let built = pieces.randomElement(using: &rng)!
