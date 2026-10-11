@@ -101,7 +101,7 @@ private struct ConnectionPill: View {
 
     private var offlineSince: Date? {
         guard staff.connectionState != .connected, hasBeenLive else { return nil }
-        return staff.stateReceivedAt ?? staff.lastLiveAt
+        return [staff.stateReceivedAt, staff.lastLiveAt].compactMap { $0 }.max()
     }
 
     private var title: String {
@@ -316,6 +316,8 @@ private struct KioskCard: View {
     let kiosk: KioskState
 
     private var everSeen: Bool { kiosk.lastSeenAt != nil || kiosk.health != nil }
+    private var live: Bool { staff.connectionState == .connected }
+    private var fresh: Bool { kiosk.online && live }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -323,19 +325,19 @@ private struct KioskCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 14) {
                     Circle()
-                        .fill(kiosk.online ? Theme.success : Theme.accent)
+                        .fill(!live ? Theme.textSecondary : kiosk.online ? Theme.success : Theme.accent)
                         .frame(width: 18, height: 18)
-                    Text(!everSeen ? "Not seen yet" : kiosk.online ? "Online" : "Offline")
+                    Text(!live ? "Unknown" : !everSeen ? "Not seen yet" : kiosk.online ? "Online" : "Offline")
                         .font(Theme.serif(34))
                         .foregroundStyle(Theme.text)
                 }
                 if let seen = kiosk.lastSeenAt {
-                    Ago(prefix: kiosk.online ? "Checked in" : "Last seen", date: staff.localDate(seen))
+                    Ago(prefix: fresh ? "Checked in" : "Last seen", date: staff.localDate(seen))
                         .font(Theme.sans(18, .medium))
                         .foregroundStyle(Theme.textSecondary)
                         .padding(.top, 6)
                 }
-                if let screen = kiosk.screen, kiosk.online {
+                if let screen = kiosk.screen, fresh {
                     Text("Showing \(Self.screenName(screen))")
                         .font(Theme.sans(18, .medium))
                         .foregroundStyle(Theme.textSecondary)
@@ -358,9 +360,9 @@ private struct KioskCard: View {
                         StatusRow(icon: "circle-alert", label: "Catalog", value: "Problem", tint: StaffStyle.warning)
                     }
                 }
-                .opacity(kiosk.online ? 1 : 0.45)
+                .opacity(fresh ? 1 : 0.45)
                 if let healthAt = kiosk.healthAt {
-                    Ago(prefix: kiosk.online ? "Health reported" : "Last report, may be out of date:", date: staff.localDate(healthAt))
+                    Ago(prefix: fresh ? "Health reported" : "Last report, may be out of date:", date: staff.localDate(healthAt))
                         .font(Theme.sans(15, .medium))
                         .foregroundStyle(Theme.textSecondary)
                 }

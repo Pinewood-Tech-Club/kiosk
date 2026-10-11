@@ -98,7 +98,7 @@ The offline test creates the flag file to mean "proxy down"; something has to st
 
 ## Staff iPad
 
-A second iPad running this app in the staff role (`KIOSK_ROLE = staff`, or *Staff* at role setup) is the toppings person's screen at the counter. It connects to the hub with `BOOTH_STAFF_TOKEN`, or with a 72-hour session from the staff PIN, which it asks for when it has no token or the hub refuses the one it has. It shows:
+A second iPad running this app in the staff role (`KIOSK_ROLE = staff`, or *Staff* at role setup) is the toppings person's screen at the counter. It connects to the hub with `BOOTH_STAFF_TOKEN`, or with a 72-hour session from the staff PIN, which it asks for when it has no token or the hub refuses the one it has. After a PIN sign-in the saved session is tried first on later launches, and when one token is refused it tries the other once before asking for the PIN again. It shows:
 
 - **Connection**: *Live*, *Connecting*, or *Offline, reconnecting* with the time of the last update, so stale data is never shown as current.
 - **Alerts**: open alerts, urgent first. Urgent ones are solid coral and the whole screen pulses a coral frame until each is acknowledged (*Got it*); info alerts are dismissed. The first two are full size, and three show before *Show more*.

@@ -219,7 +219,9 @@ Each item is `ok`, `duplicate` (already processed; same `alertId`), `stale` (an 
 
 Response `200`: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "rejected", "error"?: {...} }], "rev": 43 }`. The same actions can be sent one at a time over the websocket (`{"type":"action"}`), answered with `result`.
 
-Because `setSoldOut` and `setOrderStatus` are last-writer-wins, a client that queues them while offline should keep only its newest unsent change per flavor or order, and should not send over the websocket while an HTTP batch is still in flight, so an older change can't land after a newer one. The staff iPad does both and keeps unsent actions on disk for up to 10 minutes. Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut` and `setOrderStatus` are last-writer-wins in the order the hub receives them; setting the status an order already has is `ok` and changes nothing. `setOrderStatus` for an order not in the feed is `rejected` with `not_found`.
+Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut` and `setOrderStatus` are last-writer-wins in the order the hub receives them; setting the status an order already has is `ok` and changes nothing. `setOrderStatus` for an order not in the feed is `rejected` with `not_found`.
+
+Clients that queue offline should keep only the newest unsent `setSoldOut`/`setOrderStatus` per flavor or order, and not send over the websocket while an HTTP batch is in flight, so an older change can't land after a newer one. The staff iPad does both and keeps unsent actions on disk for up to 10 minutes.
 
 ## Logs: `POST /v1/logs` (kiosk)
 

@@ -32,6 +32,9 @@ final class StaffLink {
     private(set) var connection: BoothConnection?
     @ObservationIgnored private var log: (String) -> Void = { _ in }
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var usingSession = false
+    @ObservationIgnored private var currentToken: String?
+    @ObservationIgnored private var triedOtherToken = false
 
     static var deviceID: String {
         let defaults = UserDefaults.standard
@@ -93,6 +96,7 @@ final class StaffLink {
         guard let config = BoothConfig.anonymous() else { throw BoothError.badResponse("BOOTH_URL isn't set") }
         let session: Session = try await BoothAPI(config: config, deviceID: Self.deviceID).post("/v1/staff/session", ["pin": pin])
         Keychain.set(Data(session.token.utf8), for: BoothConfig.staffSessionAccount)
+        UserDefaults.standard.set(true, forKey: BoothConfig.preferStaffSessionKey)
         log("Staff: signed in until \(Date(timeIntervalSince1970: session.expiresAt / 1000).formatted(date: .abbreviated, time: .shortened))")
         connect(preferSession: true)
     }
@@ -114,7 +118,7 @@ final class StaffLink {
         rejection = nil
     }
 
-    private func connect(preferSession: Bool = false) {
+    private func connect(preferSession: Bool? = nil, fallback: Bool = false) {
         guard let config = BoothConfig.staff(preferSession: preferSession) else {
             problem = BoothConfig.publicBaseURL == nil
                 ? "BOOTH_URL isn't set, so this iPad can't reach the booth."
@@ -123,6 +127,9 @@ final class StaffLink {
             return
         }
         problem = nil
+        usingSession = config.token == BoothConfig.staffSession
+        currentToken = config.token
+        if !fallback { triedOtherToken = false }
         if let old = connection {
             old.onState = nil
             old.onConnectionChange = nil
@@ -166,14 +173,26 @@ final class StaffLink {
     private func connectionChanged(_ new: BoothConnection.ConnectionState) {
         if connectionState == .connected || new == .connected { lastLiveAt = Date() }
         connectionState = new
+        if connection?.refusedStatus == 401 { tokenRefused() }
+    }
+
+    /// One token was refused: try the other one (configured token or saved session) once before asking for the PIN.
+    private func tokenRefused() {
+        if usingSession { UserDefaults.standard.set(false, forKey: BoothConfig.preferStaffSessionKey) }
+        guard !triedOtherToken else { return }
+        triedOtherToken = true
+        guard let other = BoothConfig.staff(preferSession: !usingSession),
+              other.token != currentToken else { return }
+        log("Staff: token refused, trying the \(usingSession ? "configured token" : "saved session")")
+        connect(preferSession: !usingSession, fallback: true)
     }
 
     private func settled(_ actionID: String, result: BoothResult?) {
         let rejected = result == nil || result?.status == "rejected"
-        if let message = result?.error?.message, rejected {
-            rejection = "The booth didn't accept that change: \(message)"
-        } else if result == nil {
+        if result == nil {
             rejection = "A change couldn't reach the booth for 10 minutes and was dropped. Try again."
+        } else if rejected {
+            rejection = "The booth didn't accept that change" + ((result?.error?.message).map { ": \($0)" } ?? ".")
         }
         for (key, intent) in soldOutIntents where intent.actionID == actionID {
             if rejected { soldOutIntents[key] = nil } else { soldOutIntents[key]?.settledAt = Date() }
