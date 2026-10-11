@@ -262,7 +262,7 @@ private extension DrizzleLayer {
             let v = -span + Float(k) * step + Float.random(in: -0.1...0.1, using: &rng) * step
             let dir: Float = k % 2 == 0 ? 1 : -1
             let tilt = Float.random(in: -0.45...0.45, using: &rng) * step
-            let reach = 1.02 * max(0.2, 1 - v * v).squareRoot()
+            let reach = 0.98 * max(0.2, 1 - v * v).squareRoot()
             let start = reach * Float.random(in: 0.86...1.02, using: &rng) - turnRadius * 0.8
             let end = reach * Float.random(in: 0.86...1.02, using: &rng) - turnRadius * 0.8
             lines.append(Line(a: [-dir * start, v - tilt], b: [dir * end, v + tilt],
@@ -393,10 +393,32 @@ private extension DrizzleLayer {
             points.append(p)
             normals.append(n)
         }
+        smoothAlongPath(&points, &normals)
         let dripPaths = withDrips
             ? drips.map { march($0, from: points[$0.origin], on: surface, center: center, radius: radius) }
             : []
         return Projection(points: points, normals: normals, drips: dripPaths, top: surface.apex.y)
+    }
+
+    /// Evens out a bumpy surface along the ribbon (frilled scoop edges) so it drapes instead of crinkling,
+    /// without letting it sink more than a fraction of its thickness.
+    func smoothAlongPath(_ points: inout [SIMD3<Float>], _ normals: inout [SIMD3<Float>]) {
+        let count = points.count, reach = 3
+        guard count > 2 * reach else { return }
+        let raw = points, rawNormals = normals
+        let sink = halfWidth * 0.25
+        for i in 0..<count {
+            var height: Float = 0, weight: Float = 0
+            var normal = SIMD3<Float>.zero
+            for j in max(0, i - reach)...min(count - 1, i + reach) {
+                let w = Float(reach + 1 - abs(j - i))
+                height += raw[j].y * w
+                normal += rawNormals[j] * w
+                weight += w
+            }
+            points[i].y = max(height / weight, raw[i].y - sink)
+            normals[i] = simd_normalize(normal)
+        }
     }
 
     /// Runs a drip downhill from `start` along the surface, resampled to evenly spaced points over the length it reaches.
@@ -416,7 +438,7 @@ private extension DrizzleLayer {
             dir += SIMD2(-dir.y, dir.x) * drip.meander * sin(drip.phase + arc / 0.003)
             dir = simd_normalize(dir)
             let next = xz + dir * step * max(n.y, 0.15)
-            guard simd_length(next - center) < radius * 1.3, let hit = surface.sample(x: next.x, z: next.y) else { break }
+            guard simd_length(next - center) < radius * 1.12, let hit = surface.sample(x: next.x, z: next.y) else { break }
             let q = SIMD3<Float>(next.x, hit.height, next.y)
             arc += simd_length(q - p)
             xz = next
