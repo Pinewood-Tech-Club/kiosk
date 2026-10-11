@@ -127,9 +127,11 @@ enum CandyMeshes {
     }
 
     /// `length` is overall, ends included; `bend` (radians) curves it in the XZ plane so it still lies flat.
-    static func sprinkle(length: Float, radius: Float, bend: Float, segments: Int = 10, bodyRows: Int = 8,
-                         capRows: Int = 4) throws -> Built {
-        let body = max(length - 2 * radius, 0.0005)
+    /// The ends are domes `capDepth` radii deep: rounded off like an extruded jimmy, not a capsule's full hemisphere.
+    static func sprinkle(length: Float, radius: Float, bend: Float, capDepth: Float = 0.5, segments: Int = 10,
+                         bodyRows: Int = 8, capRows: Int = 4) throws -> Built {
+        let cap = radius * capDepth
+        let body = max(length - 2 * cap, 0.0005)
         let curvature = bend / body
         func frame(_ s: Float) -> (point: SIMD3<Float>, tangent: SIMD3<Float>) {
             guard abs(curvature) > 1e-4 else { return ([s, 0, 0], [1, 0, 0]) }
@@ -148,17 +150,17 @@ enum CandyMeshes {
         var rows: [[SIMD3<Float>]] = []
         for k in stride(from: capRows - 1, through: 1, by: -1) {
             let lat = Float.pi / 2 * Float(k) / Float(capRows)
-            rows.append(ring(-body / 2, along: -radius * sin(lat), scale: radius * cos(lat)))
+            rows.append(ring(-body / 2, along: -cap * sin(lat), scale: radius * cos(lat)))
         }
         for k in 0...bodyRows {
             rows.append(ring(-body / 2 + body * Float(k) / Float(bodyRows), along: 0, scale: radius))
         }
         for k in 1..<capRows {
             let lat = Float.pi / 2 * Float(k) / Float(capRows)
-            rows.append(ring(body / 2, along: radius * sin(lat), scale: radius * cos(lat)))
+            rows.append(ring(body / 2, along: cap * sin(lat), scale: radius * cos(lat)))
         }
         let start = frame(-body / 2), end = frame(body / 2)
-        return try build(rows: rows, start: start.point - start.tangent * radius, end: end.point + end.tangent * radius,
+        return try build(rows: rows, start: start.point - start.tangent * cap, end: end.point + end.tangent * cap,
                          name: "sprinkle")
     }
 

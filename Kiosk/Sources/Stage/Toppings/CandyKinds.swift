@@ -1,4 +1,5 @@
 import RealityKit
+import CoreImage
 import UIKit
 
 @MainActor
@@ -229,8 +230,6 @@ struct GummyBears: ScatterKind {
         shell.metallic = 0.0
         shell.roughness = 0.62
         shell.specular = 0.24
-        shell.clearcoat = 0.0
-        shell.clearcoatRoughness = 0.4
         shell.emissiveIntensity = recipe.glow * 0.7
         shell.faceCulling = .back
 
@@ -381,10 +380,10 @@ struct CandyLentils: ScatterKind {
                                                      blue: CGFloat(fallback.z), alpha: 1))
         }
         material.metallic = 0.0
-        material.roughness = 0.4
-        material.specular = 0.5
-        material.clearcoat = 0.6
-        material.clearcoatRoughness = 0.28
+        material.roughness = 0.42
+        material.specular = 0.45
+        material.clearcoat = 0.3
+        material.clearcoatRoughness = 0.4
         return material
     }
 }
@@ -401,7 +400,8 @@ enum LentilPrint {
         format.scale = 1
         format.opaque = true
         let base = UIColor(red: CGFloat(color.x), green: CGFloat(color.y), blue: CGFloat(color.z), alpha: 1)
-        let image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
+        let printed = renderer.image { context in
             let cg = context.cgContext
             base.setFill()
             cg.fill(CGRect(x: 0, y: 0, width: side, height: side))
@@ -414,7 +414,7 @@ enum LentilPrint {
             }
 
             let font = UIFont(name: "AmericanTypewriter-Semibold", size: 100) ?? .systemFont(ofSize: 100, weight: .heavy)
-            let ink = UIColor(red: 0.95, green: 0.94, blue: 0.91, alpha: 0.85)
+            let ink = UIColor(red: 0.95, green: 0.94, blue: 0.91, alpha: .random(in: 0.74...0.84, using: &rng))
             let glyph = NSAttributedString(string: "m", attributes: [.font: font, .foregroundColor: ink,
                                                                      .strokeColor: ink, .strokeWidth: -2.5])
             let bounds = glyph.boundingRect(with: CGSize(width: 400, height: 400), options: [.usesLineFragmentOrigin], context: nil)
@@ -428,8 +428,23 @@ enum LentilPrint {
             cg.scaleBy(x: scale, y: scale * 1.18)
             glyph.draw(at: CGPoint(x: -bounds.width / 2, y: -font.ascender + xHeight / 2))
             cg.restoreGState()
-
-            for _ in 0..<30 {
+        }
+        let soft = printed.cgImage.flatMap { blurred($0, radius: 1.1) } ?? printed.cgImage
+        let image = renderer.image { context in
+            let cg = context.cgContext
+            soft.map { UIImage(cgImage: $0).draw(in: CGRect(x: 0, y: 0, width: side, height: side)) }
+            for _ in 0..<5 {
+                let p = CGPoint(x: side * 0.5 + .random(in: -side * 0.22...side * 0.22, using: &rng),
+                                y: side * 0.5 + .random(in: -side * 0.15...side * 0.15, using: &rng))
+                cg.saveGState()
+                cg.translateBy(x: p.x, y: p.y)
+                cg.rotate(by: .random(in: 0...(.pi), using: &rng))
+                cg.setFillColor(base.withAlphaComponent(.random(in: 0.12...0.3, using: &rng)).cgColor)
+                let w = CGFloat.random(in: 6...16, using: &rng)
+                cg.fillEllipse(in: CGRect(x: -w / 2, y: -1, width: w, height: 2))
+                cg.restoreGState()
+            }
+            for _ in 0..<40 {
                 let r = CGFloat.random(in: 0.5...1.4, using: &rng)
                 let p = CGPoint(x: side * 0.5 + .random(in: -side * 0.24...side * 0.24, using: &rng),
                                 y: side * 0.5 + .random(in: -side * 0.17...side * 0.17, using: &rng))
@@ -440,12 +455,19 @@ enum LentilPrint {
         guard let cgImage = image.cgImage else { throw CocoaError(.coderInvalidValue) }
         return try await TextureResource(image: cgImage, options: .init(semantic: .color))
     }
+
+    private static let imaging = CIContext()
+
+    private static func blurred(_ image: CGImage, radius: Double) -> CGImage? {
+        let input = CIImage(cgImage: image)
+        return imaging.createCGImage(input.clampedToExtent().applyingGaussianBlur(sigma: radius), from: input.extent)
+    }
 }
 
 struct Sprinkles: ScatterKind {
     static let variants: [(length: Float, diameter: Float, bend: Float)] = [
-        (6.2, 1.5, 0), (6.8, 1.7, 0), (7.4, 1.4, 0), (7.9, 1.6, 0), (8.6, 1.5, 0),
-        (9.0, 1.8, 0), (7.1, 1.3, 0), (8.2, 1.7, 0), (7.0, 1.5, 0.45), (8.4, 1.6, -0.35), (6.6, 1.4, 0.3),
+        (6.2, 1.25, 0), (6.8, 1.35, 0), (7.4, 1.2, 0), (7.9, 1.4, 0), (8.0, 1.3, 0),
+        (7.2, 1.45, 0), (6.5, 1.2, 0), (7.6, 1.4, 0), (7.0, 1.3, 0.45), (7.8, 1.35, -0.35), (6.6, 1.25, 0.3),
     ]
 
     let pieces: [CandyMeshes.Built]
@@ -493,10 +515,8 @@ struct Sprinkles: ScatterKind {
         var material = PhysicallyBasedMaterial()
         material.baseColor = .init(tint: color)
         material.metallic = 0.0
-        material.roughness = 0.42
-        material.specular = 0.45
-        material.clearcoat = 0.35
-        material.clearcoatRoughness = 0.2
+        material.roughness = 0.56
+        material.specular = 0.3
         return material
     }
 }
