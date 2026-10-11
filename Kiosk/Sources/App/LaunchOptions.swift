@@ -111,6 +111,13 @@ struct ScriptRunner {
         return end
     }
 
+    private func toggle(_ topping: Topping) async {
+        app.setPressed(topping, true)
+        try? await Task.sleep(for: .seconds(0.09))
+        app.setPressed(topping, false)
+        app.toggleTopping(topping)
+    }
+
     private func select(_ vessel: Vessel) async {
         await tap(.vessel(vessel)) { app.selectVessel(vessel) }
     }
@@ -119,6 +126,27 @@ struct ScriptRunner {
         await wait(1.2)
         log("start \(script)")
         switch script {
+        case "toppings":
+            if app.current.scoopCount == 0 { app.jumpToStep(.flavors); await add(.vanilla); await wait(1.0) }
+            if app.step != .toppings { app.jumpToStep(.toppings); await wait(1.0) }
+            for topping in [Topping.whip, .gummies, .sprinkles] {
+                await toggle(topping)
+                await wait(1.2)
+            }
+            await toggle(.whip)
+            await wait(1.2)
+            app.removeTopping(.gummies)
+            await wait(1.2)
+            await toggle(.chocolate)
+            await wait(1.2)
+            let built = app.current.toppings
+            log("toppings built \(built.map(\.rawValue))")
+            app.goForward()
+            await wait(2.0)
+            guard let id = app.items.last?.id else { break }
+            app.tapTrayItem(id)
+            await wait(2.0)
+            log("toppings after edit \(app.current.toppings.map(\.rawValue)), \(app.current.toppings == built ? "restored" : "MISMATCH")")
         case "vessel-to-cone":
             await wait(1.0)
             await select(.cone)
