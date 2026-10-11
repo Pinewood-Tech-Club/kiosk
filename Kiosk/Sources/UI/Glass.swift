@@ -150,9 +150,10 @@ struct GlassViewOrderButton: View {
     }
 }
 
-/// The builder's step navigation, drawn as a progress bar: completed steps carry a check, the current one
-/// sits on an ink capsule, and steps that can't be reached yet are faded. Tapping a reachable step jumps to
-/// it; tapping a faded one calls `onBlockedTap` so the screen can explain why.
+/// The builder's step navigation: a native `UISegmentedControl`, so it keeps the system Liquid Glass
+/// interaction (press, lift the selection into a lens, slide it between steps, snap on release).
+/// Completed steps carry a check, the current one sits on the brown selection, and steps that can't be
+/// reached yet are disabled; tapping one calls `onBlockedTap` so the screen can explain why.
 struct GlassStepSelector<Step: Hashable>: View {
     let steps: [Step]
     let selection: Step
@@ -166,85 +167,153 @@ struct GlassStepSelector<Step: Hashable>: View {
 
     static var segmentWidth: CGFloat { 192 }
     private let inset: CGFloat = 6
-    @Namespace private var indicator
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                segment(number: index + 1, step: step)
-            }
-        }
-        .padding(inset)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: selection)
-    }
-
-    private func segment(number: Int, step: Step) -> some View {
-        let selected = step == selection
-        let enabled = isEnabled(step)
-        return Button {
-            if !enabled {
-                onBlockedTap(step)
-            } else if !selected {
-                onSelect(step)
-            }
-        } label: {
-            HStack(spacing: 10) {
-                StepMarker(number: number, selected: selected, complete: isComplete(step) && !selected)
-                Text(title(step))
-                    .font(Theme.serif(22, selected ? .semibold : .medium))
-            }
-            .foregroundStyle(selected ? Color.white : Theme.ink)
-            .opacity(enabled || selected ? 1 : 0.32)
-            .frame(width: segmentWidth, height: height - 2 * inset)
-            .background {
-                if selected {
-                    Capsule()
-                        .fill(Theme.ink)
-                        .matchedGeometryEffect(id: "indicator", in: indicator)
-                }
-            }
-            .contentShape(.capsule)
-        }
-        .buttonStyle(StepPressStyle())
-        .animation(.easeInOut(duration: 0.25), value: enabled)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityHint(enabled ? "" : "Not available yet")
+        let selected = steps.firstIndex(of: selection) ?? 0
+        StepSegments(segments: steps.enumerated().map { index, step in
+                         StepSegments.Segment(title: title(step), number: index + 1, selected: index == selected,
+                                              enabled: isEnabled(step),
+                                              complete: isComplete(step) && index != selected)
+                     },
+                     selected: selected,
+                     onSelect: { onSelect(steps[$0]) },
+                     onBlockedTap: { onBlockedTap(steps[$0]) })
+            .frame(width: CGFloat(steps.count) * segmentWidth + 2 * inset, height: height)
     }
 }
 
-private struct StepMarker: View {
-    let number: Int
-    let selected: Bool
-    let complete: Bool
+private struct StepSegments: UIViewRepresentable {
+    struct Segment: Equatable {
+        let title: String
+        let number: Int
+        let selected: Bool
+        let enabled: Bool
+        let complete: Bool
+    }
 
-    var body: some View {
-        ZStack {
-            if complete {
-                Circle().fill(Theme.ink)
-                LucideIcon(name: "check", size: 16).foregroundStyle(.white)
-            } else if selected {
-                Circle().fill(.white)
-                numeral.foregroundStyle(Theme.ink)
+    let segments: [Segment]
+    let selected: Int
+    let onSelect: (Int) -> Void
+    let onBlockedTap: (Int) -> Void
+
+    func makeUIView(context: Context) -> StepSegmentedControl {
+        let control = StepSegmentedControl()
+        control.selectedSegmentTintColor = UIColor(Theme.ink)
+        control.setTitleTextAttributes(StepSegmentedControl.attributes(.medium, Theme.ink), for: .normal)
+        control.setTitleTextAttributes(StepSegmentedControl.attributes(.semibold, .white), for: .selected)
+        control.setTitleTextAttributes(StepSegmentedControl.attributes(.medium, Theme.ink.opacity(0.32)), for: .disabled)
+        control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+
+        let blockedTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.blockedTap(_:)))
+        blockedTap.cancelsTouchesInView = false
+        blockedTap.delaysTouchesEnded = false
+        blockedTap.delegate = context.coordinator
+        control.addGestureRecognizer(blockedTap)
+
+        control.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        control.setContentHuggingPriority(.defaultLow, for: .vertical)
+        return control
+    }
+
+    func updateUIView(_ control: StepSegmentedControl, context: Context) {
+        context.coordinator.parent = self
+        if control.segments != segments {
+            control.apply(segments)
+        }
+        if control.selectedSegmentIndex != selected {
+            control.selectedSegmentIndex = selected
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: StepSegments
+        init(parent: StepSegments) { self.parent = parent }
+
+        @MainActor @objc func changed(_ control: StepSegmentedControl) {
+            parent.onSelect(control.selectedSegmentIndex)
+            // The app can refuse a step (an item in flight); put the selection back if it didn't move.
+            DispatchQueue.main.async { [weak control] in
+                guard let control, control.selectedSegmentIndex != self.parent.selected else { return }
+                control.selectedSegmentIndex = self.parent.selected
+            }
+        }
+
+        @MainActor @objc func blockedTap(_ recognizer: UITapGestureRecognizer) {
+            guard let control = recognizer.view as? StepSegmentedControl,
+                  let index = control.disabledSegment(at: recognizer.location(in: control)) else { return }
+            parent.onBlockedTap(index)
+        }
+
+        @MainActor func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            guard let control = recognizer.view as? StepSegmentedControl else { return false }
+            return control.disabledSegment(at: touch.location(in: control)) != nil
+        }
+
+        func gestureRecognizer(_ recognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+    }
+}
+
+final class StepSegmentedControl: UISegmentedControl {
+    fileprivate private(set) var segments: [StepSegments.Segment] = []
+
+    fileprivate static func attributes(_ weight: Theme.SerifWeight, _ color: Color) -> [NSAttributedString.Key: Any] {
+        [.font: UIFont(name: weight.rawValue, size: 22) ?? .systemFont(ofSize: 22), .foregroundColor: UIColor(color)]
+    }
+
+    fileprivate func apply(_ new: [StepSegments.Segment]) {
+        let selected = selectedSegmentIndex
+        while numberOfSegments < new.count { insertSegment(withTitle: nil, at: numberOfSegments, animated: false) }
+        while numberOfSegments > new.count { removeSegment(at: numberOfSegments - 1, animated: false) }
+        for (index, segment) in new.enumerated() {
+            let old = segments.indices.contains(index) ? segments[index] : nil
+            guard old != segment else { continue }
+            let update = { [self] in
+                let image = Self.render(segment)
+                image.accessibilityLabel = segment.title
+                setImage(image, forSegmentAt: index)
+                setEnabled(segment.enabled, forSegmentAt: index)
+            }
+            // A cross-dissolve snapshots the whole control, so a selection change would lose the native slide.
+            if old == nil || old?.enabled == segment.enabled {
+                update()
             } else {
-                Circle().strokeBorder(Theme.ink.opacity(0.55), lineWidth: 1.5)
-                numeral
+                UIView.transition(with: self, duration: 0.25, options: .transitionCrossDissolve, animations: update)
             }
         }
-        .frame(width: 28, height: 28)
-        .animation(.easeInOut(duration: 0.25), value: complete)
+        segments = new
+        selectedSegmentIndex = selected
     }
 
-    private var numeral: some View {
-        Text("\(number)").font(Theme.sans(15, .semibold)).monospacedDigit()
+    func disabledSegment(at point: CGPoint) -> Int? {
+        guard bounds.contains(point), numberOfSegments > 0 else { return nil }
+        let index = min(Int(point.x / (bounds.width / CGFloat(numberOfSegments))), numberOfSegments - 1)
+        return isEnabledForSegment(at: index) ? nil : index
     }
-}
 
-private struct StepPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+    /// A segment shows an image or a title, never both, so the step's symbol and label are drawn together
+    /// as one template image, which the control tints per state like a title.
+    private static func render(_ segment: StepSegments.Segment) -> UIImage {
+        let weight: Theme.SerifWeight = segment.selected ? .semibold : .medium
+        let text = NSAttributedString(string: segment.title, attributes: [
+            .font: UIFont(name: weight.rawValue, size: 22) ?? .systemFont(ofSize: 22),
+        ])
+        let symbolName = segment.complete ? "checkmark.circle.fill"
+            : segment.selected ? "\(segment.number).circle.fill" : "\(segment.number).circle"
+        let symbol = UIImage(systemName: symbolName,
+                             withConfiguration: UIImage.SymbolConfiguration(pointSize: 24, weight: segment.complete ? .semibold : .regular))
+        let side: CGFloat = 28, gap: CGFloat = 10
+        let textSize = text.size()
+        let size = CGSize(width: ceil(side + gap + textSize.width), height: ceil(max(side, textSize.height)))
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            let alpha: CGFloat = segment.complete || segment.selected ? 1 : 0.55
+            symbol?.withTintColor(UIColor.black.withAlphaComponent(alpha))
+                .draw(in: CGRect(x: 0, y: (size.height - side) / 2, width: side, height: side))
+            text.draw(at: CGPoint(x: side + gap, y: (size.height - textSize.height) / 2))
+        }
+        return image.withRenderingMode(.alwaysTemplate)
     }
 }
 
