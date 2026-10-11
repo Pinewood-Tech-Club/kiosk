@@ -100,7 +100,7 @@ final class DrizzleLab {
         layer.update(now: clock)
         let cost = CACurrentMediaTime() - began
         if cost > 0.00002 { costs.append(cost) }
-        if crossed(10), !costs.isEmpty {
+        if crossed(8.9), !costs.isEmpty {
             let sorted = costs.sorted()
             stage.log(String(format: "DrizzleLab: update cost over %d built frames: mean %.3f ms, p90 %.3f ms, max %.3f ms",
                              sorted.count, sorted.reduce(0, +) / Double(sorted.count) * 1000,
