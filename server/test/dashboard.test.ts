@@ -33,6 +33,7 @@ describe("dashboard page", () => {
     expect(response.text).toContain('name="pin"');
     expect(response.text).not.toContain("WebSocket");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Referrer-Policy")).toBe("same-origin");
   });
 
   it("serves a self-contained live page to a signed-in session", async () => {

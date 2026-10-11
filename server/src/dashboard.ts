@@ -4,6 +4,7 @@ import { checkStaffSecret, clearedSessionCookie, createStaffSession, readStaffSe
 
 function csp(nonce: string): Record<string, string> {
   return {
+    "Referrer-Policy": "same-origin",
     "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
   };
 }

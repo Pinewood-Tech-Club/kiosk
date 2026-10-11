@@ -311,7 +311,7 @@ function renderOrders(){
   if(!list.length){$("orders").innerHTML='<div class="empty">No orders yet. They appear here the moment a customer pays.</div>';return;}
   $("orders").innerHTML=list.map(function(o){
     var badge=o.status==="collected"?"":'<span class="badge '+esc(o.status)+'">'+esc(o.status)+"</span>";
-    return '<div class="order"><span class="num">'+(o.orderNumber!=null?"#"+o.orderNumber:"")+'</span><span class="who">'+esc(o.customerName||"Guest")+badge+'</span><span class="total">'+money(o.totalCents)+'</span><span class="items">'+esc(itemsText(o))+'</span><span class="when">'+clock(o.paidAt)+", "+ago(o.receivedAt)+"</span></div>";
+    return '<div class="order"><span class="num">'+(o.orderNumber!=null?"#"+o.orderNumber:"")+'</span><span class="who">'+esc(o.customerName||"Guest")+badge+'</span><span class="total">'+money(o.totalCents)+'</span><span class="items">'+esc(itemsText(o))+'</span><span class="when">'+clock(o.paidAt)+"</span></div>";
   }).join("");
 }
 

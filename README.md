@@ -106,7 +106,7 @@ Each feature lives in its own module and exports its routes; `src/index.ts` only
 | `checkout.ts`, `pricing.ts` | `/v1/checkout`: server-priced Square order creation |
 | `receipts.ts` | `/r/<token>` (placeholder) |
 | `stats.ts` | `/v1/stats` |
-| `dashboard.ts`, `session.ts` | `/dashboard` (placeholder), PIN sign-in, staff sessions (`/v1/staff/session`) |
+| `dashboard.ts`, `session.ts` | `/dashboard` (live organizer view, `dashboard-page.ts` holds the HTML and script), PIN sign-in, staff sessions (`/v1/staff/session`) |
 | `http.ts` | Errors, auth (bearer and cookie), body parsing, retries |
 
 - Production: `https://techclub-icecream.adamxu.workers.dev/v1/` (account *Adam*; health check at `/v1/health`).
