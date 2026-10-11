@@ -124,7 +124,8 @@ struct ScriptRunner {
         await tap(.topping(topping)) { app.setToppingsForScript(toppings) }
     }
 
-    /// Whip and syrup going on and off under pieces, scoops added and removed under toppings, a vessel swap, then the tray.
+    /// Whip and syrup going on and off under pieces, scoops added and removed under toppings, a vessel swap, the tray,
+    /// lifting the item back out to edit, and the order sheet.
     private func toppingsTour() async {
         if app.step != .toppings { app.jumpToStep(.toppings); await wait(1.0) }
         await wait(1.0)
@@ -152,6 +153,12 @@ struct ScriptRunner {
         await wait(1.5)
         app.addToOrder()
         await wait(3.0)
+        log("edit topped item")
+        if let first = app.items.first { app.tapTrayItem(first.id) }
+        await wait(3.0)
+        log("view order")
+        app.viewOrder()
+        await wait(4.0)
     }
 
     func run(_ script: String) async {

@@ -399,15 +399,13 @@ final class PlaceholderShellLayer: ToppingLayer {
     }
 
     func update(now: Double) {
-        guard !isFinished else { return }
-        let growing = growthDuration > 0 && now < growthStart + growthDuration + 1e-3
-        let reshaping = shapeDuration > 0 && now < shapeStart + shapeDuration + 1e-3
-        if growing || reshaping || dirty {
-            let p = growthDuration > 0 ? Ease.clamp01(Float((now - growthStart) / growthDuration)) : 1
-            growth = lerp(growthFrom, growthTo, growthTo > growthFrom ? Ease.outCubic(p) : Ease.inOutSine(p))
-            rebuild(now: now)
-        }
-        if removing, growth <= 0.0001, !growing {
+        guard !isFinished, dirty else { return }
+        let p = growthDuration > 0 ? Ease.clamp01(Float((now - growthStart) / growthDuration)) : 1
+        growth = lerp(growthFrom, growthTo, growthTo > growthFrom ? Ease.outCubic(p) : Ease.inOutSine(p))
+        rebuild(now: now)
+        let settled = p >= 1 && (shapeDuration <= 0 || now >= shapeStart + shapeDuration)
+        dirty = !settled
+        if settled, removing {
             isFinished = true
             entity.isEnabled = false
         }
@@ -465,7 +463,6 @@ final class PlaceholderShellLayer: ToppingLayer {
     }
 
     private func rebuild(now: Double? = nil) {
-        dirty = false
         let bases = now.map(currentBases) ?? self.bases
         let thicknesses = now.map(currentThicknesses) ?? self.thicknesses
         let rings = Self.rings, segments = Self.segments
@@ -648,7 +645,7 @@ final class PlaceholderScatterLayer: ToppingLayer {
                 piece.entity.isEnabled = raw > 0
             case .drop:
                 var t = piece.to
-                t.translation.y += 0.05 * (1 - p * p)
+                t.translation.y += 0.015 * (1 - p * p)
                 piece.entity.transform = t
                 piece.entity.isEnabled = raw > 0
             case .move:
