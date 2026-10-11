@@ -22,7 +22,9 @@ KIOSK_EVENT_NAME = Tech Club Ice Cream
 BOOTH_URL = kiosk.jamboree.techclub.pw
 BOOTH_TOKEN = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-// Optional. A staff iPad: KIOSK_ROLE = staff skips role setup and opens the staff screen, which connects with
-// BOOTH_STAFF_TOKEN (or a staff session from a PIN sign-in). Leave both empty on the kiosk iPad.
+// Optional. A staff iPad: KIOSK_ROLE = staff skips role setup and opens the staff web page BOOTH_URL/staff/STAFF_PAGE
+// (scooper or toppings; empty means scooper), signed in with BOOTH_STAFF_TOKEN (without it the page asks for the PIN).
+// Leave all three empty on the kiosk iPad.
 KIOSK_ROLE =
+STAFF_PAGE =
 BOOTH_STAFF_TOKEN =

@@ -17,6 +17,7 @@ final class BoothLink {
         var soldOut: [String]
     }
 
+    private static let kioskOpenKey = "boothKioskOpen"
     private static let soldOutKey = "boothSoldOutState"
     private static let idleLimit: TimeInterval = 60
     private static let helpRateLimit: TimeInterval = 30
@@ -26,6 +27,7 @@ final class BoothLink {
 
     private(set) var connectionState: BoothConnection.ConnectionState = .idle
     private(set) var soldOut: Set<Flavor>
+    private(set) var kioskOpen: Bool
     private(set) var helpBannerVisible = false
 
     @ObservationIgnored private weak var app: AppModel?
@@ -46,6 +48,7 @@ final class BoothLink {
     init() {
         let stored = UserDefaults.standard.data(forKey: Self.soldOutKey).flatMap { try? JSONDecoder().decode(SoldOutSnapshot.self, from: $0) }
         soldOut = Set((stored?.soldOut ?? []).compactMap(Flavor.init(rawValue:)))
+        kioskOpen = UserDefaults.standard.object(forKey: Self.kioskOpenKey) as? Bool ?? true
     }
 
     var isEnabled: Bool { BoothConfig.current != nil }
@@ -152,6 +155,11 @@ final class BoothLink {
     }
 
     private func applyState(_ state: BoothState) {
+        if state.kioskOpen.open != kioskOpen {
+            kioskOpen = state.kioskOpen.open
+            UserDefaults.standard.set(kioskOpen, forKey: Self.kioskOpenKey)
+            log("Booth: kiosk is now " + (kioskOpen ? "open" : "closed"))
+        }
         let updated = Set(state.flavors.filter(\.soldOut).compactMap { Flavor(rawValue: $0.id) })
         guard updated != soldOut else { return }
         soldOut = updated

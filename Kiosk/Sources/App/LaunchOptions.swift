@@ -387,7 +387,7 @@ struct ScriptRunner {
         case "demo":
             if app.screen == .attract {
                 await wait(1.0)
-                app.beginOrder()
+                app.beginOrder(ignoringClosure: true)
                 await wait(2.2)
             }
             await select(.cone)

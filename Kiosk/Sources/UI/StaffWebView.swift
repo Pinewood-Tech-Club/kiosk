@@ -29,7 +29,7 @@ final class StaffWebModel {
         let retriable: Bool
     }
 
-    let url: URL? = BoothConfig.publicBaseURL?.appending(path: "dashboard")
+    let url: URL? = BoothConfig.publicBaseURL?.appending(path: "staff/\(BoothConfig.staffPage)")
     var failure: Failure?
     var retryAt: Date?
     @ObservationIgnored var reload: (() -> Void)?

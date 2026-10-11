@@ -347,6 +347,8 @@ final class BoothConnection {
             }
         case .kiosk(let kiosk):
             current.kiosk = kiosk
+        case .kioskOpen(let kioskOpen):
+            current.kioskOpen = kioskOpen
         case .order(let order):
             if let index = current.orders.firstIndex(where: { $0.id == order.id }) {
                 current.orders[index] = order

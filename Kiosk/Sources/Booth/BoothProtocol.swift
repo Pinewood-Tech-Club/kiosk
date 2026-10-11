@@ -305,10 +305,26 @@ struct BoothOrderSummary: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+struct KioskOpenState: Codable, Equatable, Sendable {
+    var open = true
+    var changedAt: Double?
+    var changedBy: String?
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        open = c.lenient(AnyKey("open"), true)
+        changedAt = c.lenientOptional(AnyKey("changedAt"))
+        changedBy = c.lenientOptional(AnyKey("changedBy"))
+    }
+}
+
 struct BoothState: Codable, Equatable, Sendable {
     var rev: Int
     var flavors: [BoothFlavorState]
     var kiosk: KioskState
+    var kioskOpen: KioskOpenState
     var alerts: [BoothAlert]
     var orders: [BoothOrderSummary]
     var serverTime: Double
@@ -318,6 +334,7 @@ struct BoothState: Codable, Equatable, Sendable {
         rev = c.lenient(AnyKey("rev"), 0)
         flavors = c.lenient(AnyKey("flavors"), [])
         kiosk = c.lenient(AnyKey("kiosk"), KioskState())
+        kioskOpen = c.lenient(AnyKey("kioskOpen"), KioskOpenState())
         alerts = c.lenient(AnyKey("alerts"), [])
         orders = c.lenient(AnyKey("orders"), [])
         serverTime = c.lenient(AnyKey("serverTime"), 0)
@@ -329,6 +346,7 @@ enum BoothChange: Sendable {
     case alert(BoothAlert)
     case kiosk(KioskState)
     case order(BoothOrderSummary)
+    case kioskOpen(KioskOpenState)
     case unknown
 }
 
@@ -344,6 +362,8 @@ extension BoothChange: Decodable {
             self = c.lenientOptional(AnyKey("kiosk")).map(BoothChange.kiosk) ?? .unknown
         case "order":
             self = c.lenientOptional(AnyKey("order")).map(BoothChange.order) ?? .unknown
+        case "kioskOpen":
+            self = c.lenientOptional(AnyKey("kioskOpen")).map(BoothChange.kioskOpen) ?? .unknown
         default:
             self = .unknown
         }

@@ -225,8 +225,10 @@ final class AppModel {
         withAnimation(.easeInOut(duration: 0.35)) { screen = .roleSetup }
     }
 
-    func beginOrder() {
-        guard stageReady, !assetsFailed, screen == .attract else { return }
+    var orderingOpen: Bool { booth.kioskOpen }
+
+    func beginOrder(ignoringClosure: Bool = false) {
+        guard stageReady, !assetsFailed, screen == .attract, ignoringClosure || orderingOpen else { return }
         resetEverything()
         stage.restore(current: current, items: [], step: .vessel)
         builderVisible = true
