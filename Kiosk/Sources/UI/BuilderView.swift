@@ -43,7 +43,15 @@ private struct EditingSlot: View {
             .strokeBorder(Theme.ink.opacity(0.28), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
             .frame(width: slotSize.width, height: slotSize.height)
             .overlay(alignment: .topTrailing) {
-                GlassIconButton(icon: "minus", size: 44, iconSize: 20, action: remove)
+                Button(action: remove) {
+                    LucideIcon(name: "minus", size: 15)
+                        .foregroundStyle(Theme.ink)
+                        .frame(width: 30, height: 30)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
                     .accessibilityLabel("Remove this item")
                     .offset(x: 14, y: -14)
             }
