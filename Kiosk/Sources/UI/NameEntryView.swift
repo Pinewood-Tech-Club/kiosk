@@ -168,12 +168,27 @@ private struct NameField: UIViewRepresentable {
 
         @objc func editingChanged(_ field: UITextField) {
             guard field.markedTextRange == nil else { return }
-            var value = field.text ?? ""
-            if value.count > parent.maxLength {
-                value = String(value.prefix(parent.maxLength))
+            let typed = field.text ?? ""
+            let value = Self.capitalizingWords(String(typed.prefix(parent.maxLength)))
+            if value != typed {
+                let caret = field.selectedTextRange
                 field.text = value
+                if value.count == typed.count { field.selectedTextRange = caret }
             }
             if parent.text != value { parent.text = value }
+        }
+
+        // The keyboard's `.words` auto-shift is unreliable here (hardware keyboards, the device's
+        // Auto-Capitalization setting), so word starts are uppercased on input. Later letters are left
+        // alone so names like "McKenzie" survive.
+        static func capitalizingWords(_ text: String) -> String {
+            var result = ""
+            var atWordStart = true
+            for character in text {
+                result += atWordStart ? character.uppercased() : String(character)
+                atWordStart = character.isWhitespace || character == "-"
+            }
+            return result
         }
 
         func textFieldDidBeginEditing(_ field: UITextField) {
