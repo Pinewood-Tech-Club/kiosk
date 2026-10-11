@@ -77,7 +77,7 @@ extension Stage {
         applyLighting(holder)
         rig.body.addChild(holder)
 
-        if mode == "zoom" {
+        if mode == "zoom" || defaults.bool(forKey: "kioskToppingLabZoom") {
             rig.pose.scale *= 2.6
             rig.pose.position.y -= 0.18
             rig.apply()
