@@ -231,7 +231,6 @@ final class SquareService: NSObject {
     }
 
     private func requestPermissions() {
-        guard UserDefaults.standard.string(forKey: "kioskToppingLab") == nil else { return }
         if locationManager.authorizationStatus == .notDetermined {
             locationManager.requestWhenInUseAuthorization()
         }

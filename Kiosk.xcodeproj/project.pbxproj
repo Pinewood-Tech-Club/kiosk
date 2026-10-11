@@ -9,13 +9,11 @@
 /* Begin PBXBuildFile section */
 		0DB3FAFF3FEE7F0C6F1B9A36 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5701FD802D3A088526716CC8 /* Keychain.swift */; };
 		0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */; };
-		104FC2A6ED64042650293395 /* DrizzleLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E677D9645BB623E14ACDFD5 /* DrizzleLab.swift */; };
 		13BA8C20840B4FEE6E0C80E2 /* StageScoops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */; };
 		1673ECA689F29B1FA803C815 /* ScatterLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D65867471778683C1CB36618 /* ScatterLayer.swift */; };
 		1BB0562605F01093714A5FD4 /* BoothCheckout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DBF1469A678F767112B34C4 /* BoothCheckout.swift */; };
 		1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF36BF94972C41A51D71D966 /* KioskApp.swift */; };
 		1D208167E95C76C2B5B5A490 /* BoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */; };
-		26DDA3A6B7252388900B3E37 /* ToppingLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A1568D90FE5A52B433D80B /* ToppingLab.swift */; };
 		2B591179C416EC14B3DF661F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF77AD1D7C8D64414EA6DB92 /* Theme.swift */; };
 		2F1D9CFC58D885C3AD6E9BEA /* NotoSerif-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */; };
 		31E11CF00B709FFA3131CDD2 /* PaymentProblem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */; };
@@ -112,7 +110,6 @@
 		37DFD4680D9AC7197C5C0B25 /* Receipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Receipt.swift; sourceTree = "<group>"; };
 		3A427B0BBC2F44DCB35CDA2F /* StageToppings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageToppings.swift; sourceTree = "<group>"; };
 		3A5C513CA4EED620DB0C9835 /* ScoopSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopSurface.swift; sourceTree = "<group>"; };
-		3E677D9645BB623E14ACDFD5 /* DrizzleLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrizzleLab.swift; sourceTree = "<group>"; };
 		3E7BD938DB6C7D3B7D320A5E /* GummyBears-CC-BY-4.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "GummyBears-CC-BY-4.0.txt"; sourceTree = "<group>"; };
 		3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Regular.ttf"; sourceTree = "<group>"; };
 		41288991151D7382A2F4C89D /* 3D */ = {isa = PBXFileReference; lastKnownFileType = folder; name = 3D; path = Kiosk/Resources/3D; sourceTree = SOURCE_ROOT; };
@@ -156,7 +153,6 @@
 		B353824019534A970B3D1DE6 /* StageVessels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageVessels.swift; sourceTree = "<group>"; };
 		C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderScatterKind.swift; sourceTree = "<group>"; };
 		C1105750A779779A5507FAF2 /* Order.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Order.swift; sourceTree = "<group>"; };
-		C2A1568D90FE5A52B433D80B /* ToppingLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingLab.swift; sourceTree = "<group>"; };
 		C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothOutbox.swift; sourceTree = "<group>"; };
 		C47A1B344994FAF846FD449E /* StageConsistency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageConsistency.swift; sourceTree = "<group>"; };
 		C6EB437FE04FC84CEA440D1E /* ScatterPhysics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScatterPhysics.swift; sourceTree = "<group>"; };
@@ -338,7 +334,6 @@
 			children = (
 				4649965D4D60FFAD3C4019DC /* CandyKinds.swift */,
 				984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */,
-				3E677D9645BB623E14ACDFD5 /* DrizzleLab.swift */,
 				8B8B17032539D12086EC034E /* DrizzleLayer.swift */,
 				C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */,
 				D65867471778683C1CB36618 /* ScatterLayer.swift */,
@@ -346,7 +341,6 @@
 				3A5C513CA4EED620DB0C9835 /* ScoopSurface.swift */,
 				3A427B0BBC2F44DCB35CDA2F /* StageToppings.swift */,
 				32D26707361619BE434DD978 /* ToppingIcons.swift */,
-				C2A1568D90FE5A52B433D80B /* ToppingLab.swift */,
 				48740B6EF1BC55783B05082A /* ToppingLayer.swift */,
 				5406E8E764595F07AE47CDAC /* ToppingStack.swift */,
 				A340C15A80FAF3849CA78721 /* WhipLayer.swift */,
@@ -563,7 +557,6 @@
 				8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */,
 				74456A6B3CED1B853F498EDE /* ContactSolver.swift in Sources */,
 				9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */,
-				104FC2A6ED64042650293395 /* DrizzleLab.swift in Sources */,
 				7BA5F30548207E9109087F13 /* DrizzleLayer.swift in Sources */,
 				F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */,
 				DF96ED4630E78827B560EDCB /* Glass.swift in Sources */,
@@ -602,7 +595,6 @@
 				2B591179C416EC14B3DF661F /* Theme.swift in Sources */,
 				7568C47CEA97F79633A7EA91 /* ToppingGlyph.swift in Sources */,
 				6A1B2B0B6FEFF85E93E0D406 /* ToppingIcons.swift in Sources */,
-				26DDA3A6B7252388900B3E37 /* ToppingLab.swift in Sources */,
 				FE0C1C733FBF872A34848749 /* ToppingLayer.swift in Sources */,
 				E21404B759B7FBEE10853958 /* ToppingStack.swift in Sources */,
 				6735B223D0F752A9B4C1C427 /* TrayTiles.swift in Sources */,
