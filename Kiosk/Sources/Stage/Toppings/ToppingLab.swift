@@ -35,6 +35,14 @@ final class ToppingLab {
                 probes.append(dot)
             }
         }
+        if defaults.bool(forKey: "kioskToppingLabDollop") {
+            let dollop = WhipLayer.makeIconDollop()
+            stage.applyLighting(dollop)
+            dollop.scale = .init(repeating: 4)
+            dollop.orientation = simd_quatf(angle: 0.35, axis: [1, 0, 0])
+            dollop.position = stage.world(CGPoint(x: 200, y: 420))
+            stage.root.addChild(dollop)
+        }
         if defaults.bool(forKey: "kioskToppingLabStatic") {
             layer.apply(onto: surface, seed: seed, animated: false, now: stage.now)
             start = -100
