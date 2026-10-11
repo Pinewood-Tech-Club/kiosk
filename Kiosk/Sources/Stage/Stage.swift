@@ -301,6 +301,7 @@ final class Stage {
             }
         }
         tweens.removeAll { $0.isFinished }
+        ScatterLab.tick(self)
         updateIcons()
         updateTray(dt: Float(dt))
         updateToppings()

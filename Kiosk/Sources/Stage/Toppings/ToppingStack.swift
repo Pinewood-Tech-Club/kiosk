@@ -214,7 +214,7 @@ enum ToppingFactory {
     }
 
     static func scatterKind(_ topping: Topping) -> any ScatterKind {
-        PlaceholderScatterKind(topping: topping)
+        PlaceholderScatterKind(shape: topping == .gummies ? .gummy : topping == .mms ? .lentil : .sprinkle)
     }
 
     static func iconModel(_ topping: Topping) -> (model: Entity, jiggling: [Entity]) {
@@ -499,57 +499,6 @@ final class PlaceholderShellLayer: ToppingLayer {
         descriptor.primitives = .triangles(indices)
         if let mesh = try? MeshResource.generate(from: [descriptor]) { model.model?.mesh = mesh }
         entity.isEnabled = growth > 0.001
-    }
-}
-
-/// Stand-in pieces until the real scatter kinds land: boxes, discs and rods in candy colors.
-struct PlaceholderScatterKind: ScatterKind {
-    let topping: Topping
-
-    var count: Int {
-        switch topping {
-        case .sprinkles: 70
-        default: 8
-        }
-    }
-
-    func makePieces(rng: inout ToppingRandom) -> [ScatterPiece] {
-        let palette: [UIColor] = topping == .sprinkles
-            ? [.systemPink, .systemYellow, .systemBlue, .systemGreen, .white, .systemOrange]
-            : [.systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue, .systemPurple]
-        return (0..<count).map { _ in
-            let material = Self.material(palette[Int(rng.next() % UInt64(palette.count))], roughness: topping == .gummies ? 0.35 : 0.25)
-            switch topping {
-            case .gummies:
-                let half = SIMD3<Float>(0.0035, 0.0028, 0.0046)
-                return ScatterPiece(mesh: Self.box(half), materials: [material], halfExtents: half)
-            case .mms:
-                return ScatterPiece(mesh: Self.disc, materials: [material], halfExtents: [0.0055, 0.0018, 0.0055])
-            default:
-                let half = SIMD3<Float>(0.0006, 0.0006, 0.0028)
-                return ScatterPiece(mesh: Self.box(half), materials: [material], halfExtents: half)
-            }
-        }
-    }
-
-    @MainActor private static var boxes: [SIMD3<Float>: MeshResource] = [:]
-    @MainActor private static var materials: [UIColor: PhysicallyBasedMaterial] = [:]
-
-    @MainActor private static func material(_ color: UIColor, roughness: Float) -> PhysicallyBasedMaterial {
-        if let material = materials[color] { return material }
-        var material = PhysicallyBasedMaterial()
-        material.baseColor = .init(tint: color)
-        material.roughness = .init(floatLiteral: roughness)
-        materials[color] = material
-        return material
-    }
-    @MainActor private static let disc = MeshResource.generateCylinder(height: 0.0036, radius: 0.0055)
-
-    @MainActor private static func box(_ half: SIMD3<Float>) -> MeshResource {
-        if let mesh = boxes[half] { return mesh }
-        let mesh = MeshResource.generateBox(size: half * 2, cornerRadius: min(half.x, half.y) * 0.5)
-        boxes[half] = mesh
-        return mesh
     }
 }
 
