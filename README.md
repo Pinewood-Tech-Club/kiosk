@@ -193,6 +193,8 @@ pnpm smoke --offline       # live end-to-end check of production (add --checkout
 pnpm chaos                 # staging: drops, half-open sockets, a redeploy, replays, clock skew, a long offline spell
 ```
 
+Right after the 2026-10-11 production deploy that added the order feed, `POST /v1/orders` answered `503 unavailable` (hub call failed) for about three minutes, then recovered with no change; the order is already in D1 by then and the kiosk's retry completes it. If `pnpm smoke` fails only at *order stored* right after a deploy, wait a few minutes and run it again.
+
 `pnpm smoke` leaves a few rows tagged `smoke-...` in production D1 (simulated orders, excluded from totals). `scripts/chaos-proxy.mjs` also runs on its own as a local proxy for testing the iPad app against staging (`node scripts/chaos-proxy.mjs`, then launch the app with `-boothURL http://127.0.0.1:8790 -boothToken <staging token>` and drive the proxy with `curl -X POST localhost:8791/mode/down`, `/mode/up`, `/mode/blackhole`, `/kill`).
 
 ## Not production-ready yet
