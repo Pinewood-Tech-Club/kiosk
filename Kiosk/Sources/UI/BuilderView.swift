@@ -162,10 +162,11 @@ struct BuilderBackdrop: View {
                     let card = Layout.toppingCardFrame(topping)
                     let icon = Layout.toppingIconFrame(topping)
                     ZStack {
-                        CardBackground(highlighted: app.hasTopping(topping), cornerRadius: Layout.toppingCardRadius)
+                        CardBackground(filled: app.hasTopping(topping), cornerRadius: Layout.toppingCardRadius)
                             .frame(width: card.width, height: card.height)
                         if !app.stageDrawsToppingIcons {
                             ToppingGlyph(topping: topping, size: icon.height)
+                                .shadow(color: .black.opacity(app.hasTopping(topping) ? 0.22 : 0), radius: 4, y: 2)
                                 .offset(x: icon.midX - card.midX, y: icon.midY - card.midY)
                         }
                     }
@@ -438,10 +439,11 @@ struct BuilderForeground: View {
             ForEach(ToppingGroup.allCases) { group in
                 let header = Layout.toppingGroupHeader(group)
                 Text(group.title)
-                    .font(Theme.serif(20, .medium))
+                    .font(Theme.serif(18, .medium))
                     .foregroundStyle(Theme.textSecondary)
-                    .frame(width: header.width, height: header.height, alignment: .topLeading)
-                    .padding(.leading, 6)
+                    .padding(.leading, 8)
+                    .padding(.bottom, 10)
+                    .frame(width: header.width, height: header.height, alignment: .bottomLeading)
                     .position(x: header.midX, y: header.midY)
             }
 
@@ -449,29 +451,33 @@ struct BuilderForeground: View {
                 let frame = Layout.toppingCardFrame(topping)
                 let selected = app.hasTopping(topping)
                 Button { app.toggleTopping(topping) } label: {
-                    VStack(spacing: 1) {
+                    VStack(spacing: 3) {
                         Spacer()
                         Text(topping.title)
-                            .font(Theme.serif(18))
-                            .foregroundStyle(Theme.text)
+                            .font(Theme.serif(19))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-                        Text("+\(topping.priceCents.formattedAsUSD)")
-                            .font(Theme.sans(15, .medium))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 11)
-                    .frame(width: frame.width, height: frame.height)
-                    .overlay(alignment: .topTrailing) {
-                        if selected {
-                            CheckBadge()
-                                .padding(17)
-                                .transition(.scale.combined(with: .opacity))
+                            .foregroundStyle(selected ? Theme.onText : Theme.text)
+                        ZStack {
+                            Text("+\(topping.priceCents.formattedAsUSD)")
+                                .font(Theme.sans(15, .medium))
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.textSecondary)
+                                .opacity(selected ? 0 : 1)
+                            HStack(spacing: 4) {
+                                LucideIcon(name: "check", size: 15)
+                                Text("Added")
+                                    .font(Theme.sans(15, .semibold))
+                            }
+                            .foregroundStyle(Theme.onText.opacity(0.7))
+                            .opacity(selected ? 1 : 0)
                         }
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 16)
+                    .frame(width: frame.width, height: frame.height)
                     .contentShape(.rect(cornerRadius: Layout.toppingCardRadius))
+                    .animation(.easeInOut(duration: 0.2), value: selected)
                 }
                 .buttonStyle(CardPressStyle { app.setPressed(topping, $0) })
                 .modifier(PressEffect(pressed: app.pressedToppings.contains(topping)))
@@ -479,19 +485,8 @@ struct BuilderForeground: View {
                 .accessibilityValue(selected ? "Added" : "+\(topping.priceCents.formattedAsUSD)")
                 .accessibilityAddTraits(selected ? .isSelected : [])
                 .position(x: frame.midX, y: frame.midY)
-
-                ZStack {
-                    if selected {
-                        GlassIconButton(icon: "minus", size: 40, iconSize: 17) { app.removeTopping(topping) }
-                            .accessibilityLabel("Remove \(topping.title)")
-                            .transition(.scale(scale: 0.6).combined(with: .opacity))
-                    }
-                }
-                .frame(width: 56, height: 56)
-                .position(x: frame.minX + 32, y: frame.minY + 32)
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: app.current.toppings)
     }
 
     private var primaryButton: some View {

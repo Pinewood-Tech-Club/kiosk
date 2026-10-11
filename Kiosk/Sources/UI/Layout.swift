@@ -31,9 +31,9 @@ enum Layout {
         return CGPoint(x: midX + offsets[flavor, default: 0], y: cardsCenterY)
     }
 
-    static let toppingCardSize = CGSize(width: 170, height: 120)
-    static let toppingIconSize = CGSize(width: 64, height: 56)
-    static let toppingCardRadius: CGFloat = 26
+    static let toppingCardSize = CGSize(width: 170, height: 164)
+    static let toppingIconSize = CGSize(width: 92, height: 84)
+    static let toppingCardRadius: CGFloat = 28
 
     static func toppingCardFrame(_ topping: Topping) -> CGRect {
         ToppingGrid.shared.cards[topping] ?? .zero
@@ -42,7 +42,7 @@ enum Layout {
     /// Where the card's icon goes: the stage draws a 3D preview here, as it does for the flavor icons.
     static func toppingIconFrame(_ topping: Topping) -> CGRect {
         let card = toppingCardFrame(topping)
-        return CGRect(x: card.midX - toppingIconSize.width / 2, y: card.minY + 8,
+        return CGRect(x: card.midX - toppingIconSize.width / 2, y: card.minY + 16,
                       width: toppingIconSize.width, height: toppingIconSize.height)
     }
 
@@ -184,7 +184,7 @@ struct ToppingGrid: Sendable {
     static let columnGap: CGFloat = 12
     static let groupGap: CGFloat = 32
     static let rowGap: CGFloat = 12
-    static let headerHeight: CGFloat = 36
+    static let headerHeight: CGFloat = 40
     static let bandGap: CGFloat = 20
     static let bottomY: CGFloat = 1082
 

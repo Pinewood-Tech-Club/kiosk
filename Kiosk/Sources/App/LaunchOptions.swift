@@ -135,7 +135,7 @@ struct ScriptRunner {
             }
             await toggle(.whip)
             await wait(1.2)
-            app.removeTopping(.gummies)
+            await toggle(.gummies)
             await wait(1.2)
             await toggle(.chocolate)
             await wait(1.2)
