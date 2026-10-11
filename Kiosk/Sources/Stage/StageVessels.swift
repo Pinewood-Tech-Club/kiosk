@@ -70,8 +70,10 @@ extension Stage {
     }
 
     /// Interpolates every pose component from the rig's current pose to a live target, so the final
-    /// frame equals the target exactly.
+    /// frame equals the target exactly. `liveControl` re-aims the curve at the target every frame, for targets
+    /// that travel far during the flight (a row on the rising order sheet).
     func flyRig(_ rig: ItemRig, duration: Double, delay: Double = 0, minSpin: Float, dip: Bool, timing: TimingCurve,
+                liveControl: Bool = false,
                 control: @escaping (SIMD3<Float>, SIMD3<Float>) -> SIMD3<Float>,
                 target: @escaping () -> RigPose, completion: @escaping () -> Void) {
         rig.motion?.cancel()
@@ -93,6 +95,7 @@ extension Stage {
         }) { p in
             let goal = target()
             let e = timing(p)
+            if liveControl { controlPoint = control(start.position, goal.position) }
             rig.pose.position = quadraticBezier(start.position, controlPoint, goal.position, e)
             if dip {
                 let dipEnd: Float = 0.16
@@ -116,7 +119,9 @@ extension Stage {
     /// `underScoops` is the quicker flight used while scoops are handed over: it rises into place from below and
     /// in front, so the rim never sweeps sideways through the stack waiting above, and passes in front of the
     /// outgoing vessel, which drops away behind.
-    func flyHeroToCenter(_ rig: ItemRig, duration: Double, delay: Double = 0, underScoops: Bool = false) {
+    /// `inFront` keeps the flight in the order sheet's item plane, so an item lifted out of a row stays in front
+    /// of the sheet's occluder; the hero spin moves it back to its framing's depth on landing, which looks the same.
+    func flyHeroToCenter(_ rig: ItemRig, duration: Double, delay: Double = 0, underScoops: Bool = false, inFront: Bool = false) {
         let vessel = rig.vessel
         let fromIcon = abs(rig.pose.roll - iconRestPose(vessel).roll) < 0.01
             && abs(rig.pose.scale - Self.iconScale(vessel)) < Self.iconScale(vessel) * 0.1
@@ -128,7 +133,10 @@ extension Stage {
                        ? SIMD3<Float>(p1.x, lerp(p0.y, p1.y, 0.35), 0.28)
                        : (p0 + p1) / 2 + SIMD3<Float>(side * 0.2, -0.03, 0.14)
                },
-               target: { [unowned self] in centerPose(rig, yaw: rig.pose.yaw) }) { [weak self] in
+               target: { [unowned self] in
+                   let pose = centerPose(rig, yaw: rig.pose.yaw)
+                   return inFront ? replaned(pose, z: Self.itemPlaneZ) : pose
+               }) { [weak self] in
             guard let self, heroes[selectedVessel] === rig else { return }
             resumeSpin()
         }

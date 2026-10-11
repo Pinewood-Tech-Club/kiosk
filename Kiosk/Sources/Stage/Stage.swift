@@ -44,7 +44,8 @@ final class Stage {
     var timeScale: Double = 1
     var log: (String) -> Void = { _ in }
     var logsHitches = false
-    var onLayoutChange: () -> Void = {}
+    /// Called each time the opening sheet has fully covered the builder.
+    var onSheetCovered: () -> Void = {}
 
     var assets: AssetLibrary?
     var isBuilt = false
@@ -98,10 +99,16 @@ final class Stage {
     var trayScroll: CGFloat = 0
     var trayScrollTween: Tween?
     var trayDragStart: CGFloat?
+    /// The order sheet is open or opening.
     var summaryActive = false
     var summaryScroll: CGFloat = 0
-    /// Interactive pull-down offset of the order sheet, as a spring matching the SwiftUI one.
-    var summaryDrag = Spring1D(value: 0, response: 0.36, dampingRatio: 0.86)
+    /// The order sheet's progress (`SheetGeometry`), the single value its glass, content and 3D items follow.
+    var sheet = Spring1D(value: 0, response: Stage.sheetOpenResponse, dampingRatio: Stage.sheetOpenDamping)
+    /// Progress when the current pull-down began.
+    var sheetGrab: Float?
+    var sheetCovered = false
+    let sheetModel = SheetModel()
+    var sheetOccluder: SheetOccluder?
     /// Screen frames of the confirmation receipt's 3D cells, and the visible part of the receipt's list.
     var receiptFrames: [UUID: CGRect] = [:]
     var receiptClip: CGRect = .zero
@@ -151,6 +158,9 @@ final class Stage {
             root.addChild(icon.holder)
         }
         fillScoopModelPool()
+        let occluder = SheetOccluder()
+        sheetOccluder = occluder
+        root.addChild(occluder.root)
         buildWarmup()
         isBuilt = true
         setStep(.vessel, animated: false)
@@ -237,6 +247,7 @@ final class Stage {
         }
 
         stepPresses(Float(min(realDelta, 0.1)))
+        stepSheet(Float(dt))
         updateHeroSpin(Float(dt))
         for phase in Self.tweenPhases {
             for tween in tweens where tween.phase == phase {

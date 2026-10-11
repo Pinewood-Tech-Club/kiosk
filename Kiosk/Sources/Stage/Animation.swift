@@ -72,8 +72,8 @@ struct Spring1D {
     var value: Float
     var velocity: Float = 0
     var target: Float
-    let response: Float
-    let dampingRatio: Float
+    var response: Float
+    var dampingRatio: Float
 
     init(value: Float, response: Float, dampingRatio: Float) {
         self.value = value

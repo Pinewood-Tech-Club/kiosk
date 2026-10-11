@@ -26,7 +26,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
    - *Toppings*: placeholder, then *Add to Order* flies the item into the tray.
    - The step selector at the top jumps between steps that are already reachable.
    - Tray: a pinned *New item* slot, live 3D minis (drag to scroll), *View Order* with the live total, and start-over (with confirmation). Tapping a mini lifts it back out to edit. Leaving an edit keeps the changes: *Done*, *New item*, tapping another mini or *View Order* return the item to its slot. The minus badge on its empty slot removes it (after a confirmation); an item edited down to no scoops asks to be removed. *New item* outside an edit adds the item being built to the order and starts a fresh cup.
-4. **Your order**: *View Order* grows the tray into a sheet over the builder. Each item's 3D model flies up beside its row, with edit (pencil) and remove (trash) buttons. Below are the total and *Check Out*; *Keep ordering* folds the sheet back into the tray.
+4. **Your order**: *View Order* grows the tray's glass into a sheet over the builder; each item's 3D model rides up from its tray slot into its row, with edit (pencil) and remove (trash) buttons. Below are the total and *Check Out*. *Keep ordering*, or pulling the sheet down, folds it back into the tray with the items riding back into their slots, revealing a fresh builder that was set up while the sheet covered it.
 5. **Name**: the name becomes the Square order's ticket name and pickup recipient.
 6. **Payment**: creates a Square order from the catalog (one line per scoop, priced by its position in the whole order, plus one line per waffle cone; taxes auto-applied by Square), then `startPayment` for Square's total. On failure the customer returns to their order and an alert explains what went wrong; a cancel just returns them to it.
 7. **Confirmation**: an itemized receipt of what Square charged, a prompt to photograph it, and *New Order*. Returns to the attract screen after 10 s without a touch.
@@ -56,7 +56,7 @@ Pass in the scheme or with `xcrun simctl launch <udid> com.adamxu.kiosk -kioskSc
 | `-kioskCurrent "cone:vanilla,chocolate"` | Item being customized. |
 | `-kioskItems "cup:cookies;cone:vanilla"` | Items already in the tray. |
 | `-kioskName Alex` | Prefill the name. |
-| `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `remove-middle`, `edit`, `edit-done`, `edit-new`, `edit-switch`, `edit-empty`, `fresh`, `summary`, `press-hold`, `swap-continue`, `vessel-spam`, `demo`. |
+| `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `remove-middle`, `edit`, `edit-scroll`, `edit-done`, `edit-new`, `edit-switch`, `edit-empty`, `fresh`, `summary`, `pull-down`, `press-hold`, `swap-continue`, `vessel-spam`, `demo`. |
 | `-kioskScript stress\|stress-tray` | Rapid random taps (cup/cone, flavors, minus, steps; `stress-tray` adds New item, tray edits, deletes and the order sheet), then a check that the settled 3D scene matches the order. Results go to the log as `Stress:` lines. `-kioskSeed N` and `-kioskStressRounds N` make a run repeatable. |
 | `-kioskAutoplay YES` | Same as `-kioskScript demo`: the whole flow through a simulated payment. |
 | `-kioskSlowmo 0.25` | Slow motion. |

@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Checks, once every animation has finished, that the 3D scene shows exactly what the order says.
 extension Stage {
-    var isSettled: Bool { tweens.isEmpty && morphing.isEmpty && !isDragging }
+    var isSettled: Bool { tweens.isEmpty && morphing.isEmpty && !isDragging && sheet.isSettled && sheetGrab == nil }
 
     func consistencyIssues(current: IceCreamItem?, items: [IceCreamItem], editingID: UUID?, showsCards: Bool) -> [String] {
         var issues: [String] = []
@@ -86,7 +86,7 @@ extension Stage {
                 issues.append("tray item \(entry.index): no rig")
                 continue
             }
-            check(entry.mode == .tray || entry.mode == .summary, "tray item \(entry.index): mode \(entry.mode)")
+            check(entry.mode == .docked, "tray item \(entry.index): mode \(entry.mode)")
             check(rig.root.parent === root, "tray item \(entry.index): not in the scene")
             check(rig.motion == nil, "tray item \(entry.index): still moving")
             checkScoops(rig, flavors: item.flavors, label: "tray item \(Int(entry.index))")

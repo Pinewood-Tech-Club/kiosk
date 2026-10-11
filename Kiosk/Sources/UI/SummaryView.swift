@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The order, laid out on the expanded tray sheet. Each row leaves its left column empty: the item's
-/// live 3D model flies up from the tray and spins there (positions come from `Layout.summaryRowCenterY`).
+/// The order, laid out on the fully open sheet. Each row leaves its left column empty: the item's live 3D
+/// model rides up from the tray and spins there (positions come from `Layout.summaryRowCenterY`).
 struct SummaryView: View {
     let app: AppModel
 

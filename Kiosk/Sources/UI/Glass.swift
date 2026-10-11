@@ -322,15 +322,16 @@ final class StepSegmentedControl: UISegmentedControl {
 /// than on glass.
 struct GlassTrayBackground: View {
     var cornerRadius: CGFloat = 40
-    var isExpanded = false
+    /// 0 is the tray's clear glass, 1 the order sheet's opaque paper.
+    var fill: Double = 0
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         shape
             .fill(Theme.background)
-            .opacity(isExpanded ? 1 : 0)
+            .opacity(fill)
             .glassEffect(.regular, in: shape)
-            .shadow(color: Theme.cardShadow.opacity(isExpanded ? 1 : 0), radius: 30, y: -6)
+            .shadow(color: Theme.cardShadow.opacity(fill), radius: 30, y: -6)
     }
 }
 

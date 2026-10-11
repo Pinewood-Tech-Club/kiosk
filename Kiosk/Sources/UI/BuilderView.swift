@@ -35,26 +35,62 @@ private let slotSize = CGSize(width: 100, height: 106)
 
 /// Holds the place of the item that's out for editing. Its one control is a delete badge on the corner,
 /// like a home-screen icon in edit mode; finishing the edit is the screen's primary button.
+/// Follows its slot every frame while the tray scrolls, clipped like the tiles; the badge shows only while
+/// the whole slot is in view.
 private struct EditingSlot: View {
-    let remove: () -> Void
+    let app: AppModel
+    let id: UUID
 
     var body: some View {
-        RoundedRectangle(cornerRadius: slotRadius, style: .continuous)
-            .strokeBorder(Theme.ink.opacity(0.28), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-            .frame(width: slotSize.width, height: slotSize.height)
-            .overlay(alignment: .topTrailing) {
-                Button(action: remove) {
-                    LucideIcon(name: "minus", size: 15)
-                        .foregroundStyle(Theme.ink)
-                        .frame(width: 30, height: 30)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                        .frame(width: 44, height: 44)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-                    .accessibilityLabel("Remove this item")
-                    .offset(x: 14, y: -14)
+        let editing = app.stage.trayTiles.editing
+        let x = (editing?.id == id ? editing?.x : nil) ?? app.stage.trayItemCenter(id)?.x ?? Layout.trayFirstCenterX
+        let area = TrayClip.itemsArea
+        let inView = x - slotSize.width / 2 >= Layout.trayItemsRect.minX - 0.5
+            && x + slotSize.width / 2 <= Layout.trayItemsRect.maxX + 0.5
+        ZStack {
+            RoundedRectangle(cornerRadius: slotRadius, style: .continuous)
+                .strokeBorder(Theme.ink.opacity(0.28), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                .frame(width: slotSize.width, height: slotSize.height)
+                .position(x: x - area.minX, y: Layout.trayCenterY - area.minY)
+                .frame(width: area.width, height: area.height)
+                .clipShape(TrayClip.itemsShape)
+                .position(x: area.midX, y: area.midY)
+                .allowsHitTesting(false)
+
+            Button { app.requestDelete(id) } label: {
+                LucideIcon(name: "minus", size: 15)
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 30, height: 30)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .frame(width: 44, height: 44)
+                    .contentShape(.circle)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove this item")
+            .opacity(inView ? 1 : 0)
+            .allowsHitTesting(inView)
+            .animation(.easeInOut(duration: 0.2), value: inView)
+            .position(x: x + slotSize.width / 2 - 8, y: Layout.trayCenterY - slotSize.height / 2 + 8)
+        }
+    }
+}
+
+/// Builder controls are drawn above the 3D stage, but the order sheet is beneath it, so the sheet hides
+/// them with a mask as it rises over them.
+private struct CoveredBySheet: ViewModifier {
+    let model: SheetModel
+
+    func body(content: Content) -> some View {
+        let geometry = SheetGeometry(progress: model.progress)
+        content.mask { SheetShape(geometry: geometry, inverted: true).fill(style: FillStyle(eoFill: true)) }
+    }
+}
+
+private struct TrayContentFade: ViewModifier {
+    let model: SheetModel
+
+    func body(content: Content) -> some View {
+        content.opacity(SheetGeometry(progress: model.progress).trayOpacity)
     }
 }
 
@@ -72,35 +108,17 @@ struct BuilderBackdrop: View {
 
     var body: some View {
         ZStack {
-            if app.mode == .customize, !app.itemInFlight {
+            if !app.itemInFlight {
                 cards
                     .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.3).delay(0.22)),
                                             removal: .opacity.animation(.easeIn(duration: 0.16))))
             }
 
-            let sheet = app.mode == .summary ? Layout.sheetRect : Layout.trayGlassRect
-            GlassTrayBackground(cornerRadius: app.mode == .summary ? 44 : 40, isExpanded: app.mode == .summary)
-                .frame(width: sheet.width, height: sheet.height)
-                .position(x: sheet.midX, y: sheet.midY + (app.mode == .summary ? app.sheetDrag : 0))
-
+            SheetGlass(model: app.stage.sheetModel)
             TrayTiles(app: app)
-
-
-            if app.mode == .summary {
-                SummaryView(app: app)
-                    .offset(y: app.sheetDrag)
-                    .gesture(pullDown)
-                    .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.3).delay(0.2)),
-                                            removal: .opacity.animation(.easeIn(duration: 0.14))))
-            }
+            OrderSheetContent(app: app)
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
-    }
-
-    private var pullDown: some Gesture {
-        DragGesture(minimumDistance: 12)
-            .onChanged { app.dragSheet(by: $0.translation.height) }
-            .onEnded { app.endSheetDrag(translation: $0.translation.height, predicted: $0.predictedEndTranslation.height) }
     }
 
     @ViewBuilder
@@ -133,6 +151,47 @@ struct BuilderBackdrop: View {
     }
 }
 
+/// The tray's glass, grown into the order sheet as far as the stage's sheet progress says.
+private struct SheetGlass: View {
+    let model: SheetModel
+
+    var body: some View {
+        let geometry = SheetGeometry(progress: model.progress)
+        let rect = geometry.rect
+        GlassTrayBackground(cornerRadius: geometry.cornerRadius, fill: geometry.fill)
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
+    }
+}
+
+/// The order rides on the sheet's top edge, clipped to the sheet, and fades in as the sheet opens. The whole
+/// sheet takes the pull-down; the gesture is measured on screen because the content moves under the finger.
+private struct OrderSheetContent: View {
+    let app: AppModel
+
+    var body: some View {
+        let geometry = SheetGeometry(progress: app.stage.sheetModel.progress)
+        if geometry.contentOpacity > 0 {
+            SummaryView(app: app)
+                .offset(y: geometry.contentOffset)
+                .opacity(geometry.contentOpacity)
+                .clipShape(SheetShape(geometry: geometry))
+                .contentShape(SheetShape(geometry: geometry))
+                .gesture(pullDown)
+                .allowsHitTesting(app.mode == .summary)
+        }
+    }
+
+    private var pullDown: some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .global)
+            .onChanged { app.dragSheet(by: $0.translation.height) }
+            .onEnded {
+                app.endSheetDrag(translation: $0.translation.height, predicted: $0.predictedEndTranslation.height,
+                                 velocity: $0.velocity.height)
+            }
+    }
+}
+
 struct BuilderForeground: View {
     @Bindable var app: AppModel
     @State private var scoopHint = false
@@ -149,14 +208,9 @@ struct BuilderForeground: View {
     }
 
     var body: some View {
-        ZStack {
-            if app.mode == .customize {
-                customize
-                    .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.3).delay(0.22)),
-                                            removal: .opacity.animation(.easeIn(duration: 0.16))))
-            }
-        }
-        .frame(width: Layout.screen.width, height: Layout.screen.height)
+        customize
+            .allowsHitTesting(app.mode == .customize)
+            .frame(width: Layout.screen.width, height: Layout.screen.height)
         .alert(alertTitle, isPresented: alertBinding, presenting: app.confirmation) { confirmation in
             Button(confirmTitle(confirmation), role: .destructive) { app.confirm(confirmation) }
             Button(cancelTitle(confirmation), role: .cancel) {}
@@ -165,7 +219,16 @@ struct BuilderForeground: View {
         }
     }
 
+    /// Stays in place under the order sheet, so it's whole the moment the sheet folds away.
     private var customize: some View {
+        ZStack {
+            builderControls
+                .modifier(CoveredBySheet(model: app.stage.sheetModel))
+            tray
+        }
+    }
+
+    private var builderControls: some View {
         ZStack {
             Color.clear
                 .contentShape(Rectangle())
@@ -188,7 +251,6 @@ struct BuilderForeground: View {
             }
 
             primaryButton
-            tray
         }
     }
 
@@ -362,6 +424,26 @@ struct BuilderForeground: View {
 
     private var tray: some View {
         ZStack {
+            trayContent
+            ZStack {
+                GlassViewOrderButton(totalCents: app.liveQuote.totalCents) { app.viewOrder() }
+                    .disabled(!app.canViewOrder)
+                    .position(x: Layout.viewOrderRect.midX, y: Layout.viewOrderRect.midY)
+
+                GlassIconButton(icon: "rotate-ccw", size: Layout.resetRect.height, width: Layout.resetRect.width, iconSize: 30,
+                                shape: .roundedRectangle(radius: Layout.trayTileRadius)) { app.requestStartOver() }
+                    .accessibilityLabel("Start over")
+                    .position(x: Layout.resetRect.midX, y: Layout.resetRect.midY)
+            }
+            .modifier(CoveredBySheet(model: app.stage.sheetModel))
+        }
+        .modifier(TrayContentFade(model: app.stage.sheetModel))
+        .animation(.easeInOut(duration: 0.3), value: app.items.isEmpty)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: app.editingID)
+    }
+
+    private var trayContent: some View {
+        ZStack {
             if app.items.isEmpty {
                 Text("Added items appear here")
                     .font(Theme.serif(18, .regular))
@@ -387,27 +469,12 @@ struct BuilderForeground: View {
                 )
 
             if let editingID = app.editingID {
-                let _ = app.trayLayoutVersion
-                if let center = app.stage.trayItemCenter(editingID), Layout.trayItemsRect.contains(center) {
-                    EditingSlot(remove: { app.requestDelete(editingID) })
-                        .position(center)
-                        .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                }
+                EditingSlot(app: app, id: editingID)
+                    .transition(.opacity)
             }
 
             newItemSlot
-
-            GlassViewOrderButton(totalCents: app.liveQuote.totalCents) { app.viewOrder() }
-                .disabled(!app.canViewOrder)
-                .position(x: Layout.viewOrderRect.midX, y: Layout.viewOrderRect.midY)
-
-            GlassIconButton(icon: "rotate-ccw", size: Layout.resetRect.height, width: Layout.resetRect.width, iconSize: 30,
-                            shape: .roundedRectangle(radius: Layout.trayTileRadius)) { app.requestStartOver() }
-                .accessibilityLabel("Start over")
-                .position(x: Layout.resetRect.midX, y: Layout.resetRect.midY)
         }
-        .animation(.easeInOut(duration: 0.3), value: app.items.isEmpty)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: app.editingID)
     }
 
     /// Pinned first slot of the tray. Not glass: it sits on the tray's glass.

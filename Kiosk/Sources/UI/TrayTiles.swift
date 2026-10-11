@@ -12,9 +12,23 @@ final class TrayTileModel {
     }
 
     private(set) var tiles: [Tile] = []
+    /// The slot of the item that's out for editing, which the dashed placeholder follows.
+    private(set) var editing: Tile?
 
-    func update(_ tiles: [Tile]) {
+    func update(_ tiles: [Tile], editing: Tile?) {
         if tiles != self.tiles { self.tiles = tiles }
+        if editing != self.editing { self.editing = editing }
+    }
+}
+
+/// The order sheet's progress, published by the stage every frame it moves (see `SheetGeometry`).
+@Observable
+@MainActor
+final class SheetModel {
+    private(set) var progress: CGFloat = 0
+
+    func update(_ progress: CGFloat) {
+        if progress != self.progress { self.progress = progress }
     }
 }
 
@@ -39,8 +53,7 @@ struct TrayTiles: View {
         .clipShape(TrayClip.itemsShape)
         .position(x: area.midX, y: area.midY)
         .animation(.easeOut(duration: 0.28), value: model.tiles.map(\.id))
-        .opacity(app.mode == .customize ? 1 : 0)
-        .animation(.easeInOut(duration: 0.2), value: app.mode == .customize)
+        .opacity(SheetGeometry(progress: app.stage.sheetModel.progress).trayOpacity)
         .allowsHitTesting(false)
     }
 }

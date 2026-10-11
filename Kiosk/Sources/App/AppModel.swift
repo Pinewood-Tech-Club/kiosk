@@ -63,9 +63,7 @@ final class AppModel {
     private(set) var editingID: UUID?
     private(set) var stageReady = false
     private(set) var pressedCards: Set<CardKey> = []
-    private(set) var trayLayoutVersion = 0
     var confirmation: Confirmation?
-    private(set) var sheetDrag: CGFloat = 0
     var notice: Notice?
     var receipt: Receipt?
     var customerName = ""
@@ -89,6 +87,8 @@ final class AppModel {
     @ObservationIgnored let host = ViewControllerHost()
     @ObservationIgnored private var started = false
     @ObservationIgnored private var transitionTask: Task<Void, Never>?
+    /// The builder still shows what it held when the order opened, until the sheet covers it.
+    @ObservationIgnored private var builderResetPending = false
 
     init() {
         let defaults = UserDefaults.standard
@@ -98,6 +98,7 @@ final class AppModel {
 
     /// Everything that would be charged right now, with the item being edited in place of its saved version.
     var liveQuote: OrderQuote {
+        guard mode == .customize else { return orderQuote }
         var basket = items
         if let editingID, let index = basket.firstIndex(where: { $0.id == editingID }) {
             basket[index] = current
@@ -142,7 +143,7 @@ final class AppModel {
         guard !started else { return }
         started = true
         stage.log = { [weak self] in self?.square.record($0) }
-        stage.onLayoutChange = { [weak self] in self?.trayLayoutVersion += 1 }
+        stage.onSheetCovered = { [weak self] in self?.resetBuilderUnderSheet() }
         if UserDefaults.standard.bool(forKey: "kioskNoSquare") {
             square.record("Square disabled by -kioskNoSquare")
         } else {
@@ -191,6 +192,7 @@ final class AppModel {
     private func resetEverything() {
         transitionTask?.cancel()
         itemInFlight = false
+        builderResetPending = false
         items = []
         current = IceCreamItem()
         editingID = nil
@@ -298,7 +300,6 @@ final class AppModel {
         stage.returnHeroToEntry(editingID, item: current)
         self.editingID = nil
         current = IceCreamItem()
-        trayLayoutVersion += 1
         proceed(to: next)
     }
 
@@ -364,8 +365,9 @@ final class AppModel {
         transitionTask?.cancel()
         itemInFlight = false
         if mode == .summary {
+            resetBuilderUnderSheet()
             mode = .customize
-            stage.exitSummary()
+            stage.settleSheet(open: false, velocity: nil)
         }
         if step == .vessel {
             stage.sendCurrentHeroHome()
@@ -377,7 +379,6 @@ final class AppModel {
         step = .vessel
         stage.setStep(.vessel, animated: false)
         stage.beginEditing(id)
-        trayLayoutVersion += 1
         holdControlsWhileItemsFly(for: 0.7) {}
     }
 
@@ -401,7 +402,6 @@ final class AppModel {
         if mode == .summary, items.isEmpty {
             backToBuilder()
         }
-        trayLayoutVersion += 1
     }
 
     func requestStartOver() {
@@ -420,6 +420,8 @@ final class AppModel {
         }
     }
 
+    /// The order is settled at once; the builder beneath keeps showing its last state until the rising
+    /// sheet covers it (`resetBuilderUnderSheet`), so nothing changes on screen except the sheet arriving.
     func viewOrder() {
         guard canViewOrder, mode == .customize else { return }
         if isEditing, current.scoopCount == 0 {
@@ -428,51 +430,53 @@ final class AppModel {
         }
         transitionTask?.cancel()
         itemInFlight = false
-        stage.enterSummary()
+        stage.openSheet()
         if let editingID, current.scoopCount > 0, let index = items.firstIndex(where: { $0.id == editingID }) {
             items[index] = current
             stage.returnHeroToEntry(editingID, item: current)
         } else if current.scoopCount > 0 {
-            let item = current
-            items.append(item)
-            stage.sendCurrentToTray(item)
-        } else {
-            stage.dismissCurrentHero()
+            items.append(current)
+            stage.sendCurrentToTray(current)
         }
         editingID = nil
+        notice = nil
+        builderResetPending = true
+        mode = .summary
+    }
+
+    private func resetBuilderUnderSheet() {
+        guard builderResetPending, mode == .summary else { return }
+        builderResetPending = false
         current = IceCreamItem()
         step = .vessel
-        stage.setStep(.vessel, animated: false)
-        notice = nil
-        withAnimation(.smooth(duration: 0.55)) { mode = .summary }
+        pressedCards = []
+        stage.resetBuilderUnderSheet()
     }
 
-    func backToBuilder() {
+    /// `velocity` (points per second, downward) carries a pull-down's fling into the sheet's spring.
+    func backToBuilder(velocity: CGFloat = 0) {
         guard mode == .summary else { return }
         notice = nil
-        stage.exitSummary()
-        withAnimation(.smooth(duration: 0.5)) { mode = .customize }
-        stage.presentNewItem(vessel: current.vessel, delay: 0.35)
+        resetBuilderUnderSheet()
+        mode = .customize
+        stage.settleSheet(open: false, velocity: sheetProgressVelocity(velocity))
     }
 
-    /// Matches `Stage.summaryDrag`, so the sheet and its 3D items spring back together.
-    private static let sheetSpring = Animation.spring(response: 0.36, dampingFraction: 0.86)
+    private func sheetProgressVelocity(_ velocity: CGFloat) -> Float {
+        -Float(velocity / SheetGeometry.travel) / Float(max(slowMotion, 0.01))
+    }
 
     func dragSheet(by translation: CGFloat) {
         guard mode == .summary else { return }
-        sheetDrag = translation >= 0 ? translation : -24 * (1 - 1 / (-translation / 60 + 1))
-        stage.setSummaryDrag(Float(sheetDrag))
+        stage.dragSheet(by: translation >= 0 ? translation : -24 * (1 - 1 / (-translation / 60 + 1)))
     }
 
-    func endSheetDrag(translation: CGFloat, predicted: CGFloat) {
+    func endSheetDrag(translation: CGFloat, predicted: CGFloat, velocity: CGFloat) {
         guard mode == .summary else { return }
-        if translation > 150 || predicted > 420 {
-            backToBuilder()
-            stage.setSummaryDrag(0)
-            sheetDrag = 0
+        if predicted > 280 || (translation > 150 && velocity > -100) {
+            backToBuilder(velocity: velocity)
         } else {
-            withAnimation(Self.sheetSpring) { sheetDrag = 0 }
-            stage.releaseSummaryDrag()
+            stage.settleSheet(open: true, velocity: sheetProgressVelocity(velocity))
         }
     }
 
@@ -549,9 +553,11 @@ final class AppModel {
                 mode = .summary
                 current = IceCreamItem()
                 step = .vessel
-                stage.restore(current: nil, items: items, step: .vessel, summary: true)
+                stage.restore(current: current, items: items, step: .vessel, summary: true)
             case "name":
-                stage.restore(current: nil, items: items, step: .vessel, summary: true)
+                current = IceCreamItem()
+                step = .vessel
+                stage.restore(current: current, items: items, step: .vessel, summary: true)
                 mode = .summary
                 screen = .name
             case "confirmation":

@@ -93,6 +93,16 @@ struct ScriptRunner {
         await tap(.flavor(flavor)) { app.addScoop(flavor) }
     }
 
+    /// A finger dragging the order sheet down, paced in slow motion like the rest of the scene.
+    private func pullSheet(from start: CGFloat, to end: CGFloat, seconds: Double) async -> CGFloat {
+        let steps = max(Int(seconds * 60), 2)
+        for i in 1...steps {
+            app.dragSheet(by: start + (end - start) * CGFloat(i) / CGFloat(steps))
+            await wait(seconds / Double(steps))
+        }
+        return end
+    }
+
     private func select(_ vessel: Vessel) async {
         await tap(.vessel(vessel)) { app.selectVessel(vessel) }
     }
@@ -262,6 +272,19 @@ struct ScriptRunner {
             await wait(1.4)
             app.addToOrder()
             await wait(2.5)
+        case "edit-scroll":
+            await wait(0.8)
+            if let item = app.items.dropFirst(app.items.count - 2).first { app.tapTrayItem(item.id) }
+            await wait(2.0)
+            for target: CGFloat in [260, -40] {
+                let steps = 60
+                for i in 1...steps {
+                    app.stage.trayDragChanged(target * CGFloat(i) / CGFloat(steps))
+                    await wait(1.2 / Double(steps))
+                }
+                app.stage.trayDragEnded(predictedDx: target)
+                await wait(1.5)
+            }
         case "step-fade":
             await wait(1.0)
             app.goForward()
@@ -271,23 +294,16 @@ struct ScriptRunner {
         case "pull-down":
             await wait(0.8)
             app.viewOrder()
-            await wait(2.4)
-            for distance in [60.0, 120, 70, 20] {
-                let steps = 20
-                let start = app.sheetDrag
-                for i in 1...steps {
-                    app.dragSheet(by: start + (distance - start) * Double(i) / Double(steps))
-                    try? await Task.sleep(for: .seconds(0.4 / Double(steps)))
-                }
+            await wait(2.2)
+            var offset: CGFloat = 0
+            for (target, seconds) in [(90.0, 0.3), (170.0, 0.35), (60.0, 0.4), (30.0, 0.2)] {
+                offset = await pullSheet(from: offset, to: target, seconds: seconds)
             }
-            app.endSheetDrag(translation: 20, predicted: 40)
-            await wait(1.5)
-            for i in 1...24 {
-                app.dragSheet(by: 220 * Double(i) / 24)
-                try? await Task.sleep(for: .seconds(0.3 / 24))
-            }
-            app.endSheetDrag(translation: 220, predicted: 600)
-            await wait(2.5)
+            app.endSheetDrag(translation: offset, predicted: offset - 30, velocity: -150 * app.slowMotion)
+            await wait(1.6)
+            offset = await pullSheet(from: 0, to: 260, seconds: 0.35)
+            app.endSheetDrag(translation: offset, predicted: offset + 180, velocity: 900 * app.slowMotion)
+            await wait(2.0)
         case "summary":
             await wait(0.8)
             app.viewOrder()

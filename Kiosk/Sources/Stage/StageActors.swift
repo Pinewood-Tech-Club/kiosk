@@ -193,19 +193,23 @@ final class FlavorIcon {
 
 @MainActor
 final class TrayEntry {
-    enum Mode { case tray, summary, receipt, flying, editing, removing }
+    /// `docked` rests in its tray slot or its order-sheet row, whichever the sheet's progress says.
+    enum Mode { case docked, receipt, flying, editing, removing }
 
     var item: IceCreamItem
     var rig: ItemRig?
     var index: Float
     var indexTween: Tween?
     var mode: Mode = .flying
-    var flyingToSummary = false
     var contentTop: Float
     var contentRadius: Float
     var lastEdge: Float = -1
     var spinYaw: Float = -0.55
     var spinVelocity: Float = 0
+    /// Docked yaw is `trayYaw + lerp(spinAnchor, spin, t)`: `spin` turns while the sheet is open and
+    /// `spinAnchor`, a whole number of turns, is where it lands back in the tray.
+    var spin: Float = 0
+    var spinAnchor: Float = 0
     var appear: Float = 1
     var appearTween: Tween?
 
@@ -223,4 +227,26 @@ final class TrayEntry {
     }
 
     var id: UUID { item.id }
+}
+
+/// Invisible stand-in for the order sheet at a depth between the builder's models and the sheet's items: it
+/// hides the hero, card icons and scoops wherever the sheet covers them (as if drawn on the SwiftUI sheet
+/// beneath the stage), while the items riding on the sheet sit in front of it.
+/// A rounded rectangle built from two bars and four discs, so it can resize every frame without new meshes.
+@MainActor
+final class SheetOccluder {
+    let root = Entity()
+    let bars: [ModelEntity]
+    let corners: [ModelEntity]
+
+    init() {
+        let material = OcclusionMaterial()
+        let plane = MeshResource.generatePlane(width: 1, height: 1)
+        let disc = MeshResource.generatePlane(width: 1, height: 1, cornerRadius: 0.5)
+        bars = (0..<2).map { _ in ModelEntity(mesh: plane, materials: [material]) }
+        corners = (0..<4).map { _ in ModelEntity(mesh: disc, materials: [material]) }
+        root.name = "sheet-occluder"
+        for part in bars + corners { root.addChild(part) }
+        root.isEnabled = false
+    }
 }

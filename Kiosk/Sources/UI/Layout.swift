@@ -1,4 +1,4 @@
-import CoreGraphics
+import SwiftUI
 
 /// Screen-space layout in points for the portrait 13" iPad Pro (1032 × 1376).
 /// SwiftUI places controls at these coordinates and the 3D stage converts the same points to world space.
@@ -74,4 +74,72 @@ enum Layout {
     static let viewOrderRect = CGRect(x: 680, y: 1232, width: 206, height: 106)
     static let resetRect = CGRect(x: 902, y: 1232, width: 106, height: 106)
     static let trayTileRadius: CGFloat = 26
+}
+
+/// The order sheet at `progress`: 0 is the tray's glass, 1 the open sheet, and above 1 (rubber band, spring
+/// overshoot) the open sheet rises further. SwiftUI and the stage both lay out from this one value each frame,
+/// so the glass, the sheet's content and the 3D items on it can't drift apart.
+struct SheetGeometry {
+    let progress: CGFloat
+
+    static let travel = Layout.trayGlassRect.minY - Layout.sheetRect.minY
+
+    var t: CGFloat { min(max(progress, 0), 1) }
+    private var lift: CGFloat { max(progress - 1, 0) * Self.travel }
+
+    /// The top edge moves linearly so a drag tracks the finger; the sides widen ahead of it.
+    var rect: CGRect {
+        let a = Layout.trayGlassRect, b = Layout.sheetRect
+        let widen = 1 - (1 - t) * (1 - t)
+        let minX = mix(a.minX, b.minX, widen), maxX = mix(a.maxX, b.maxX, widen)
+        let minY = mix(a.minY, b.minY, t) - lift, maxY = mix(a.maxY, b.maxY, t) - lift
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    var cornerRadius: CGFloat { mix(40, 44, t) }
+    /// The glass turns opaque almost at once, so whatever it rises over is covered rather than seen through it.
+    var fill: Double { Double(smoothstep(0, 0.08, t)) }
+    /// The order's content rides with the sheet's top edge.
+    var contentOffset: CGFloat { rect.minY - Layout.sheetRect.minY }
+    var contentOpacity: Double { Double(smoothstep(0.3, 0.85, t)) }
+    /// The tray's own content (New item, tiles, View Order) gives way as the glass starts to grow.
+    var trayOpacity: Double { Double(1 - smoothstep(0, 0.3, t)) }
+
+    /// How far a docked item has taken its row's place and size. Eased out, so under a pull-down the rows
+    /// stay nearly rigid and only fold toward the tray near the end.
+    var itemSettle: CGFloat { 1 - (1 - t) * (1 - t) }
+
+    /// Center of a docked item: its tray slot at 0, its row at 1, and always carried by the top edge. The
+    /// vertical blend is eased less than `itemSettle`: any steeper and a low row would sink before it rises.
+    func itemCenter(trayX: CGFloat, rowY: CGFloat) -> CGPoint {
+        let trayLocal = Layout.trayCenterY - Layout.trayGlassRect.minY
+        let rowLocal = rowY - Layout.sheetRect.minY
+        let rise = t + 0.35 * t * (1 - t)
+        return CGPoint(x: mix(trayX, Layout.summaryItemCenterX, itemSettle), y: rect.minY + mix(trayLocal, rowLocal, rise))
+    }
+
+    func itemBox() -> CGSize {
+        CGSize(width: mix(Layout.trayMiniBox.width, Layout.summaryMiniBox.width, itemSettle),
+               height: mix(Layout.trayMiniBox.height, Layout.summaryMiniBox.height, itemSettle))
+    }
+
+    private func mix(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
+
+    private func smoothstep(_ a: CGFloat, _ b: CGFloat, _ x: CGFloat) -> CGFloat {
+        let u = min(max((x - a) / (b - a), 0), 1)
+        return u * u * (3 - 2 * u)
+    }
+}
+
+/// The sheet's rounded rectangle in screen coordinates; `inverted` is everything else on screen.
+struct SheetShape: Shape {
+    let geometry: SheetGeometry
+    var inverted = false
+
+    func path(in rect: CGRect) -> Path {
+        var path = inverted ? Path(CGRect(origin: .zero, size: Layout.screen)) : Path()
+        path.addRoundedRect(in: geometry.rect, cornerSize: CGSize(width: geometry.cornerRadius, height: geometry.cornerRadius),
+                            style: .continuous)
+        return path
+    }
 }
