@@ -2,7 +2,7 @@ import RealityKit
 import UIKit
 
 extension Stage {
-    /// Temporary look-dev hook: `-kioskToppingLab gummies|mms|sprinkles|candy|bears|zoom`.
+    /// Temporary look-dev hook: `-kioskToppingLab gummies|mms|sprinkles|candy|bears|lentils|zoom`.
     func showCandyLab(_ mode: String) {
         guard let candy = assets?.candy, let rig = heroes[selectedVessel] else {
             log("Candy lab: no candy library or item")
@@ -80,10 +80,14 @@ extension Stage {
         if mode == "zoom" || defaults.bool(forKey: "kioskToppingLabZoom") {
             rig.pose.scale *= 2.6
             rig.pose.position.y -= 0.18
+            for keyPath in [\ItemRig.framing, \ItemRig.framingTarget] {
+                rig[keyPath: keyPath]?.scale *= 2.6
+                rig[keyPath: keyPath]?.position.y -= 0.18
+            }
             rig.apply()
         }
 
-        let shown: [String] = mode == "candy" || mode == "bears" ? ["gummies", "mms", "sprinkles"] : [mode].filter { kinds[$0] != nil }
+        let shown: [String] = mode == "candy" || mode == "bears" || mode == "lentils" ? ["gummies", "mms", "sprinkles"] : [mode].filter { kinds[$0] != nil }
         for (index, name) in shown.enumerated() {
             guard let kind = kinds[name] else { continue }
             let pile = kind.makeIconPile(rng: &rng)
@@ -96,22 +100,58 @@ extension Stage {
             root.addChild(anchor)
         }
 
-        if mode == "bears" {
-            for (index, material) in candy.gummyBears.materials.enumerated() {
-                let model = ModelEntity(mesh: candy.gummyBears.bear.mesh, materials: material)
-                model.orientation = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
-                model.scale = .init(repeating: 9)
-                model.position = world(CGPoint(x: 196 + CGFloat(index) * 160, y: 640), z: 0.03)
+        func row(_ models: [(MeshResource, [any RealityKit.Material])], y: CGFloat, scale: Float, spacing: CGFloat,
+                 orientation: (Int) -> simd_quatf) {
+            for (index, entry) in models.enumerated() {
+                let model = ModelEntity(mesh: entry.0, materials: entry.1)
+                model.orientation = orientation(index)
+                model.scale = .init(repeating: scale)
+                let x = 516 + (CGFloat(index) - CGFloat(models.count - 1) / 2) * spacing
+                model.position = world(CGPoint(x: x, y: y), z: 0.03)
                 applyLighting(model)
                 root.addChild(model)
             }
+        }
+        if mode == "bears" || mode == "lentils" {
+            if mode == "bears" {
+                let bears = candy.gummyBears.materials.map { (candy.gummyBears.bear.mesh, $0 as [any RealityKit.Material]) }
+                row(bears, y: 330, scale: 9, spacing: 160) { _ in simd_quatf(angle: .pi / 2, axis: [1, 0, 0]) }
+                row(bears, y: 560, scale: 9, spacing: 160) { _ in
+                    simd_quatf(angle: .pi / 2, axis: [0, 1, 0]) * simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
+                }
+                row(bears, y: 790, scale: 9, spacing: 160) { _ in
+                    simd_quatf(angle: 0.5, axis: [1, 0, 0]) * simd_quatf(angle: -0.6, axis: [0, 1, 0])
+                }
+            } else {
+                let lentils = candy.candyLentils
+                let colors = CandyLentils.colors.indices
+                let up = colors.map { (lentils.pieces[($0 * 2) % lentils.pieces.count].mesh,
+                                       [lentils.materials[$0 * CandyLentils.shades]] as [any RealityKit.Material]) }
+                row(up, y: 330, scale: 7, spacing: 150) { _ in simd_quatf(angle: .pi / 2, axis: [1, 0, 0]) }
+                row(up, y: 560, scale: 7, spacing: 150) { _ in simd_quatf(angle: 0.12, axis: [1, 0, 0]) }
+                row(up, y: 790, scale: 7, spacing: 150) { index in
+                    simd_quatf(angle: 0.75, axis: [1, 0, 0]) * simd_quatf(angle: Float(index) * 1.1, axis: [0, 1, 0])
+                }
+            }
             rig.root.isEnabled = false
-            let backdrop = ModelEntity(mesh: .generatePlane(width: 0.9, height: 0.24),
+            let backdrop = ModelEntity(mesh: .generatePlane(width: 0.9, height: 0.85),
                                        materials: [UnlitMaterial(color: .white, applyPostProcessToneMap: false)])
-            backdrop.position = world(CGPoint(x: 516, y: 640), z: -0.06)
+            backdrop.position = world(CGPoint(x: 516, y: 560), z: -0.06)
             root.addChild(backdrop)
         }
         let contents = candy.gummyBears.bear.mesh.contents
+        var labLines: [String] = []
+        for model in contents.models {
+            for part in model.parts {
+                let p = part.positions.elements
+                let uv = part.textureCoordinates?.elements ?? []
+                guard let top = p.indices.max(by: { p[$0].y < p[$1].y }), !uv.isEmpty else { continue }
+                let lo = uv.reduce(SIMD2<Float>(9, 9)) { simd_min($0, $1) }, hi = uv.reduce(SIMD2<Float>(-9, -9)) { simd_max($0, $1) }
+                let low = uv.filter { $0.x < 0.3 }.count
+                labLines.append("GUMMYUV \(model.id) \(part.id) n=\(p.count) uv=\(uv.count) idx=\(part.triangleIndices?.count ?? -1) lo=\(lo) hi=\(hi) top=\(p[top]) uvTop=\(uv[top]) lowU=\(low)")
+            }
+        }
+        try? labLines.joined(separator: "\n").write(to: FileManager.default.temporaryDirectory.appending(path: "lab.txt"), atomically: true, encoding: .utf8)
         let parts = contents.models.map { "\($0.id):" + $0.parts.map { "\($0.id)#\($0.materialIndex)" }.joined(separator: ",") }
         log("Candy lab \(mode): \(holder.children.count) pieces on the item, \(points.count) scoop points; bear instances "
             + contents.instances.map { "\($0.id)->\($0.model) \($0.transform.columns.0.x)" }.joined(separator: " ") + " models " + parts.joined(separator: " "))
