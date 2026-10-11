@@ -20,10 +20,10 @@ final class DrizzleLab {
     private var cream: LabSurface?
     private var start: Double?
     private var last: Double = -1
-    private var costs: [Double] = []
+    private var costs: [String: [Double]] = [:]
     private var dome: ModelEntity?
 
-    static let cycle: Double = 12
+    static let cycle: Double = 13.5
 
     init?() {
         let defaults = UserDefaults.standard
@@ -79,34 +79,35 @@ final class DrizzleLab {
             stage.applyLighting(layer.entity)
             stage.log(String(format: "DrizzleLab: apply %.2f ms", (CACurrentMediaTime() - began) * 1000))
             self.layer = layer
-            costs.removeAll()
         }
         guard let layer else { last = clock; return }
         let base = clock - local
-        if crossed(4) {
+        if crossed(5.5) {
             let began = CACurrentMediaTime()
-            layer.resurface(to: second, duration: 0.7, now: base + 4)
+            layer.resurface(to: second, duration: 0.7, now: base + 5.5)
             stage.log(String(format: "DrizzleLab: resurface %.2f ms", (CACurrentMediaTime() - began) * 1000))
         }
-        if crossed(6.5) { layer.resurface(to: first, duration: 0.7, now: base + 6.5) }
-        if crossed(9) { layer.remove(now: base + 9) }
+        if crossed(8) { layer.resurface(to: first, duration: 0.7, now: base + 8) }
+        if crossed(10.5) { layer.remove(now: base + 10.5) }
         if let dome {
             func ramp(_ t: Double) -> Float { Ease.inOutSine(Ease.clamp01(Float((local - t) / 0.7))) }
-            let up = startOnCream ? 1 - ramp(4) + ramp(6.5) : ramp(4) - ramp(6.5)
+            let up = startOnCream ? 1 - ramp(5.5) + ramp(8) : ramp(5.5) - ramp(8)
             dome.position.y = -0.0165 * (1 - up)
             dome.isEnabled = up > 0.001
         }
         let began = CACurrentMediaTime()
         layer.update(now: clock)
         let cost = CACurrentMediaTime() - began
-        if cost > 0.00002 { costs.append(cost) }
-        if crossed(8.9), !costs.isEmpty {
-            let sorted = costs.sorted()
-            stage.log(String(format: "DrizzleLab: update cost over %d built frames: mean %.3f ms, p90 %.3f ms, max %.3f ms",
-                             sorted.count, sorted.reduce(0, +) / Double(sorted.count) * 1000,
-                             sorted[Int(Double(sorted.count - 1) * 0.9)] * 1000, sorted.last! * 1000))
-        }
+        if cost > 0.00002 { costs[local < 5.5 ? "pour" : local < 10.5 ? "resurface" : "remove", default: []].append(cost) }
         if layer.isFinished {
+            let all = costs.values.flatMap { $0 }
+            for (phase, values) in costs.sorted(by: { $0.key < $1.key }) + [("all", all)] where !values.isEmpty {
+                let sorted = values.sorted()
+                stage.log(String(format: "DrizzleLab: %@ cost over %d built frames: mean %.3f ms, p90 %.3f ms, max %.3f ms",
+                                 phase, sorted.count, sorted.reduce(0, +) / Double(sorted.count) * 1000,
+                                 sorted[Int(Double(sorted.count - 1) * 0.9)] * 1000, sorted.last! * 1000))
+            }
+            costs.removeAll()
             layer.entity.removeFromParent()
             self.layer = nil
         }
@@ -128,15 +129,13 @@ struct LabSurface: ToppingSurface {
     @MainActor
     init(rig: ItemRig, assets: AssetLibrary) {
         var points: [SIMD3<Float>] = []
-        var top: [SIMD3<Float>] = []
-        for (index, actor) in rig.scoops.enumerated() {
+        for actor in rig.scoops {
             let matrix = actor.model.transformMatrix(relativeTo: rig.body)
             let local = assets.scoopSet(actor.slot).data.positions(actor.staticPose).map { p -> SIMD3<Float> in
                 let w = matrix * SIMD4<Float>(p, 1)
                 return [w.x, w.y, w.z]
             }
             points += local
-            if index == rig.scoops.count - 1 { top = local }
         }
         cell = 0.0008
         var lo = SIMD2<Float>(repeating: .greatestFiniteMagnitude), hi = SIMD2<Float>(repeating: -.greatestFiniteMagnitude)
@@ -184,26 +183,51 @@ struct LabSurface: ToppingSurface {
             }
         }
         heights = smooth
-        var centroid = SIMD2<Float>(0, 0)
-        var topY: Float = -.greatestFiniteMagnitude
-        for p in top { topY = max(topY, p.y) }
-        var count: Float = 0
-        for p in top where p.y > topY - 0.012 {
-            centroid += [p.x, p.z]
-            count += 1
+        let origin = self.origin, cell = self.cell
+        func height(_ x: Float, _ z: Float) -> Float? {
+            let fx = (x - origin.x) / cell - 0.5, fz = (z - origin.y) / cell - 0.5
+            let c = Int(floor(fx)), r = Int(floor(fz))
+            guard c >= 0, c + 1 < columns, r >= 0, r + 1 < rows else { return nil }
+            let h00 = smooth[r * columns + c], h10 = smooth[r * columns + c + 1]
+            let h01 = smooth[(r + 1) * columns + c], h11 = smooth[(r + 1) * columns + c + 1]
+            guard h00.isFinite, h10.isFinite, h01.isFinite, h11.isFinite else { return nil }
+            let u = fx - Float(c), v = fz - Float(r)
+            return (h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v
         }
-        centroid /= max(count, 1)
-        let fx = Int((centroid.x - origin.x) / cell), fz = Int((centroid.y - origin.y) / cell)
-        let centerHeight = smooth[min(max(fz, 0), rows - 1) * columns + min(max(fx, 0), columns - 1)]
-        let best = SIMD3<Float>(centroid.x, centerHeight.isFinite ? centerHeight : topY, centroid.y)
-        baseApex = best
-        var reach = [Float](repeating: 0, count: 24)
-        for p in top {
-            let d = SIMD2<Float>(p.x - best.x, p.z - best.z)
-            let bin = (Int((atan2(d.y, d.x) + .pi) / (2 * .pi) * 24) % 24 + 24) % 24
-            reach[bin] = max(reach[bin], simd_length(d))
+        func coverRadius(_ center: SIMD3<Float>, directions: Int) -> Float {
+            let step = cell * 0.75
+            var radius = Float.greatestFiniteMagnitude
+            for k in 0..<directions {
+                let angle = Float(k) / Float(directions) * 2 * .pi
+                let direction = SIMD2<Float>(cos(angle), sin(angle))
+                var r: Float = 0
+                var trail: [Float] = [center.y]
+                while r < 0.08, r < radius {
+                    let next = r + step
+                    guard let h = height(center.x + direction.x * next, center.z + direction.y * next) else { break }
+                    let back = min(trail.count, 4)
+                    guard trail[trail.count - back] - h < 3.1 * Float(back) * step else { break }
+                    trail.append(h)
+                    r = next
+                }
+                radius = min(radius, r)
+            }
+            return max(radius * 0.97, 0.004)
         }
-        radius = 0.9 * reach.sorted()[12]
+        var highest: Float = -.infinity
+        for h in smooth where h > highest { highest = h }
+        var best: (score: Float, center: SIMD3<Float>) = (-.infinity, .zero)
+        for r in stride(from: 0, to: rows, by: 3) {
+            for c in stride(from: 0, to: columns, by: 3) {
+                let h = smooth[r * columns + c]
+                guard h.isFinite, h >= highest - 0.008 else { continue }
+                let center = SIMD3<Float>(origin.x + (Float(c) + 0.5) * cell, h, origin.y + (Float(r) + 0.5) * cell)
+                let score = coverRadius(center, directions: 16) - 0.8 * (highest - h)
+                if score > best.score { best = (score, center) }
+            }
+        }
+        baseApex = best.center
+        radius = coverRadius(best.center, directions: 48)
     }
 
     func withCream(height: Float) -> LabSurface {
