@@ -71,6 +71,7 @@ final class ToppingCardIcon {
     /// Scale of the icon from its tap reactions (y, xz).
     func update(now: Double) {
         clock = now
+        guard holder.isEnabled else { return }
         var size: Float = 1
         if let outAt {
             let t = Float((now - outAt) / Self.popDuration)

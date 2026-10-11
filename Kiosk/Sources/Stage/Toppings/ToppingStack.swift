@@ -519,9 +519,7 @@ struct PlaceholderScatterKind: ScatterKind {
             ? [.systemPink, .systemYellow, .systemBlue, .systemGreen, .white, .systemOrange]
             : [.systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue, .systemPurple]
         return (0..<count).map { _ in
-            var material = PhysicallyBasedMaterial()
-            material.baseColor = .init(tint: palette.randomElement(using: &rng) ?? .red)
-            material.roughness = .init(floatLiteral: topping == .gummies ? 0.35 : 0.25)
+            let material = Self.material(palette[Int(rng.next() % UInt64(palette.count))], roughness: topping == .gummies ? 0.35 : 0.25)
             switch topping {
             case .gummies:
                 let half = SIMD3<Float>(0.0035, 0.0028, 0.0046)
@@ -536,6 +534,16 @@ struct PlaceholderScatterKind: ScatterKind {
     }
 
     @MainActor private static var boxes: [SIMD3<Float>: MeshResource] = [:]
+    @MainActor private static var materials: [UIColor: PhysicallyBasedMaterial] = [:]
+
+    @MainActor private static func material(_ color: UIColor, roughness: Float) -> PhysicallyBasedMaterial {
+        if let material = materials[color] { return material }
+        var material = PhysicallyBasedMaterial()
+        material.baseColor = .init(tint: color)
+        material.roughness = .init(floatLiteral: roughness)
+        materials[color] = material
+        return material
+    }
     @MainActor private static let disc = MeshResource.generateCylinder(height: 0.0036, radius: 0.0055)
 
     @MainActor private static func box(_ half: SIMD3<Float>) -> MeshResource {
