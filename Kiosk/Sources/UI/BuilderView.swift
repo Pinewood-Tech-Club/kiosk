@@ -149,7 +149,7 @@ struct BuilderBackdrop: View {
         case .flavors:
             ZStack {
                 ForEach(Flavor.allCases) { flavor in
-                    CardBackground()
+                    CardBackground(dimmed: app.booth.isSoldOut(flavor))
                         .frame(width: Layout.cardSize.width, height: Layout.cardSize.height)
                         .modifier(PressEffect(pressed: app.pressedCards.contains(.flavor(flavor))))
                         .position(Layout.flavorCardCenter(flavor))
@@ -261,6 +261,8 @@ struct BuilderForeground: View {
 
             previousStepButton
             primaryButton
+
+            HelpButton(booth: app.booth)
         }
     }
 
@@ -360,23 +362,24 @@ struct BuilderForeground: View {
         return ZStack {
             ForEach(Flavor.allCases) { flavor in
                 let count = app.count(of: flavor)
+                let soldOut = app.booth.isSoldOut(flavor)
                 card(.flavor(flavor), center: Layout.flavorCardCenter(flavor), action: { app.addScoop(flavor) }) {
                     VStack(spacing: 4) {
                         Spacer()
                         Text(flavor.title)
                             .font(Theme.serif(25))
                             .foregroundStyle(Theme.ink)
-                        Text(full ? "3 scoops max" : "+\(app.nextScoopCents.formattedAsUSD)")
-                            .font(Theme.sans(18, .medium))
+                        Text(soldOut ? "Sold out" : full ? "3 scoops max" : "+\(app.nextScoopCents.formattedAsUSD)")
+                            .font(Theme.sans(18, soldOut ? .semibold : .medium))
                             .monospacedDigit()
-                            .foregroundStyle(Theme.inkSecondary)
+                            .foregroundStyle(soldOut ? Theme.ink : Theme.inkSecondary)
                             .contentTransition(.numericText(value: Double(app.nextScoopCents)))
                     }
                     .padding(.bottom, 22)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background {
                         RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
-                            .fill(Theme.background.opacity(full ? 0.55 : 0))
+                            .fill(Theme.background.opacity(soldOut ? 0.7 : full ? 0.55 : 0))
                     }
                     .overlay(alignment: .topTrailing) {
                         if count > 0 {
@@ -386,6 +389,7 @@ struct BuilderForeground: View {
                         }
                     }
                 }
+                .disabled(soldOut)
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: count)
 
                 // Own small frame at the card corner, so the scale-in happens in place.
