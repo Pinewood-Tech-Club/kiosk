@@ -66,6 +66,8 @@ Equirectangular HDR environment for ImageBasedLightComponent so the app matches 
   and a RealityKit `MeshDescriptor` test (v = 1 at the top vertex shows the top row of the image) confirmed no flip is needed there either.
 
 ## Toppings — `GummyBear.usdz`
-One untextured mesh prim (`/GummyBear`, default prim), meters, Y up, about 20 × 11.6 × 8.8 mm. Posed as a scattered piece
-rests: lying on its back (back on -Y, belly +Y), head toward -Z, bounding box centered on the origin. Materials are set
-in code (`CandyKinds.swift`). Built from `Assets3D/gummy_bears` (Styro, CC-BY-4.0) by `Assets3D/pipeline/gummy_bear.py`.
+One untextured mesh prim (`/GummyBear`, default prim), meters, Y up, about 12.0 × 7.8 × 20 mm. Posed as a scattered piece
+rests: lying on its back (back on -Y, belly +Y), head toward -Z, bounding box centered on the origin. Its `st` primvar is
+shading data, not a texture layout: u = |normal · Y| (1 face-on to the belly or back, 0 on the side walls), v = jelly
+thickness along the inward normal divided by twice the bear's depth, clamped to 1. Materials are set in code
+(`CandyKinds.swift`). Built from `Assets3D/gummy_bears` (Styro, CC-BY-4.0) by `Assets3D/pipeline/gummy_bear.py`.
