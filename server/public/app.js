@@ -354,7 +354,7 @@ function renderAlerts() {
             <span>${icon("clock")}<span data-ago="${a.createdAt}">${ago(a.createdAt)}</span></span>
             ${a.count > 1 ? `<span class="count">×${a.count}</span>` : ""}
           </div>
-          <button class="button ${a.severity === "urgent" ? "primary" : ""} big ack" type="button" data-ack="${esc(a.id)}" ${!live || pending ? "disabled" : ""}>
+          <button class="button ${a.severity === "urgent" ? "primary" : ""} ${a.severity === "info" ? "" : "big"} ack" type="button" data-ack="${esc(a.id)}" ${!live || pending ? "disabled" : ""}>
             ${icon("check")}<span>${pending ? "Acknowledging" : a.kind === "help" ? "On my way" : "Got it"}</span>
           </button>
         </article>`;

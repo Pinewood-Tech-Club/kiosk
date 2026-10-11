@@ -8,6 +8,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Booth">
   <title>Booth</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="preload" href="/fonts/NotoSerif-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
@@ -24,7 +26,7 @@
       </label>
       <label class="field">
         <span>Your name <em>(optional)</em></span>
-        <input id="name" name="name" type="text" maxlength="40" autocomplete="given-name" placeholder="Shown when you acknowledge">
+        <input id="name" name="name" type="text" maxlength="40" autocomplete="given-name" placeholder="Shown on alerts you take">
       </label>
       <p id="login-error" class="login-error" role="alert" hidden></p>
       <button class="button primary big" type="submit">

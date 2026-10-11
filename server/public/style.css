@@ -270,6 +270,12 @@ button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-c
 .alert.urgent:not(.acked) { animation: arrive 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2), glow 1.6s ease-in-out 0.35s infinite; }
 .alert.warning .badge { background: var(--warn-wash); color: var(--warn); }
 .alert.info .badge { background: var(--success-wash); color: #2f7a55; }
+.alert.info { padding: 16px 18px 14px; box-shadow: none; }
+.alert.info .badge { width: 44px; height: 44px; border-radius: 15px; }
+.alert.info .badge .icon { width: 24px; height: 24px; }
+.alert.info h3 { font-size: 19px; }
+.alert.info .detail { font-size: 15px; }
+.alert.info .ack { justify-self: start; min-height: 44px; margin-top: 8px; font-size: 16px; }
 
 @keyframes arrive { from { opacity: 0; transform: translateY(-8px) scale(0.98); } }
 @keyframes glow { 50% { box-shadow: 0 0 0 9px rgba(225, 122, 108, 0.10), var(--shadow); } }
