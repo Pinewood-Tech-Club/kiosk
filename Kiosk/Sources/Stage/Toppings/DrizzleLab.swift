@@ -244,7 +244,7 @@ struct LabSurface: ToppingSurface {
 
     @MainActor
     func domeModel() -> ModelEntity {
-        let rings = 28, segments = 64
+        let rings = 40, segments = 96
         var positions: [SIMD3<Float>] = []
         var normals: [SIMD3<Float>] = []
         var indices: [UInt32] = []
@@ -253,9 +253,13 @@ struct LabSurface: ToppingSurface {
             for segment in 0..<segments {
                 let a = Float(segment) / Float(segments) * 2 * .pi
                 let x = baseApex.x + r * cos(a), z = baseApex.z + r * sin(a)
-                let hit = sample(x: x, z: z) ?? (baseApex.y, [0, 1, 0])
-                positions.append([x, hit.height - 0.0003, z])
-                normals.append(hit.normal)
+                if let hit = sample(x: x, z: z) {
+                    positions.append([x, hit.height - 0.0003, z])
+                    normals.append(hit.normal)
+                } else {
+                    positions.append([baseApex.x, baseApex.y - 0.03, baseApex.z])
+                    normals.append([0, 1, 0])
+                }
             }
         }
         for ring in 0..<rings {
