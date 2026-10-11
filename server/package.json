@@ -10,7 +10,8 @@
     "test": "vitest run",
     "db:migrate": "wrangler d1 migrations apply DB --remote",
     "smoke": "node scripts/smoke.mjs",
-    "chaos": "node scripts/chaos.mjs"
+    "chaos": "node scripts/chaos.mjs",
+    "square": "node scripts/square-connect.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.0",

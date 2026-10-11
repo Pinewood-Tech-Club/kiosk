@@ -1,24 +1,33 @@
 # Booth protocol, version 1
 
-The booth backend is an HTTP API plus one websocket hub. It has no UI. Two kinds of client use it:
+The booth backend is an HTTP API plus one websocket hub. Two kinds of client use it:
 
 - **kiosk**: the customer-facing iPad. It reports heartbeats, health, help requests, log lines and paid orders, and reads the sold-out map.
-- **staff**: an iPad running the same app in the staff role (for the toppings person). It reads alerts, kiosk health and the sold-out map, acknowledges alerts and toggles sold-out flavors.
+- **staff**: an iPad running the same app in the staff role (for the toppings person), and the web dashboard. It reads alerts, kiosk health, the sold-out map and the order feed, acknowledges alerts, toggles sold-out flavors and moves orders through their statuses.
 
-Base URL: `https://techclub-icecream.adamxu.workers.dev`. Every path is under `/v1/`. A breaking change gets a new prefix (`/v2/`) and both are served until every client has moved.
+It also owns the Square connection: the OAuth flow, token storage and refresh, and Square order creation for the kiosk.
+
+Base URL: `https://techclub-icecream.adamxu.workers.dev`. Every API path is under `/v1/`. A breaking change gets a new prefix (`/v2/`) and both are served until every client has moved. Three browser-facing paths live outside `/v1/`: `/r/<token>` (receipts), `/dashboard` (staff dashboard) and the OAuth callback page.
+
+Everything below marked *(added)* was added to protocol 1 without breaking older clients: new fields are optional for senders and ignorable for readers, and clients ignore unknown `Change` kinds (they still advance `rev`).
 
 The kiosk must work fully without the backend. Nothing in ordering or payment waits for, or fails because of, a booth call; booth features degrade silently.
 
 ## Auth
 
-Every route except `GET /v1/health` and every websocket needs:
+Every route except `GET /v1/health`, `POST /v1/staff/session`, the OAuth callback and the browser pages (`/r/...`, `/dashboard`) needs, including the websocket:
 
 | Header | Value |
 | --- | --- |
-| `Authorization` | `Bearer <token>`. The kiosk token (`BOOTH_TOKEN`) gives the `kiosk` role, the staff token (`STAFF_TOKEN`) the `staff` role. |
+| `Authorization` | `Bearer <token>`. The kiosk token (`BOOTH_TOKEN`) gives the `kiosk` role; the staff token (`STAFF_TOKEN`) or a staff session token gives the `staff` role. |
 | `X-Booth-Device` | A stable id for this install (1 to 64 of `A-Z a-z 0-9 . _ -`), generated once and persisted. Used for rate limits, ordering and dedupe. |
 
 A missing or wrong token is `401`. A valid token used on a route its role can't use is `403`. Rate limits are per role and device; over the limit is `429` with `Retry-After`.
+
+**Staff sessions** *(added)*. Staff can sign in with the staff PIN (`STAFF_PIN`, or the staff token itself) instead of holding `STAFF_TOKEN`:
+
+- `POST /v1/staff/session` (no auth) with `{ "pin": "..." }` returns `{ "token": "st1....", "expiresAt": <ms> }`. The token is a bearer token for the `staff` role, valid 72 hours, signed with a key derived from `STAFF_TOKEN` (rotating `STAFF_TOKEN` signs everyone out). The staff iPad keeps it in the Keychain. Wrong PIN is `401`; more than 10 attempts a minute from one IP is `429`.
+- The dashboard gets the same token as an `HttpOnly; Secure; SameSite=Strict` cookie named `booth_staff` from `POST /dashboard/login` (form field `pin`). The cookie is accepted on `/v1/` routes for the `staff` role only; any non-GET request authenticated by cookie must carry an `Origin` header equal to the server's origin. Without `X-Booth-Device`, a cookie client's device is `web-<session id>`.
 
 ## Errors
 
@@ -34,9 +43,12 @@ Every non-2xx response has the same body:
 | 401 | `unauthorized` | No (until the token is fixed). Back off slowly. |
 | 403 | `forbidden` | No. |
 | 404 | `not_found` | No. |
+| 409 | `conflict` (an id reused with different content), `location_mismatch` (checkout for a location the server isn't using) *(added)* | No. |
 | 413 | `too_large` | No. Send smaller batches. |
 | 429 | `rate_limited` | Yes, after `Retry-After`. |
-| 500, 503 | `internal`, `unavailable` (D1 or the hub failed) | Yes, with backoff. |
+| 500, 503 | `internal`, `unavailable` (D1, the hub or Square failed) | Yes, with backoff. |
+| 502 | `square_rejected`, `square_unauthorized` (Square refused the request or the token) *(added)* | No. |
+| 503 | `not_configured` (Square isn't connected or OAuth secrets aren't set; `retryable: false`) *(added)* | Not soon. Use a fallback. |
 
 Network errors and timeouts are always retryable. Clients retry with exponential backoff and jitter (1 s doubling to a 60 s cap, times a random 0.5 to 1.5).
 
@@ -64,8 +76,25 @@ interface BoothState {
     healthAt: number | null;
   };
   alerts: Alert[];                // open alerts, plus closed ones from the last 3 hours (newest first, at most 60)
+  orders: OrderSummary[];         // (added) open orders, plus ones changed in the last 3 hours (newest paid first, at most 100)
   serverTime: number;
 }
+
+interface OrderSummary {          // (added)
+  id: string;                     // the kiosk's checkout id
+  orderNumber: number | null;
+  customerName: string | null;
+  items: { vessel: string; flavors: string[]; toppings: string[] }[];
+  totalCents: number;
+  simulated: boolean;
+  paidAt: number;                 // kiosk clock (ms), consistent between that kiosk's orders
+  receivedAt: number;             // server ms when the order was first stored
+  status: OrderStatus;
+  statusAt: number;
+  statusBy: string | null;
+}
+
+type OrderStatus = "paid" | "preparing" | "ready" | "collected" | "canceled";
 
 interface Alert {
   id: string;
@@ -84,6 +113,15 @@ interface Alert {
 ```
 
 An alert is **open** while `ackedAt` and `resolvedAt` are both null.
+
+**Order lifecycle** *(added)*. A checkout (`POST /v1/checkout`) creates an unpaid Square order; it lives only in the `checkouts` table and never reaches staff. When the kiosk reports the order paid (`POST /v1/orders`), it enters the feed as `paid` and a `{ kind: "order" }` patch goes to every client. Staff then move it with `setOrderStatus`:
+
+```
+paid ──▶ preparing ──▶ ready ──▶ collected
+  └──────────┴──────────┴──────▶ canceled
+```
+
+Open statuses are `paid`, `preparing` and `ready`. The hub accepts any status from any status (last writer wins, so a mistaken tap can be undone); the arrows are the intended flow. New paid orders are never alerts. The hub's copy is what staff see live; D1's `orders.status` is updated best-effort after each change and is what stats read.
 
 Alerts the hub raises:
 
@@ -114,6 +152,7 @@ Server to client:
 { "kind": "flavors", "flavors": [{ "id": "vanilla", "name": "Vanilla", "soldOut": false }] }   // the whole list
 { "kind": "alert", "alert": Alert }                                                          // insert or replace by id
 { "kind": "kiosk", "kiosk": KioskState }                                                     // the whole kiosk object
+{ "kind": "order", "order": OrderSummary }                                                   // (added) insert or replace by id
 ```
 
 Client rules, which make every client converge on the hub's state:
@@ -175,9 +214,10 @@ Each item is `ok`, `duplicate` (already processed; same `alertId`), `stale` (an 
 { "actions": [Action, ...] }      // 1 to 50
 { "id": "...", "type": "ack", "alertId": "...", "by": "Maya" }
 { "id": "...", "type": "setSoldOut", "flavor": "chocolate", "soldOut": true, "by": "Maya" }
+{ "id": "...", "type": "setOrderStatus", "orderId": "<checkout id>", "status": "ready", "by": "Maya" }   // (added)
 ```
 
-Response `200`: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "rejected", "error"?: {...} }], "rev": 43 }`. Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut` is last-writer-wins in the order the hub receives it.
+Response `200`: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "rejected", "error"?: {...} }], "rev": 43 }`. Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut` and `setOrderStatus` are last-writer-wins in the order the hub receives them; setting the status an order already has is `ok` and changes nothing. `setOrderStatus` for an order not in the feed is `rejected` with `not_found`.
 
 ## Logs: `POST /v1/logs` (kiosk)
 
@@ -192,18 +232,89 @@ Response `200`: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "re
 
 ```jsonc
 { "orders": [{
-  "id": "<uuid>", "orderNumber": 12, "squareOrderId": "...", "squarePaymentId": "...", "customerName": "Alex",
+  "id": "<checkout id>", "orderNumber": 12, "squareOrderId": "...", "squarePaymentId": "...", "customerName": "Alex",
   "totalCents": 900, "subtotalCents": 900, "taxCents": 0, "card": "Visa 1111", "simulated": false,
   "paidAt": "2026-12-05T13:02:11Z", "appVersion": "0.1 (1)",
-  "items": [{ "vessel": "cone", "flavors": ["vanilla", "chocolate"] }],
+  "receiptToken": "Qm9vdGhSZWNlaXB0VG9rZW4",                                     // (added) optional
+  "items": [{ "vessel": "cone", "flavors": ["vanilla", "chocolate"], "toppings": ["sprinkles"] }],   // toppings (added) optional
   "lines": [{ "title": "1 Scoop", "detail": "#1 Waffle Cone: Vanilla", "cents": 400 }] }] }
 ```
 
-1 to 50 orders. Response: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "rejected" }] }`. An order is a duplicate if its `id` or its `squarePaymentId` was stored before. Orders are never alerts.
+1 to 50 orders. Response: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "rejected" }] }`. An order is a duplicate if its `id`, its `squarePaymentId` or its `receiptToken` was stored before. Orders are never alerts. Every stored order (and a retried duplicate stored under the same `id`) is pushed into the hub's order feed, which ignores ones it already has; if the hub can't be reached the response is `503` and the kiosk's retry completes it.
 
-`GET /v1/orders?since=<ms>&limit=<n>` (staff) lists orders paid since `since`, newest first, with the count and total of real (not simulated) orders.
+`id` is the checkout id the kiosk generated when the customer pressed pay (the same id sent to `POST /v1/checkout`), so a receipt, a checkout and a paid order share one id.
+
+`GET /v1/orders?since=<ms>&limit=<n>` (staff) lists orders paid since `since`, newest first, with the count and total of real (not simulated) orders. Each row also has `status`, `status_at` and `status_by`.
+
+## Square credentials: `GET /v1/square/credentials` (kiosk) *(added)*
+
+```json
+{ "accessToken": "EAAA...", "locationId": "L...", "merchantId": "M..." , "expiresAt": 1793000000000, "environment": "sandbox",
+  "applicationId": "sandbox-sq0idb-...", "source": "oauth", "fetchAgainAt": 1791701800000 }
+```
+
+`source` is `oauth` (the token from the OAuth flow, refreshed by the server) or `static` (the `SQUARE_ACCESS_TOKEN` fallback secret, for staging and tests; `merchantId` and `expiresAt` are then null). `503 not_configured` when neither exists. The kiosk fetches at launch and then at `fetchAgainAt` (at most every 30 minutes), keeps the last answer in the Keychain and uses it whenever the backend is unreachable. It ignores credentials whose `environment` or `applicationId` don't match its own build, and swaps the SDK's token only while the attract screen is showing. A fetch of a token that is due for refresh triggers a background refresh.
+
+## Square OAuth *(added)*
+
+The server holds the Square application secret and does the code flow. One Square account is connected per Worker (keyed by environment).
+
+| Route | Auth | |
+| --- | --- | --- |
+| `POST /v1/square/oauth/start` | staff | `{ "url": "<Square authorize URL>", "environment", "expiresAt", "redirectUrl" }`. Open `url` in a browser within 10 minutes. |
+| `GET /v1/square/oauth/start` | staff (cookie or bearer) | The same, as a `302` to Square. For a dashboard button. |
+| `GET /v1/square/oauth/callback` | none (the `state` is the credential) | Square redirects here. Each `state` works once and expires after 10 minutes. Exchanges the code, picks the location (`SQUARE_LOCATION_ID` if set, else the first active location that takes cards), stores the tokens and shows a page saying what happened. |
+| `GET /v1/square/status[?verify=1]` | staff | Configuration, active source, location, token expiry, last refresh and its error, `stale` (no refresh for 8 days). `verify=1` also calls Square to check the token. |
+| `POST /v1/square/refresh` | staff | Refreshes now. `{ "status": "refreshed" \| "skipped" \| "failed", ... }`, `502` on failure. |
+| `POST /v1/square/revoke` | staff | Revokes the token at Square and forgets it. The static fallback, if set, takes over. |
+
+Scopes requested: `MERCHANT_PROFILE_READ PAYMENTS_READ PAYMENTS_WRITE PAYMENTS_WRITE_IN_PERSON ORDERS_READ ORDERS_WRITE ITEMS_READ`. Tokens are stored AES-GCM encrypted with a key derived from `SQUARE_APPLICATION_SECRET`. The daily cron refreshes a token once it is 6 days old (or within 21 days of expiry); a failed refresh keeps the old token, is logged as an error and shows in `status`.
+
+## Checkout: `POST /v1/checkout` (kiosk) *(added)*
+
+Creates the Square order for a cart, priced by the server, and returns what the Mobile Payments SDK needs.
+
+```jsonc
+{ "id": "<checkout id, a UUID>", "receiptToken": "<22 to 64 of A-Z a-z 0-9 _ ->", "orderNumber": 12, "customerName": "Alex",
+  "sourceName": "Tech Club Ice Cream Kiosk", "locationId": "L...", "quotedCents": 1100,
+  "items": [{ "vessel": "cone", "flavors": ["vanilla", "chocolate"], "toppings": ["whip"] }, { "vessel": "cup", "flavors": ["cookies"] }] }
+```
+
+1 to 20 items, 1 to 3 flavors and up to 10 toppings each. `locationId` (the location the kiosk's SDK is authorized for) and `quotedCents` (what the kiosk showed) are optional checks: a different location is `409 location_mismatch`; a different quote is only logged, because Square's total is what gets charged.
+
+```json
+{ "id": "...", "status": "created", "squareOrderId": "...", "locationId": "L...", "environment": "sandbox", "referenceId": "kiosk-0012",
+  "totalCents": 1100, "taxCents": 0, "subtotalCents": 1100, "expectedSubtotalCents": 1100, "priceMatches": true,
+  "usedCatalog": true, "catalogError": null, "receiptToken": "...",
+  "lines": [{ "title": "1 Scoop", "detail": "#1 Waffle Cone: Vanilla", "quantity": 1, "baseCents": 400, "cents": 400 }] }
+```
+
+Pricing is the app's: scoops by position in the whole order ($4, $3, then $2 each), $1.50 per waffle cone, $0.50 per topping. Line items reference the catalog category `SQUARE_CATEGORY_NAME` (*1 Scoop*, *2nd Scoop*, *3rd+ Scoop*, *Waffle Cone*, *Topping*, cached 10 minutes, a stale copy up to a day old is used if Square fails); if it's missing or priced differently the order uses ad-hoc line items, exactly as the app does, and `catalogError` says why. Taxes are auto-applied by Square.
+
+Idempotent by `id`: a retry returns the stored result with `status: "duplicate"` and no second Square call; the same `id` with a different cart is `409 conflict`. The Square idempotency key is the checkout id, so concurrent retries also get one Square order. The kiosk's own fallback uses `<id>-device`, so a slow backend answer and a device-created order never collide (an abandoned unpaid Square order is harmless).
+
+The kiosk calls this first with a 3.5 s budget and creates the order on the device on any failure or timeout, skipping the backend for a minute afterwards. It only uses it when its SDK token came from the backend, so the order and the payment belong to the same merchant.
+
+## Receipts: `GET /r/<receiptToken>` *(added)*
+
+Public, no auth: the token is the credential. The kiosk generates it (128 random bits, base64url) when the customer pays, so it can show a QR code even with the backend down, and sends it with the checkout and the paid order (`receipts.ts` looks in `orders`, then `checkouts`). Currently a placeholder page; `404` for unknown tokens. The kiosk's URL is `Receipt.receiptURL` (`BOOTH_URL` + `/r/<token>`).
+
+## Stats: `GET /v1/stats?since=<ms>&until=<ms>` (staff) *(added)*
+
+Defaults to the last 24 hours. Counts real orders only (simulated ones are only counted in `simulatedOrders`):
+
+```json
+{ "since": 0, "until": 0, "generatedAt": 0, "orders": 42, "simulatedOrders": 3, "totalCents": 39100, "subtotalCents": 39100, "taxCents": 0,
+  "averageCents": 931, "items": 51, "scoops": 88, "cups": 30, "cones": 21, "toppings": 17,
+  "flavors": { "vanilla": 30 }, "toppingCounts": { "whip": 8 }, "statuses": { "paid": 2, "collected": 40 },
+  "byHour": [{ "hour": 1796500800000, "orders": 12, "totalCents": 11200 }] }
+```
+
+## Dashboard: `GET /dashboard` *(added)*
+
+A server-rendered page for staff in a browser. Without a session it shows the PIN form (`POST /dashboard/login`, then a `303` back with the session cookie); `POST /dashboard/logout` clears it. The page itself is a placeholder; it can call any staff `/v1/` route with the cookie (same-origin `fetch`, which sends `Origin`).
 
 ## Other routes
 
 - `GET /v1/state` (any role): the current `BoothState`.
-- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "time": ... }`. With a token, `?deep=1` also checks D1 and the hub.
+- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "features": [...], "time": ... }`. `features` *(added)* lists additions a client can rely on (`square-oauth`, `square-credentials`, `checkout`, `receipt-tokens`, `order-feed`, `stats`, `staff-session`). With a token, `?deep=1` also checks D1 and the hub.
