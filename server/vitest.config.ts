@@ -1,7 +1,7 @@
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
-const secrets = { BOOTH_TOKEN: "test-kiosk-token", STAFF_PIN: "246810" };
+const secrets = { BOOTH_TOKEN: "test-kiosk-token", STAFF_TOKEN: "test-staff-token" };
 Object.assign(process.env, secrets);
 
 export default defineConfig(async () => {

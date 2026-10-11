@@ -1,17 +1,23 @@
 // Live end-to-end check of a deployed booth.
-// Usage: BOOTH_URL=https://... BOOTH_TOKEN=... STAFF_PIN=... node scripts/smoke.mjs [--offline]
+//   set -a; . ~/.config/techclub-icecream/secrets.env; set +a
+//   node scripts/smoke.mjs [--offline]                                   # production
+//   BOOTH_URL=https://techclub-icecream-staging.adamxu.workers.dev BOOTH_TOKEN=$STAGING_BOOTH_TOKEN \
+//     STAFF_TOKEN=$STAGING_STAFF_TOKEN node scripts/smoke.mjs            # staging
+import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 
 const base = (process.env.BOOTH_URL ?? "https://techclub-icecream.adamxu.workers.dev").replace(/\/$/, "");
-const token = process.env.BOOTH_TOKEN;
-const pin = process.env.STAFF_PIN;
+const kioskToken = process.env.BOOTH_TOKEN;
+const staffToken = process.env.STAFF_TOKEN;
 const waitForOffline = process.argv.includes("--offline");
-if (!token || !pin) {
-  console.error("Set BOOTH_TOKEN and STAFF_PIN");
+if (!kioskToken || !staffToken) {
+  console.error("Set BOOTH_TOKEN and STAFF_TOKEN");
   process.exit(2);
 }
 
 const run = Date.now().toString(36);
+const kioskDevice = `smoke-${run}-kiosk`;
+const staffDevice = `smoke-${run}-staff`;
 let failures = 0;
 
 function check(name, ok, detail = "") {
@@ -19,25 +25,30 @@ function check(name, ok, detail = "") {
   if (!ok) failures++;
 }
 
-async function http(path, init = {}) {
-  const response = await fetch(base + path, init);
-  const text = await response.text();
-  let body = text;
+async function http(path, { token, device, body, method = body ? "POST" : "GET" } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (device) headers["X-Booth-Device"] = device;
+  const response = await fetch(base + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  let json = null;
   try {
-    body = JSON.parse(text);
+    json = await response.json();
   } catch {}
-  return { status: response.status, headers: response.headers, body };
+  return { status: response.status, json };
 }
 
-function socket(headers, protocols) {
-  const url = base.replace(/^http/, "ws") + "/v1/ws";
-  const ws = new WebSocket(url, protocols, { headers });
+function socket(token, device) {
+  const ws = new WebSocket(base.replace(/^http/, "ws") + "/v1/ws", { headers: { Authorization: `Bearer ${token}`, "X-Booth-Device": device } });
   const inbox = [];
   const waiters = [];
+  let rev = null;
   ws.on("message", (data) => {
-    const text = data.toString();
-    if (text === "pong") return;
-    const message = JSON.parse(text);
+    const message = JSON.parse(data.toString());
+    if (message.type === "snapshot") rev = message.state.rev;
+    if (message.type === "patch") {
+      if (rev !== null && message.rev !== rev + 1 && message.rev > rev) check("patches arrive in rev order", false, `${rev} then ${message.rev}`);
+      rev = Math.max(rev ?? 0, message.rev);
+    }
     const index = waiters.findIndex((w) => w.match(message));
     if (index >= 0) waiters.splice(index, 1)[0].resolve(message);
     else inbox.push(message);
@@ -50,8 +61,9 @@ function socket(headers, protocols) {
   return {
     ws,
     opened,
+    get rev() { return rev; },
     send: (message) => ws.send(JSON.stringify(message)),
-    next(type, where = () => true, timeout = 5000) {
+    next(type, where = () => true, timeout = 8000) {
       const match = (m) => m.type === type && where(m);
       const index = inbox.findIndex(match);
       if (index >= 0) return Promise.resolve(inbox.splice(index, 1)[0]);
@@ -71,86 +83,88 @@ async function step(name, fn) {
   }
 }
 
-const kioskAuth = { Authorization: `Bearer ${token}` };
-const pinAuth = { Authorization: `PIN ${pin}` };
-const pinProtocol = `pin.${Buffer.from(pin).toString("base64url")}`;
+const alertPatch = (where) => (m) => m.change.kind === "alert" && where(m.change.alert);
 
-await step("health endpoint", async () => {
-  const r = await http("/v1/health");
-  check("health endpoint", r.status === 200 && r.body.ok === true);
-});
-
-await step("staff page", async () => {
-  const r = await http("/");
-  check("staff page served", r.status === 200 && String(r.body).includes("Booth staff"), `status ${r.status}`);
-  check("staff page has a CSP", (r.headers.get("content-security-policy") ?? "").includes("default-src 'self'"));
+await step("health", async () => {
+  const shallow = await http("/v1/health");
+  check("health endpoint", shallow.status === 200 && shallow.json.protocol === 1);
+  const deep = await http("/v1/health?deep=1", { token: staffToken, device: staffDevice });
+  check("deep health (D1 and hub)", deep.status === 200 && deep.json.checks?.d1 && deep.json.checks?.hub, JSON.stringify(deep.json?.checks));
+  check("no staff page any more", (await http("/")).status === 404);
 });
 
 await step("auth", async () => {
-  check("state without credentials is 401", (await http("/v1/state")).status === 401);
-  check("state with a wrong token is 401", (await http("/v1/state", { headers: { Authorization: "Bearer nope" } })).status === 401);
-  check("login with a wrong PIN is 401", (await http("/v1/staff/login", { method: "POST", headers: { Authorization: "PIN 0" } })).status === 401);
-  check("login with the PIN is 200", (await http("/v1/staff/login", { method: "POST", headers: pinAuth })).status === 200);
-  const bad = socket({ Authorization: "Bearer nope" });
+  check("state without a token is 401", (await http("/v1/state", { device: "x" })).status === 401);
+  check("wrong token is 401", (await http("/v1/state", { token: "nope", device: "x" })).status === 401);
+  check("staff can't post events (403)", (await http("/v1/events", { token: staffToken, device: staffDevice, body: { events: [] } })).status === 403);
+  const missingDevice = await http("/v1/state", { token: kioskToken });
+  check("missing device header is 400", missingDevice.status === 400 && missingDevice.json?.error?.code === "bad_request");
+  const bad = socket("nope", "x");
   check("websocket with a wrong token is refused", await bad.opened.then(() => false, (e) => e.message === "HTTP 401"));
 });
 
-const kiosk = socket(kioskAuth);
-const staff = socket({}, ["booth.v1", pinProtocol]);
+const kiosk = socket(kioskToken, kioskDevice);
+const staff = socket(staffToken, staffDevice);
 
 await step("websockets", async () => {
   await Promise.all([kiosk.opened, staff.opened]);
-  check("staff subprotocol echoed", staff.ws.protocol === "booth.v1", staff.ws.protocol);
   const snapshot = await kiosk.next("snapshot");
-  check("kiosk got a snapshot", typeof snapshot.state.soldOut === "object", JSON.stringify(snapshot.state.soldOut));
+  check("kiosk got a snapshot", Array.isArray(snapshot.state.flavors), `rev ${snapshot.state.rev}`);
   await staff.next("snapshot");
   check("staff got a snapshot", true);
 });
 
 await step("heartbeat", async () => {
-  kiosk.send({ type: "heartbeat", at: new Date().toISOString(), screen: "attract" });
+  kiosk.send({ type: "heartbeat", t: Date.now(), screen: "attract" });
   const pong = await kiosk.next("pong");
-  check("heartbeat answered with pong", typeof pong.at === "number");
-  const k = await staff.next("kiosk", (m) => m.kiosk.online && m.kiosk.screen === "attract");
-  check("staff sees the kiosk online", k.kiosk.online);
+  check("heartbeat answered with pong", typeof pong.rev === "number" && pong.t !== null);
 });
 
-await step("health", async () => {
-  kiosk.send({
-    type: "health",
+await step("health event", async () => {
+  const event = {
+    id: randomUUID(), seq: 1, type: "health", at: new Date().toISOString(),
     health: {
       appVersion: `smoke ${run}`, environment: "Sandbox", authorized: true, authorizationState: "authorized",
       readers: [{ name: "Smoke reader", state: "ready", batteryPercent: 77, isCharging: false }], readerReady: true,
-      catalog: { ok: true, status: "Catalog OK" }, deviceBattery: { percent: 88, charging: true }, simulatePayment: true,
-      screen: "attract", lastError: null,
-      flavors: [{ id: "vanilla", name: "Vanilla" }, { id: "chocolate", name: "Chocolate" }, { id: "cookies", name: "Cookies & Cream" }],
+      catalog: { ok: true, status: "Catalog OK", error: null }, deviceBattery: { percent: 88, charging: true },
+      simulatePayment: true, screen: "attract", lastError: null, lastErrorAt: null,
     },
-  });
-  const k = await staff.next("kiosk", (m) => m.kiosk.health?.appVersion === `smoke ${run}`);
-  check("staff sees the health snapshot", k.kiosk.health.readers[0].batteryPercent === 77);
+  };
+  const r = await http("/v1/events", { token: kioskToken, device: kioskDevice, body: { events: [event] } });
+  check("health stored", r.json?.results?.[0]?.status === "ok", JSON.stringify(r.json?.results));
+  const k = await staff.next("patch", (m) => m.change.kind === "kiosk" && m.change.kiosk.health?.appVersion === `smoke ${run}`);
+  check("staff got the health patch", k.change.kiosk.health.readers[0].batteryPercent === 77);
+  const stale = await http("/v1/events", { token: kioskToken, device: kioskDevice, body: { events: [{ ...event, id: randomUUID() }] } });
+  check("a replayed seq is stale", stale.json?.results?.[0]?.status === "stale");
 });
 
 await step("help", async () => {
-  const id = `smoke-${run}`;
-  kiosk.send({ type: "help", id, reason: "button", message: "Smoke test: please ignore", at: new Date().toISOString() });
-  const alert = await staff.next("alert", (m) => m.alert.kind === "help" && m.alert.detail.includes("Smoke test"));
-  check("staff got the help alert", alert.alert.severity === "urgent", alert.alert.title);
-  const received = await kiosk.next("helpReceived", (m) => m.id === id);
-  check("kiosk got helpReceived", received.alertId === alert.alert.id);
-  staff.send({ type: "ack", id: alert.alert.id, by: "Smoke test" });
-  const acked = await kiosk.next("alert", (m) => m.alert.id === alert.alert.id && m.alert.ackedAt);
-  check("ack reached the kiosk", acked.alert.ackedBy === "Smoke test");
+  const id = randomUUID();
+  const help = { id, seq: 2, type: "help", reason: "button", message: "Smoke test: please ignore", at: new Date().toISOString() };
+  const r = await http("/v1/events", { token: kioskToken, device: kioskDevice, body: { events: [help] } });
+  const alertId = r.json?.results?.[0]?.alertId;
+  check("help stored", r.json?.results?.[0]?.status === "ok" && !!alertId);
+  const alert = await staff.next("patch", alertPatch((a) => a.id === alertId));
+  check("staff got the help alert", alert.change.alert.severity === "urgent", alert.change.alert.title);
+  const again = await http("/v1/events", { token: kioskToken, device: kioskDevice, body: { events: [help] } });
+  check("help retry is a duplicate", again.json?.results?.[0]?.status === "duplicate" && again.json.results[0].alertId === alertId);
+  const ackID = randomUUID();
+  staff.send({ type: "action", action: { id: ackID, type: "ack", alertId, by: "Smoke test" } });
+  check("ack result", (await staff.next("result", (m) => m.id === ackID)).status === "ok");
+  const acked = await kiosk.next("patch", alertPatch((a) => a.id === alertId && a.ackedAt));
+  check("ack reached the kiosk", acked.change.alert.ackedBy === "Smoke test");
 });
 
 await step("sold out", async () => {
-  staff.send({ type: "setSoldOut", flavor: "cookies", soldOut: true, by: "Smoke test" });
-  const on = await kiosk.next("soldOut", (m) => m.flavor === "cookies");
-  check("kiosk got cookies sold out", on.soldOut.cookies === true);
-  const info = await staff.next("alert", (m) => m.alert.kind === "soldout" && m.alert.resolvedAt === null);
-  check("staff got the sold-out notice", info.alert.title.includes("sold out"), info.alert.title);
-  staff.send({ type: "setSoldOut", flavor: "cookies", soldOut: false, by: "Smoke test" });
-  const off = await kiosk.next("soldOut", (m) => m.flavor === "cookies");
-  check("kiosk got cookies back", off.soldOut.cookies === false);
+  for (const soldOut of [true, false]) {
+    const id = randomUUID();
+    staff.send({ type: "action", action: { id, type: "setSoldOut", flavor: "cookies", soldOut, by: "Smoke test" } });
+    check(`setSoldOut ${soldOut} result`, (await staff.next("result", (m) => m.id === id)).status === "ok");
+    const patch = await kiosk.next("patch", (m) => m.change.kind === "flavors" && m.change.flavors.find((f) => f.id === "cookies")?.soldOut === soldOut);
+    check(`kiosk saw cookies soldOut=${soldOut}`, !!patch);
+  }
+  const viaHttp = await http("/v1/actions", { token: staffToken, device: staffDevice, body: { actions: [{ id: randomUUID(), type: "setSoldOut", flavor: "cookies", soldOut: false }] } });
+  check("setSoldOut over HTTP", viaHttp.json?.results?.[0]?.status === "ok");
 });
 
 await step("logs", async () => {
@@ -158,37 +172,35 @@ await step("logs", async () => {
     { id: `smoke-${run}-0`, ts: new Date().toISOString(), level: "info", message: "Smoke test log line" },
     { id: `smoke-${run}-1`, ts: new Date().toISOString(), level: "error", message: "Smoke test error line", context: { run } },
   ];
-  const post = () => http("/v1/logs", {
-    method: "POST",
-    headers: { ...kioskAuth, "Content-Type": "application/json" },
-    body: JSON.stringify({ device: "smoke-test", appVersion: `smoke ${run}`, lines }),
-  });
-  const first = await post();
-  check("logs stored", first.status === 200 && first.body.stored === 2, JSON.stringify(first.body));
-  const again = await post();
-  check("log retry deduplicated", again.body.duplicates === 2, JSON.stringify(again.body));
+  const first = await http("/v1/logs", { token: kioskToken, device: kioskDevice, body: { appVersion: `smoke ${run}`, lines } });
+  check("logs stored", first.json?.stored === 2, JSON.stringify(first.json));
+  const again = await http("/v1/logs", { token: kioskToken, device: kioskDevice, body: { lines } });
+  check("log retry deduplicated", again.json?.duplicates === 2, JSON.stringify(again.json));
 });
 
 await step("orders", async () => {
   const order = {
-    id: `smoke-${run}`, orderNumber: 0, squareOrderId: `SIM-${run}`, squarePaymentId: `SIM-${run}`, customerName: "Smoke Test",
+    id: randomUUID(), orderNumber: 0, squareOrderId: `SIM-${run}`, squarePaymentId: `SIM-${run}`, customerName: "Smoke Test",
     totalCents: 700, subtotalCents: 700, taxCents: 0, card: "Simulated", simulated: true, paidAt: new Date().toISOString(),
-    items: [{ vessel: "cup", flavors: ["vanilla", "chocolate"] }], lines: [], device: "smoke-test", appVersion: `smoke ${run}`,
+    appVersion: `smoke ${run}`, items: [{ vessel: "cup", flavors: ["vanilla", "chocolate"] }],
   };
-  const r = await http("/v1/orders", { method: "POST", headers: { ...kioskAuth, "Content-Type": "application/json" }, body: JSON.stringify(order) });
-  check("order stored", r.status === 200 && r.body.duplicate === false, JSON.stringify(r.body));
-  const listed = await http("/v1/orders", { headers: pinAuth });
-  check("order listed for staff", listed.body.orders?.some((o) => o.id === order.id));
+  const r = await http("/v1/orders", { token: kioskToken, device: kioskDevice, body: { orders: [order] } });
+  check("order stored", r.json?.results?.[0]?.status === "ok", JSON.stringify(r.json));
+  const twice = await http("/v1/orders", { token: kioskToken, device: kioskDevice, body: { orders: [order, { ...order, id: randomUUID() }] } });
+  check("order retry and same payment are duplicates", twice.json?.results?.every((x) => x.status === "duplicate"), JSON.stringify(twice.json));
+  const listed = await http("/v1/orders", { token: staffToken, device: staffDevice });
+  check("order listed for staff", listed.json?.orders?.filter((o) => o.square_payment_id === `SIM-${run}`).length === 1);
 });
 
 if (waitForOffline) {
   await step("offline", async () => {
     kiosk.ws.close();
     const started = Date.now();
-    const alert = await staff.next("alert", (m) => m.alert.kind === "offline" && !m.alert.resolvedAt, 60_000);
-    check("Kiosk offline raised after heartbeats stopped", true, `${Math.round((Date.now() - started) / 1000)} s after disconnect`);
-    staff.send({ type: "ack", id: alert.alert.id, by: "Smoke test" });
-    await staff.next("alert", (m) => m.alert.id === alert.alert.id && m.alert.ackedAt);
+    const alert = await staff.next("patch", alertPatch((a) => a.kind === "offline" && !a.resolvedAt), 60_000);
+    check("Kiosk offline raised after contact stopped", true, `${Math.round((Date.now() - started) / 1000)} s after disconnect`);
+    const id = randomUUID();
+    staff.send({ type: "action", action: { id, type: "ack", alertId: alert.change.alert.id, by: "Smoke test" } });
+    await staff.next("result", (m) => m.id === id);
   });
 }
 

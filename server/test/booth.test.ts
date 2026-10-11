@@ -1,222 +1,383 @@
-import { createScheduledController, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
+import { createScheduledController, evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src";
-import { Booth, HEALTH_GRACE_MS, OFFLINE_AFTER_MS, healthConditions } from "../src/booth";
-import type { BoothState, KioskHealth, ServerMessage } from "../src/protocol";
+import { Booth, FLOOD_LIMIT, HEALTH_GRACE_MS, OFFLINE_AFTER_MS, healthConditions } from "../src/booth";
+import type { Alert, BoothState, Change, ItemResult, ServerMessage } from "../src/protocol";
+import { KioskHealth } from "../src/schema";
 
-const TOKEN = "test-kiosk-token";
-const PIN = "246810";
+const KIOSK = "test-kiosk-token";
+const STAFF = "test-staff-token";
+const BASE = "https://booth.test";
 
-function pinProtocol(pin: string) {
-  return `pin.${btoa(pin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+type Msg<T extends ServerMessage["type"]> = Extract<ServerMessage, { type: T }>;
+
+let deviceCounter = 0;
+const newDevice = (prefix: string) => `${prefix}-${++deviceCounter}-${crypto.randomUUID().slice(0, 8)}`;
+
+function headers(token: string, device: string, extra: Record<string, string> = {}) {
+  return { Authorization: `Bearer ${token}`, "X-Booth-Device": device, ...extra };
 }
 
+/** A client that follows PROTOCOL.md's reconciliation rules, so tests can check convergence. */
 class Client {
-  messages: ServerMessage[] = [];
+  inbox: ServerMessage[] = [];
+  state: BoothState | null = null;
+  syncs = 0;
+  dropNextPatches = 0;
   private waiters: { match: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void }[] = [];
 
-  constructor(readonly ws: WebSocket, readonly response: Response) {
-    ws.addEventListener("message", (event) => {
-      const message = JSON.parse(event.data as string) as ServerMessage;
-      this.messages.push(message);
-      this.waiters = this.waiters.filter((w) => {
-        if (!w.match(message)) return true;
-        w.resolve(message);
-        return false;
-      });
-    });
+  constructor(readonly ws: WebSocket) {
+    ws.addEventListener("message", (event) => this.receive(event.data as string));
     ws.accept();
   }
 
-  send(message: unknown) {
-    this.ws.send(JSON.stringify(message));
+  receive(data: string) {
+    const message = JSON.parse(data) as ServerMessage;
+    this.reconcile(message);
+    this.inbox.push(message);
+    this.waiters = this.waiters.filter((w) => {
+      if (!w.match(message)) return true;
+      w.resolve(message);
+      return false;
+    });
   }
 
-  next<T extends ServerMessage["type"]>(type: T, where: (m: Extract<ServerMessage, { type: T }>) => boolean = () => true) {
-    const match = (m: ServerMessage) => m.type === type && where(m as Extract<ServerMessage, { type: T }>);
-    const existing = this.messages.find(match);
-    if (existing) {
-      this.messages.splice(this.messages.indexOf(existing), 1);
-      return Promise.resolve(existing as Extract<ServerMessage, { type: T }>);
+  private reconcile(message: ServerMessage) {
+    if (message.type === "snapshot") {
+      this.state = structuredClone(message.state);
+    } else if (message.type === "patch" && this.state) {
+      if (this.dropNextPatches > 0) {
+        this.dropNextPatches--;
+        return;
+      }
+      if (message.rev <= this.state.rev) return;
+      if (message.rev > this.state.rev + 1) {
+        this.sync();
+        return;
+      }
+      applyChange(this.state, message.change);
+      this.state.rev = message.rev;
+    } else if (message.type === "pong" && this.state && message.rev > this.state.rev) {
+      this.sync();
     }
-    return new Promise<Extract<ServerMessage, { type: T }>>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${type}`)), 2000);
+  }
+
+  sync() {
+    this.syncs++;
+    this.send({ type: "sync" });
+  }
+
+  send(message: unknown) {
+    this.ws.send(typeof message === "string" ? message : JSON.stringify(message));
+  }
+
+  next<T extends ServerMessage["type"]>(type: T, where: (m: Msg<T>) => boolean = () => true, timeout = 2000): Promise<Msg<T>> {
+    const match = (m: ServerMessage) => m.type === type && where(m as Msg<T>);
+    const index = this.inbox.findIndex(match);
+    if (index >= 0) return Promise.resolve(this.inbox.splice(index, 1)[0] as Msg<T>);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${type}`)), timeout);
       this.waiters.push({
         match,
         resolve: (m) => {
           clearTimeout(timer);
-          this.messages.splice(this.messages.indexOf(m), 1);
-          resolve(m as Extract<ServerMessage, { type: T }>);
+          this.inbox.splice(this.inbox.indexOf(m), 1);
+          resolve(m as Msg<T>);
         },
       });
     });
   }
+
+  async settle() {
+    this.send({ type: "ping", t: Date.now() });
+    await this.next("pong");
+    await new Promise((r) => setTimeout(r, 30));
+  }
 }
 
-async function open(headers: Record<string, string>): Promise<Client> {
-  const response = await exports.default.fetch("https://booth.test/v1/ws", { headers: { Upgrade: "websocket", ...headers } });
+function applyChange(state: BoothState, change: Change) {
+  if (change.kind === "flavors") state.flavors = change.flavors;
+  if (change.kind === "kiosk") state.kiosk = change.kiosk;
+  if (change.kind === "alert") {
+    const index = state.alerts.findIndex((a) => a.id === change.alert.id);
+    if (index >= 0) state.alerts[index] = change.alert;
+    else state.alerts.unshift(change.alert);
+  }
+}
+
+async function open(token: string, device: string): Promise<Client> {
+  const response = await exports.default.fetch(`${BASE}/v1/ws`, { headers: headers(token, device, { Upgrade: "websocket" }) });
   expect(response.status).toBe(101);
-  return new Client(response.webSocket!, response);
+  const client = new Client(response.webSocket!);
+  await client.next("snapshot");
+  return client;
 }
 
-const kiosk = () => open({ Authorization: `Bearer ${TOKEN}` });
-const staff = () => open({ "Sec-WebSocket-Protocol": `booth.v1, ${pinProtocol(PIN)}` });
+async function post(path: string, token: string, device: string, body: unknown) {
+  const response = await exports.default.fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: headers(token, device, { "Content-Type": "application/json" }),
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+  return { status: response.status, body: (await response.json()) as any };
+}
 
-const healthy: KioskHealth = {
+async function serverState(): Promise<BoothState> {
+  const response = await exports.default.fetch(`${BASE}/v1/state`, { headers: headers(STAFF, "observer") });
+  return (await response.json()) as BoothState;
+}
+
+function comparable(state: BoothState) {
+  const alerts = [...state.alerts].sort((a, b) => a.id.localeCompare(b.id));
+  return { rev: state.rev, flavors: state.flavors, alerts, health: state.kiosk.health, online: state.kiosk.online };
+}
+
+const healthy = KioskHealth.parse({
   appVersion: "0.1 (1)",
   environment: "Sandbox",
   authorized: true,
+  authorizationState: "authorized",
   readers: [{ name: "Reader 1", state: "ready", batteryPercent: 80, isCharging: false }],
   readerReady: true,
-  catalog: { ok: true, status: "Catalog OK" },
+  catalog: { ok: true, status: "Catalog OK", error: null },
   deviceBattery: { percent: 90, charging: true },
-  simulatePayment: false,
-};
+  screen: "attract",
+});
 
-describe("auth", () => {
-  it("rejects missing, wrong and misplaced credentials", async () => {
-    const upgrade = { Upgrade: "websocket" };
-    const cases: [Record<string, string>, number][] = [
-      [upgrade, 401],
-      [{ ...upgrade, Authorization: "Bearer nope" }, 401],
-      [{ ...upgrade, "Sec-WebSocket-Protocol": `booth.v1, ${pinProtocol("000000")}` }, 401],
-      [{ ...upgrade, Authorization: "PIN 000000" }, 401],
+const help = (id: string, seq: number, reason = "button") => ({ id, seq, type: "help", reason, message: `help ${id}` });
+const healthEvent = (id: string, seq: number, overrides: Record<string, unknown> = {}) => ({
+  id, seq, type: "health", health: { ...healthy, ...overrides },
+});
+const setSoldOut = (id: string, flavor: string, soldOut: boolean) => ({ id, type: "setSoldOut", flavor, soldOut, by: "Test" });
+
+describe("HTTP hygiene", () => {
+  it("rejects bad credentials, roles and devices with structured errors", async () => {
+    const cases: [RequestInit, number, string][] = [
+      [{}, 401, "unauthorized"],
+      [{ headers: { Authorization: "Bearer nope", "X-Booth-Device": "d" } }, 401, "unauthorized"],
+      [{ headers: headers(STAFF, "d"), body: "{}" }, 403, "forbidden"],
+      [{ headers: { Authorization: `Bearer ${KIOSK}` }, body: "{}" }, 400, "bad_request"],
+      [{ headers: headers(KIOSK, "bad device!"), body: "{}" }, 400, "bad_request"],
     ];
-    for (const [headers, status] of cases) {
-      const response = await exports.default.fetch("https://booth.test/v1/ws", { headers });
+    for (const [init, status, code] of cases) {
+      const response = await exports.default.fetch(`${BASE}/v1/events`, { method: "POST", ...init });
       expect(response.status).toBe(status);
+      const body = (await response.json()) as { error: { code: string; retryable: boolean } };
+      expect(body.error.code).toBe(code);
+      expect(body.error.retryable).toBe(false);
     }
-    const staffPosting = await exports.default.fetch("https://booth.test/v1/logs", {
-      method: "POST",
-      headers: { Authorization: `PIN ${PIN}` },
-      body: JSON.stringify({ lines: [] }),
-    });
-    expect(staffPosting.status).toBe(401);
+    expect((await exports.default.fetch(`${BASE}/v1/nothing`)).status).toBe(404);
+    expect((await exports.default.fetch(`${BASE}/events`, { method: "POST", headers: headers(KIOSK, "d") })).status).toBe(404);
+    const socket = await exports.default.fetch(`${BASE}/v1/ws`, { headers: { Upgrade: "websocket", Authorization: "Bearer nope", "X-Booth-Device": "d" } });
+    expect(socket.status).toBe(401);
   });
 
-  it("checks the staff PIN", async () => {
-    const ok = await exports.default.fetch("https://booth.test/v1/staff/login", { method: "POST", headers: { Authorization: `PIN ${PIN}` } });
-    expect(ok.status).toBe(200);
-    const bad = await exports.default.fetch("https://booth.test/v1/staff/login", { method: "POST", headers: { Authorization: "PIN 1" } });
-    expect(bad.status).toBe(401);
+  it("rejects malformed and oversized bodies", async () => {
+    const device = newDevice("k");
+    expect((await post("/v1/events", KIOSK, device, "{not json")).body.error.code).toBe("bad_request");
+    expect((await post("/v1/events", KIOSK, device, { events: [] })).status).toBe(400);
+    expect((await post("/v1/events", KIOSK, device, { events: "x" })).status).toBe(400);
+    const big = await post("/v1/events", KIOSK, device, { events: [help("big", 1)], pad: "x".repeat(300 * 1024) });
+    expect(big.status).toBe(413);
+    expect(big.body.error.code).toBe("too_large");
+    const lines = Array.from({ length: 501 }, (_, i) => ({ id: `${i}`, message: "m" }));
+    expect((await post("/v1/logs", KIOSK, device, { lines })).status).toBe(400);
   });
 
-  it("returns 404 for unknown API paths", async () => {
-    const response = await exports.default.fetch("https://booth.test/v1/nothing");
-    expect(response.status).toBe(404);
+  it("answers health checks, deep ones only with a token", async () => {
+    const shallow = await exports.default.fetch(`${BASE}/v1/health`);
+    expect(await shallow.json()).toMatchObject({ ok: true, protocol: 1 });
+    expect((await exports.default.fetch(`${BASE}/v1/health?deep=1`)).status).toBe(401);
+    const deep = await exports.default.fetch(`${BASE}/v1/health?deep=1`, { headers: headers(STAFF, "d") });
+    expect(await deep.json()).toMatchObject({ ok: true, checks: { d1: true, hub: true } });
   });
 });
 
-describe("booth hub", () => {
-  it("sends snapshots and echoes the staff subprotocol", async () => {
-    const k = await kiosk();
-    const s = await staff();
-    expect(s.response.headers.get("Sec-WebSocket-Protocol")).toBe("booth.v1");
-    const snapshot = await k.next("snapshot");
-    expect(snapshot.state.soldOut).toEqual({ vanilla: false, chocolate: false, cookies: false });
-    const staffSnapshot = await s.next("snapshot");
-    expect(staffSnapshot.state.kiosk.connected).toBe(true);
+describe("events", () => {
+  it("dedupes help by id and merges repeats into one alert", async () => {
+    const device = newDevice("k");
+    const first = await post("/v1/events", KIOSK, device, { events: [help("h1", 1)] });
+    expect(first.body.results[0]).toMatchObject({ id: "h1", status: "ok" });
+    const alertId = first.body.results[0].alertId;
+
+    const replay = await post("/v1/events", KIOSK, device, { events: [help("h1", 1)] });
+    expect(replay.body.results[0]).toEqual({ id: "h1", status: "duplicate", alertId });
+
+    const repeat = await post("/v1/events", KIOSK, device, { events: [help("h2", 2)] });
+    expect(repeat.body.results[0].alertId).toBe(alertId);
+    expect((await serverState()).alerts.find((a) => a.id === alertId)!.count).toBe(2);
+
+    const otherDevice = await post("/v1/events", KIOSK, newDevice("k"), { events: [help("h1", 1)] });
+    expect(otherDevice.body.results[0].status).toBe("ok");
   });
 
-  it("round-trips sold-out toggles from staff to the kiosk", async () => {
-    const k = await kiosk();
-    const s = await staff();
-    await k.next("snapshot");
-    await s.next("snapshot");
-
-    s.send({ type: "setSoldOut", flavor: "chocolate", soldOut: true, by: "Maya" });
-    const toKiosk = await k.next("soldOut");
-    expect(toKiosk.soldOut).toEqual({ vanilla: false, chocolate: true, cookies: false });
-    const alert = await s.next("alert", (m) => m.alert.kind === "soldout");
-    expect(alert.alert).toMatchObject({ title: "Chocolate is sold out", severity: "info", resolvedAt: null });
-
-    s.send({ type: "setSoldOut", flavor: "chocolate", soldOut: false });
-    expect((await k.next("soldOut")).soldOut.chocolate).toBe(false);
-
-    s.send({ type: "setSoldOut", flavor: "pistachio", soldOut: true });
-    expect((await s.next("error")).message).toMatch(/Unknown flavor/);
-
-    k.send({ type: "setSoldOut", flavor: "vanilla", soldOut: true });
-    expect((await k.next("error")).message).toMatch(/Only staff/);
-
-    const state = (await (await exports.default.fetch("https://booth.test/v1/state", { headers: { Authorization: `Bearer ${TOKEN}` } })).json()) as BoothState;
-    expect(state.soldOut.chocolate).toBe(false);
+  it("drops stale or replayed health snapshots by seq and rejects bad items alone", async () => {
+    const device = newDevice("k");
+    const results = (await post("/v1/events", KIOSK, device, {
+      events: [
+        healthEvent("a", 5, { appVersion: "five" }),
+        healthEvent("b", 3, { appVersion: "three" }),
+        healthEvent("c", 5, { appVersion: "five again" }),
+        healthEvent("d", 6, { appVersion: "six" }),
+        { id: "e", seq: 7, type: "health", health: { readers: "nope" } },
+        { id: "f", type: "mystery" },
+      ],
+    })).body.results as ItemResult[];
+    expect(results.map((r) => r.status)).toEqual(["ok", "stale", "stale", "ok", "rejected", "rejected"]);
+    expect((await serverState()).kiosk.health?.appVersion).toBe("six");
   });
 
-  it("raises help alerts, merges repeats, ignores retries and takes acks", async () => {
-    const k = await kiosk();
-    const s = await staff();
-    await k.next("snapshot");
-    await s.next("snapshot");
+  it("orders and times out on the server clock, not the client's", async () => {
+    const device = newDevice("k");
+    const before = Date.now();
+    const result = await post("/v1/events", KIOSK, device, { events: [{ ...help("skew", 1, "no_reader"), at: "1999-01-01T00:00:00Z" }] });
+    const alert = (await serverState()).alerts.find((a) => a.id === result.body.results[0].alertId)!;
+    expect(alert.createdAt).toBeGreaterThanOrEqual(before);
+  });
+});
 
-    k.send({ type: "help", id: "h1", reason: "button", message: "Tapped Need help" });
-    const first = await s.next("alert", (m) => m.alert.kind === "help");
-    expect(first.alert).toMatchObject({ title: "Customer needs help", severity: "urgent", count: 1 });
-    expect((await k.next("helpReceived")).alertId).toBe(first.alert.id);
+describe("hub", () => {
+  it("broadcasts one patch per change with consecutive revs", async () => {
+    const kiosk = await open(KIOSK, newDevice("k"));
+    const staff = await open(STAFF, newDevice("s"));
+    const startRev = staff.state!.rev;
 
-    k.send({ type: "help", id: "h1", reason: "button" });
-    expect((await k.next("helpReceived")).alertId).toBe(first.alert.id);
+    staff.send({ type: "action", action: setSoldOut("a1", "chocolate", true) });
+    expect((await staff.next("result", (m) => m.id === "a1")).status).toBe("ok");
+    await kiosk.settle();
+    expect(kiosk.state!.flavors.find((f) => f.id === "chocolate")!.soldOut).toBe(true);
 
-    k.send({ type: "help", id: "h2", reason: "button" });
-    const merged = await s.next("alert", (m) => m.alert.id === first.alert.id && m.alert.count === 2);
-    expect(merged.alert.count).toBe(2);
+    staff.send({ type: "action", action: setSoldOut("a1", "chocolate", true) });
+    expect((await staff.next("result", (m) => m.id === "a1")).status).toBe("duplicate");
 
-    k.send({ type: "help", id: "h3", reason: "payment_failed", message: "Card declined" });
-    const payment = await s.next("alert", (m) => m.alert.key === "help:payment_failed");
-    expect(payment.alert.id).not.toBe(first.alert.id);
+    staff.send({ type: "action", action: setSoldOut("a2", "chocolate", false) });
+    await staff.next("result", (m) => m.id === "a2");
+    await staff.settle();
+    await kiosk.settle();
 
-    s.send({ type: "ack", id: first.alert.id, by: "Maya" });
-    const acked = await k.next("alert", (m) => m.alert.id === first.alert.id && m.alert.ackedAt !== null);
-    expect(acked.alert.ackedBy).toBe("Maya");
-
-    k.send({ type: "help", id: "h4", reason: "button" });
-    const fresh = await s.next("alert", (m) => m.alert.key === "help:button" && m.alert.id !== first.alert.id);
-    expect(fresh.alert.count).toBe(1);
+    const revs = staff.inbox.filter((m): m is Msg<"patch"> => m.type === "patch").map((m) => m.rev);
+    expect(revs.length).toBeGreaterThan(0);
+    expect(revs).toEqual(revs.map((_, i) => startRev + 1 + i));
+    const truth = comparable(await serverState());
+    expect(comparable(staff.state!)).toEqual(truth);
+    expect(comparable(kiosk.state!)).toEqual(truth);
   });
 
-  it("raises Kiosk offline after heartbeats stop and resolves it when they resume", async () => {
-    const k = await kiosk();
-    const s = await staff();
-    await s.next("snapshot");
-    k.send({ type: "heartbeat", screen: "attract" });
-    await k.next("pong");
+  it("reconciles after missed patches and ignores stale ones", async () => {
+    const staff = await open(STAFF, newDevice("s"));
+    const kiosk = await open(KIOSK, newDevice("k"));
+    kiosk.dropNextPatches = 3;
+    for (const [i, flavor] of ["vanilla", "cookies", "vanilla"].entries()) {
+      staff.send({ type: "action", action: setSoldOut(`r${i}`, flavor, i !== 2) });
+      await staff.next("result", (m) => m.id === `r${i}`);
+    }
+    await kiosk.settle();
+    await kiosk.settle();
+    expect(kiosk.syncs).toBeGreaterThan(0);
+    expect(comparable(kiosk.state!)).toEqual(comparable(await serverState()));
+
+    const before = structuredClone(kiosk.state!);
+    kiosk.receive(JSON.stringify({ type: "patch", rev: 1, change: { kind: "flavors", flavors: [] } }));
+    kiosk.receive(JSON.stringify({ type: "patch", rev: before.rev, change: { kind: "flavors", flavors: [] } }));
+    expect(kiosk.state).toEqual(before);
+  });
+
+  it("answers acks, rejects unknown ids and forbids role mix-ups", async () => {
+    const device = newDevice("k");
+    const alertId = (await post("/v1/events", KIOSK, device, { events: [help("ack-me", 1, "idle")] })).body.results[0].alertId;
+    const acked = await post("/v1/actions", STAFF, newDevice("s"), {
+      actions: [
+        { id: "x1", type: "ack", alertId, by: "Maya" },
+        { id: "x2", type: "ack", alertId, by: "Sam" },
+        { id: "x3", type: "ack", alertId: "nope" },
+        { id: "x4", type: "setSoldOut", flavor: "pistachio", soldOut: true },
+        { id: "x5", type: "launch" },
+      ],
+    });
+    expect(acked.body.results.map((r: ItemResult) => r.status)).toEqual(["ok", "ok", "rejected", "rejected", "rejected"]);
+    expect((await serverState()).alerts.find((a) => a.id === alertId)!.ackedBy).toBe("Maya");
+
+    const kiosk = await open(KIOSK, newDevice("k"));
+    kiosk.send({ type: "action", action: setSoldOut("y1", "vanilla", true) });
+    expect((await kiosk.next("result")).error?.code).toBe("forbidden");
+    expect((await post("/v1/actions", KIOSK, device, { actions: [setSoldOut("y2", "vanilla", true)] })).status).toBe(403);
+  });
+
+  it("survives malformed frames and closes floods", async () => {
+    const staff = await open(STAFF, newDevice("s"));
+    staff.send("{nope");
+    expect((await staff.next("error")).error.code).toBe("bad_request");
+    staff.send({ type: "teleport" });
+    expect((await staff.next("error")).error.code).toBe("bad_request");
+    staff.send({ type: "ping", t: 1, pad: "x".repeat(70 * 1024) });
+    expect((await staff.next("error")).error.message).toMatch(/64 KB/);
+    await staff.settle();
+
+    const flooder = await open(STAFF, newDevice("s"));
+    const closed = new Promise<number>((resolve) => flooder.ws.addEventListener("close", (e) => resolve(e.code)));
+    for (let i = 0; i < FLOOD_LIMIT + 5; i++) flooder.send({ type: "ping" });
+    expect(await closed).toBe(1008);
+  });
+
+  it("raises Kiosk offline from the alarm and resolves it on the next contact", async () => {
+    const staff = await open(STAFF, newDevice("s"));
+    const kiosk = await open(KIOSK, newDevice("k"));
+    kiosk.send({ type: "heartbeat", t: Date.now(), screen: "attract" });
+    await kiosk.next("pong");
 
     const stub = env.BOOTH.getByName("booth");
-    await runInDurableObject(stub, (_instance: Booth, state) => {
+    await runInDurableObject(stub, (_booth: Booth, state) => {
       const row = state.storage.sql.exec<{ value: string }>("SELECT value FROM meta WHERE key = 'kiosk'").one();
-      const kioskState = JSON.parse(row.value);
-      kioskState.lastHeartbeatAt = Date.now() - OFFLINE_AFTER_MS - 1000;
-      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'kiosk'", JSON.stringify(kioskState));
+      const value = JSON.parse(row.value);
+      value.lastSeenAt = Date.now() - OFFLINE_AFTER_MS - 1000;
+      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'kiosk'", JSON.stringify(value));
     });
     expect(await runDurableObjectAlarm(stub)).toBe(true);
-    const offline = await s.next("alert", (m) => m.alert.kind === "offline");
-    expect(offline.alert).toMatchObject({ title: "Kiosk offline", severity: "urgent", resolvedAt: null });
-    expect((await s.next("kiosk", (m) => !m.kiosk.online)).kiosk.online).toBe(false);
+    const isOffline = (m: Msg<"patch">) => m.change.kind === "alert" && m.change.alert.kind === "offline";
+    const offline = await staff.next("patch", (m) => isOffline(m) && !(m.change as { alert: Alert }).alert.resolvedAt);
+    expect((offline.change as { alert: Alert }).alert.title).toBe("Kiosk offline");
 
-    k.send({ type: "heartbeat", screen: "builder" });
-    const back = await s.next("alert", (m) => m.alert.id === offline.alert.id && m.alert.resolvedAt !== null);
-    expect(back.alert.detail).toMatch(/Back online/);
+    await post("/v1/logs", KIOSK, newDevice("k"), { lines: [{ id: `contact-${Date.now()}`, message: "hi" }] });
+    await staff.next("patch", (m) => isOffline(m) && (m.change as { alert: Alert }).alert.resolvedAt !== null, 4000);
+    await staff.settle();
+    expect(comparable(staff.state!)).toEqual(comparable(await serverState()));
   });
 
-  it("waits out a grace period before raising health alerts and clears them on recovery", async () => {
+  it("waits out the health grace period before alerting and clears on recovery", async () => {
     const stub = env.BOOTH.getByName("booth");
+    const device = newDevice("k");
     const t0 = Date.now();
-    const alerts = await runInDurableObject(stub, async (booth: Booth, state) => {
-      await booth.handle({ type: "heartbeat" }, null, t0);
-      await booth.handle({ type: "health", health: { ...healthy, readerReady: false, readers: [] } }, null, t0);
-      const before = state.storage.sql.exec("SELECT * FROM alerts WHERE kind = 'health'").toArray().length;
-      const alarm = await state.storage.getAlarm();
-      await booth.handle({ type: "heartbeat" }, null, t0 + HEALTH_GRACE_MS + 1);
-      const raised = state.storage.sql.exec<{ title: string; resolved_at: number | null }>("SELECT title, resolved_at FROM alerts WHERE kind = 'health'").toArray();
-      await booth.handle({ type: "health", health: healthy }, null, t0 + HEALTH_GRACE_MS + 2);
-      const after = state.storage.sql.exec<{ resolved_at: number | null }>("SELECT resolved_at FROM alerts WHERE kind = 'health'").toArray();
-      return { before, alarm, raised, after };
-    });
-    expect(alerts.before).toBe(0);
-    expect(alerts.alarm).toBe(t0 + HEALTH_GRACE_MS);
-    expect(alerts.raised).toEqual([{ title: "No card reader ready", resolved_at: null }]);
-    expect(alerts.after[0].resolved_at).not.toBeNull();
+    await stub.ingestEvents(device, [healthEvent("g1", 1, { readerReady: false, readers: [] })], t0);
+    const open = () => serverState().then((s) => s.alerts.filter((a) => a.key === "health:reader" && !a.resolvedAt));
+    expect(await open()).toEqual([]);
+    await stub.ingestEvents(device, [healthEvent("g2", 2, { readerReady: false, readers: [] })], t0 + HEALTH_GRACE_MS - 1000);
+    expect(await open()).toEqual([]);
+    await runInDurableObject(stub, (booth: Booth) => booth.evaluate(t0 + HEALTH_GRACE_MS + 1));
+    expect((await open()).map((a) => a.title)).toEqual(["No card reader ready"]);
+    await stub.ingestEvents(device, [healthEvent("g3", 3)], t0 + HEALTH_GRACE_MS + 2);
+    expect(await open()).toEqual([]);
+  });
+
+  it("keeps state, dedupe records and hibernated sockets across eviction", async () => {
+    const stub = env.BOOTH.getByName("booth");
+    const device = newDevice("k");
+    const staff = await open(STAFF, newDevice("s"));
+    const first = await post("/v1/events", KIOSK, device, { events: [help("evict-1", 1)] });
+    staff.send({ type: "action", action: setSoldOut("evict-a", "cookies", true) });
+    await staff.next("result", (m) => m.id === "evict-a");
+    const before = await serverState();
+
+    await evictDurableObject(stub);
+
+    expect(comparable(await serverState())).toEqual(comparable(before));
+    const replay = await post("/v1/events", KIOSK, device, { events: [help("evict-1", 1)] });
+    expect(replay.body.results[0]).toMatchObject({ status: "duplicate", alertId: first.body.results[0].alertId });
+
+    staff.send({ type: "action", action: setSoldOut("evict-b", "cookies", false) });
+    expect((await staff.next("result", (m) => m.id === "evict-b")).status).toBe("ok");
+    await staff.settle();
+    expect(comparable(staff.state!)).toEqual(comparable(await serverState()));
   });
 });
 
@@ -231,67 +392,42 @@ describe("health conditions", () => {
       readerReady: false,
       readers: [{ name: "R", state: "ready", batteryPercent: 9, isCharging: false }],
       deviceBattery: { percent: 15, charging: false },
-      catalog: { ok: false, error: "Category TC not found" },
+      catalog: { ok: false, status: "", error: "Category TC not found" },
     });
     expect([...bad.keys()].sort()).toEqual(["health:auth", "health:catalog", "health:ipad-battery", "health:reader", "health:reader-battery"]);
-    expect(bad.get("health:reader-battery")?.title).toBe("Card reader battery low (9%)");
   });
 });
 
 describe("logs and orders", () => {
-  const post = (path: string, body: unknown, token = TOKEN) =>
-    exports.default.fetch(`https://booth.test${path}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-  it("stores log lines idempotently", async () => {
+  it("stores log lines once and counts rejects", async () => {
+    const device = newDevice("k");
     const lines = [
-      { id: "dev-a-0", ts: "2026-10-11T10:00:00.000-07:00", level: "info", message: "Authorized" },
-      { id: "dev-a-11", ts: "2026-10-11T10:00:01.500-07:00", level: "error", message: "Payment failed (3)", context: { code: 3 } },
-      { id: "dev-a-40", ts: "nonsense", level: "loud", message: "Odd line" },
+      { id: `${device}-0`, ts: "2026-10-11T10:00:00.000-07:00", level: "info", message: "Authorized" },
+      { id: `${device}-11`, ts: "2026-10-11T10:00:01.500-07:00", level: "error", message: "Payment failed (3)", context: { code: 3 } },
+      { id: `${device}-40`, ts: "nonsense", level: "loud", message: "Odd line" },
       { message: "no id" },
     ];
-    const first = await post("/v1/logs", { device: "dev", appVersion: "0.1 (1)", lines });
-    expect(await first.json()).toEqual({ accepted: 3, stored: 3, duplicates: 0, rejected: 1 });
-    const again = await post("/v1/logs", { device: "dev", lines });
-    expect(await again.json()).toMatchObject({ accepted: 3, stored: 0, duplicates: 3 });
-
-    const rows = await env.DB.prepare("SELECT id, level, ts, context FROM logs ORDER BY id").all<{ id: string; level: string; ts: number; context: string | null }>();
-    expect(rows.results.map((r) => [r.id, r.level])).toEqual([["dev-a-0", "info"], ["dev-a-11", "error"], ["dev-a-40", "info"]]);
+    expect((await post("/v1/logs", KIOSK, device, { appVersion: "0.1 (1)", lines })).body).toEqual({ accepted: 3, stored: 3, duplicates: 0, rejected: 1 });
+    expect((await post("/v1/logs", KIOSK, device, { lines })).body).toMatchObject({ stored: 0, duplicates: 3 });
+    const rows = await env.DB.prepare("SELECT id, level, ts FROM logs WHERE device = ? ORDER BY id").bind(device).all<{ id: string; level: string; ts: number }>();
+    expect(rows.results.map((r) => r.level)).toEqual(["info", "error", "info"]);
     expect(rows.results[0].ts).toBe(Date.parse("2026-10-11T17:00:00.000Z"));
-    expect(JSON.parse(rows.results[1].context!)).toEqual({ code: 3 });
-
-    expect((await post("/v1/logs", { lines: [] }, "wrong")).status).toBe(401);
-    expect((await post("/v1/logs", { lines: Array.from({ length: 501 }, (_, i) => ({ id: `x${i}`, message: "m" })) })).status).toBe(413);
   });
 
-  it("stores orders once and lists them for staff", async () => {
-    const order = {
-      id: "order-1",
-      orderNumber: 7,
-      squareOrderId: "SQ-ORDER",
-      squarePaymentId: "SQ-PAY",
-      customerName: "Alex",
-      totalCents: 900,
-      subtotalCents: 900,
-      taxCents: 0,
-      card: "Visa 1111",
-      simulated: false,
-      paidAt: "2026-10-11T18:00:00Z",
-      items: [{ vessel: "cone", flavors: ["vanilla", "chocolate"] }],
-      lines: [{ title: "1 Scoop", detail: "#1 Waffle Cone: Vanilla", cents: 400 }],
-    };
-    expect(await (await post("/v1/orders", order)).json()).toEqual({ ok: true, duplicate: false });
-    expect(await (await post("/v1/orders", order)).json()).toEqual({ ok: true, duplicate: true });
-    expect((await post("/v1/orders", { id: "bad" })).status).toBe(400);
+  it("stores each order once, by id and by Square payment id", async () => {
+    const device = newDevice("k");
+    const order = (id: string, payment: string | null, extra: Record<string, unknown> = {}) => ({
+      id, orderNumber: 1, squarePaymentId: payment, totalCents: 900, simulated: false, paidAt: "2026-10-11T18:00:00Z",
+      items: [{ vessel: "cone", flavors: ["vanilla"] }], ...extra,
+    });
+    const first = await post("/v1/orders", KIOSK, device, { orders: [order("o1", "PAY-1"), order("o2", null), order("bad", null, { totalCents: -5 })] });
+    expect(first.body.results.map((r: ItemResult) => r.status)).toEqual(["ok", "ok", "rejected"]);
+    const again = await post("/v1/orders", KIOSK, device, { orders: [order("o1", "PAY-1"), order("o3", "PAY-1"), order("o2", null)] });
+    expect(again.body.results.map((r: ItemResult) => r.status)).toEqual(["duplicate", "duplicate", "duplicate"]);
 
-    const listed = await exports.default.fetch("https://booth.test/v1/orders", { headers: { Authorization: `PIN ${PIN}` } });
-    const body = (await listed.json()) as { count: number; totalCents: number; orders: { items: unknown }[] };
-    expect(body.count).toBe(1);
-    expect(body.totalCents).toBe(900);
-    expect(body.orders[0].items).toEqual(order.items);
+    const listed = await exports.default.fetch(`${BASE}/v1/orders`, { headers: headers(STAFF, "s") });
+    const body = (await listed.json()) as { orders: { id: string }[] };
+    expect(body.orders.filter((o) => ["o1", "o2", "o3"].includes(o.id)).map((o) => o.id).sort()).toEqual(["o1", "o2"]);
   });
 
   it("drops logs past the retention window", async () => {
@@ -304,4 +440,3 @@ describe("logs and orders", () => {
     expect(ids).toEqual(["new"]);
   });
 });
-

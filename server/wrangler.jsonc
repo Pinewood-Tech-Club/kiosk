@@ -10,12 +10,6 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
-  "assets": {
-    "directory": "./public",
-    "binding": "ASSETS",
-    "not_found_handling": "none",
-    "run_worker_first": ["/v1/*"]
-  },
   "durable_objects": {
     "bindings": [{ "name": "BOOTH", "class_name": "Booth" }]
   },
@@ -30,9 +24,9 @@
   ],
   "ratelimits": [
     {
-      "name": "PIN_LIMITER",
-      "namespace_id": "4207",
-      "simple": { "limit": 60, "period": 60 }
+      "name": "CLIENT_LIMITER",
+      "namespace_id": "4208",
+      "simple": { "limit": 600, "period": 60 }
     }
   ],
   "triggers": {
@@ -42,6 +36,35 @@
     "LOG_RETENTION_DAYS": "30"
   },
   "secrets": {
-    "required": ["BOOTH_TOKEN", "STAFF_PIN"]
+    "required": ["BOOTH_TOKEN", "STAFF_TOKEN"]
+  },
+  "env": {
+    "staging": {
+      "name": "techclub-icecream-staging",
+      "workers_dev": true,
+      "preview_urls": false,
+      "observability": { "enabled": true, "head_sampling_rate": 1 },
+      "durable_objects": {
+        "bindings": [{ "name": "BOOTH", "class_name": "Booth" }]
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "techclub-icecream-staging",
+          "database_id": "041125c7-6bfa-4930-92e6-dbbe30ad4ee3",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "CLIENT_LIMITER",
+          "namespace_id": "4209",
+          "simple": { "limit": 600, "period": 60 }
+        }
+      ],
+      "triggers": { "crons": [] },
+      "vars": { "LOG_RETENTION_DAYS": "7" },
+      "secrets": { "required": ["BOOTH_TOKEN", "STAFF_TOKEN"] }
+    }
   }
 }
