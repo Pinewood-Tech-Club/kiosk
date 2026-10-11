@@ -72,6 +72,9 @@ struct RootView: View {
                     .zIndex(1)
             }
 
+            CardPromptLayer(square: app.square)
+                .zIndex(1.5)
+
             AttractView(app: app, isActive: app.screen == .attract)
                 .opacity(app.screen == .attract ? 1 : 0)
                 .allowsHitTesting(app.screen == .attract)

@@ -203,7 +203,7 @@ final class BoothLink {
     }
 
     private func checkIdle(_ now: Date) {
-        guard !idleSent, let app, app.screen == .builder || app.screen == .name,
+        guard !idleSent, let app, !app.isPaying, app.screen == .builder || app.screen == .name,
               !app.items.isEmpty || app.current.hasChoices,
               now.timeIntervalSince(lastTouch) >= Self.idleLimit else { return }
         idleSent = true

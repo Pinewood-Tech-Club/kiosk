@@ -48,6 +48,11 @@ final class SquareService: NSObject {
     private(set) var merchantName = Config.eventName
     private(set) var catalogStatus: CatalogStatus = .notConfigured
     @ObservationIgnored private(set) var catalog: SquareCatalog?
+    private(set) var cardPrompt: CardPrompt?
+    /// Square's default payment screen instead of the kiosk's own card prompt; a fallback kept for debugging.
+    var usesSquarePrompt = UserDefaults.standard.bool(forKey: "kioskSquarePrompt") {
+        didSet { UserDefaults.standard.set(usesSquarePrompt, forKey: "kioskSquarePrompt") }
+    }
 
     private var sdk: any SDKManager { MobilePaymentsSDK.shared }
     @ObservationIgnored private let locationManager = CLLocationManager()
@@ -55,6 +60,12 @@ final class SquareService: NSObject {
     @ObservationIgnored private var paymentHandle: PaymentHandle?
     @ObservationIgnored private var continuation: CheckedContinuation<PaymentResult, Never>?
     @ObservationIgnored private var pending: (quote: OrderQuote, name: String, number: Int, order: SquareAPI.CreatedOrder)?
+    @ObservationIgnored private weak var presenter: UIViewController?
+    @ObservationIgnored private var promptMode: PromptMode = .custom
+    @ObservationIgnored private var cancelIntent: CancelIntent?
+    @ObservationIgnored private var waitingSince: ContinuousClock.Instant?
+    @ObservationIgnored private var promptTimer: Task<Void, Never>?
+    @ObservationIgnored private var cardInReader = false
     #if canImport(MockReaderUI)
     @ObservationIgnored private var mockReader: MockReaderUI?
     #endif
@@ -271,27 +282,115 @@ final class SquareService: NSObject {
         return await withCheckedContinuation { continuation in
             self.continuation = continuation
             self.pending = (quote, customerName, orderNumber, order)
-            let parameters = PaymentParameters(
-                paymentAttemptID: UUID().uuidString,
-                amountMoney: Money(amount: UInt(order.totalCents), currency: .USD),
-                processingMode: isSandbox ? .onlineOnly : .autoDetect
-            )
-            parameters.orderID = order.id
-            parameters.referenceID = referenceID
-
+            presenter = viewController
+            promptMode = usesSquarePrompt ? .default : .custom
             phase = .takingPayment
-            record("Calling startPayment for \(order.totalCents.formattedAsUSD)")
-            paymentHandle = sdk.paymentManager.startPayment(
-                parameters,
-                promptParameters: PromptParameters(mode: .default, additionalMethods: AdditionalPaymentMethods([])),
-                from: viewController,
-                delegate: self
-            )
-            if paymentHandle == nil {
-                record("startPayment returned no handle")
-                finish(.failed(.readerNotReady))
+            if promptMode == .custom {
+                cardPrompt = CardPrompt(amountCents: order.totalCents, instruction: cardInstruction, stage: .waiting)
+                waitingSince = .now
             }
+            startAttempt()
         }
+    }
+
+    /// One `startPayment` for the pending order. A custom-prompt payment may take several attempts while the
+    /// customer finds their card; each attempt gets a fresh attempt ID and charges the same Square order.
+    private func startAttempt() {
+        guard let pending, let presenter else {
+            finish(.failed(.readerNotReady))
+            return
+        }
+        let parameters = PaymentParameters(
+            paymentAttemptID: UUID().uuidString,
+            amountMoney: Money(amount: UInt(pending.order.totalCents), currency: .USD),
+            processingMode: isSandbox ? .onlineOnly : .autoDetect
+        )
+        parameters.orderID = pending.order.id
+        parameters.referenceID = String(format: "kiosk-%04d", pending.number)
+
+        record("Calling startPayment for \(pending.order.totalCents.formattedAsUSD) (\(promptMode == .custom ? "kiosk card prompt" : "Square prompt"))")
+        paymentHandle = sdk.paymentManager.startPayment(
+            parameters,
+            promptParameters: PromptParameters(mode: promptMode, additionalMethods: AdditionalPaymentMethods([])),
+            from: presenter,
+            delegate: self
+        )
+        guard paymentHandle != nil else {
+            record("startPayment returned no handle")
+            finish(.failed(.readerNotReady))
+            return
+        }
+        if promptMode == .custom { schedulePromptTimer(after: Self.rearmInterval, then: { $0.rearmOrAskIfStillThere() }) }
+    }
+
+    // Square fails a payment that has seen no card for about 30 s, and in both prompt modes it first covers
+    // the screen with its own "Payment failed" page for another 30 s. Restarting the attempt before then keeps
+    // that page away; the customer only sees the kiosk prompt, and patience is ours to choose.
+    private static let rearmInterval: Duration = .seconds(20)
+    private static let patience: Duration = .seconds(60)
+    private static let stillThereTimeout: Duration = .seconds(30)
+
+    private func schedulePromptTimer(after delay: Duration, then action: @escaping @MainActor (SquareService) -> Void) {
+        promptTimer?.cancel()
+        promptTimer = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            action(self)
+        }
+    }
+
+    private func rearmOrAskIfStillThere() {
+        guard phase == .takingPayment, cardPrompt?.stage == .waiting, let handle = paymentHandle else { return }
+        guard isWaitingForCard(handle) else {
+            schedulePromptTimer(after: .seconds(5), then: { $0.rearmOrAskIfStillThere() })
+            return
+        }
+        let waited = waitingSince.map { ContinuousClock.now - $0 } ?? .zero
+        cancelIntent = waited + .seconds(1) >= Self.patience ? .askStillThere : .rearm
+        if !handle.cancelPayment() {
+            cancelIntent = nil
+            schedulePromptTimer(after: .seconds(5), then: { $0.rearmOrAskIfStillThere() })
+        }
+    }
+
+    /// Once a card touches the reader Square presents its own screens (PIN, processing, result) over the kiosk.
+    private func isWaitingForCard(_ handle: PaymentHandle) -> Bool {
+        handle.isPaymentCancelable && !cardInReader && presenter?.presentedViewController == nil
+    }
+
+    func keepWaitingForCard() {
+        guard phase == .takingPayment, cardPrompt?.stage == .stillThere, paymentHandle == nil else { return }
+        record("Customer is still there; waiting for a card again")
+        cardPrompt?.stage = .waiting
+        waitingSince = .now
+        startAttempt()
+    }
+
+    func cancelCardPrompt() {
+        guard phase == .takingPayment, cardPrompt != nil else { return }
+        if cancelIntent != nil {
+            cancelIntent = .customer
+            return
+        }
+        guard let handle = paymentHandle else {
+            record("Payment canceled from the card prompt")
+            finish(.canceled)
+            return
+        }
+        cancelIntent = .customer
+        if !handle.cancelPayment() {
+            cancelIntent = nil
+            record("Cancel ignored: the card is already being read")
+        }
+    }
+
+    private var cardInstruction: String {
+        let methods = sdk.paymentManager.availableCardInputMethods
+        let verbs = [(methods.contains(.contactless), "Tap"), (methods.contains(.chip), "insert"), (methods.contains(.swipe), "swipe")]
+            .filter(\.0).map(\.1)
+        guard !verbs.isEmpty else { return "Tap or insert your card" }
+        let phrase = verbs.count == 1 ? verbs[0] : verbs.dropLast().joined(separator: ", ") + " or " + verbs.last!
+        return phrase.prefix(1).uppercased() + phrase.dropFirst() + " your card"
     }
 
     private static let alreadyInProgressReason = "A payment is already in progress"
@@ -389,6 +488,12 @@ final class SquareService: NSObject {
         paymentHandle = nil
         phase = .idle
         pending = nil
+        presenter = nil
+        cardPrompt = nil
+        cancelIntent = nil
+        waitingSince = nil
+        promptTimer?.cancel()
+        promptTimer = nil
         let continuation = continuation
         self.continuation = nil
         continuation?.resume(returning: result)
@@ -419,6 +524,20 @@ extension SquareService {
         _ = try? handle.seekToEnd()
         try? handle.write(contentsOf: line)
     }
+}
+
+struct CardPrompt: Equatable {
+    enum Stage: Equatable { case waiting, stillThere }
+
+    let amountCents: Int
+    let instruction: String
+    var stage: Stage
+}
+
+private enum CancelIntent {
+    case rearm
+    case askStillThere
+    case customer
 }
 
 // MARK: - PaymentManagerDelegate
@@ -471,8 +590,27 @@ extension SquareService: PaymentManagerDelegate {
     }
 
     func paymentManager(_ paymentManager: PaymentManager, didCancel payment: Payment) {
-        record("Payment canceled")
-        finish(.canceled)
+        paymentHandle = nil
+        let intent = cancelIntent
+        cancelIntent = nil
+        switch intent {
+        case .rearm:
+            startAttempt()
+        case .askStillThere:
+            let waited = waitingSince.map { ContinuousClock.now - $0 } ?? .zero
+            record("No card after \(waited.formatted(.units(allowed: [.seconds]))); asking if the customer is still there")
+            cardPrompt?.stage = .stillThere
+            schedulePromptTimer(after: Self.stillThereTimeout, then: { $0.giveUpWaitingForCard() })
+        case .customer, nil:
+            record("Payment canceled")
+            finish(.canceled)
+        }
+    }
+
+    private func giveUpWaitingForCard() {
+        guard phase == .takingPayment, cardPrompt?.stage == .stillThere, paymentHandle == nil else { return }
+        record("No answer to Still there?; giving up on the payment")
+        finish(.failed(.timedOut))
     }
 }
 
@@ -499,6 +637,11 @@ extension SquareService: ReaderObserver {
     }
 
     func readerDidChange(_ readerInfo: ReaderInfo, change: ReaderChange) {
+        switch change {
+        case .cardInserted: cardInReader = true
+        case .cardRemoved: cardInReader = false
+        default: break
+        }
         readers = sdk.readerManager.readers
     }
 }
