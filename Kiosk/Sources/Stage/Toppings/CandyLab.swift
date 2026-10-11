@@ -98,7 +98,7 @@ extension Stage {
 
         if mode == "bears" {
             for (index, material) in candy.gummyBears.materials.enumerated() {
-                let model = ModelEntity(mesh: candy.gummyBears.bear.mesh, materials: [material])
+                let model = ModelEntity(mesh: candy.gummyBears.bear.mesh, materials: material)
                 model.orientation = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
                 model.scale = .init(repeating: 9)
                 model.position = world(CGPoint(x: 196 + CGFloat(index) * 160, y: 640), z: 0.03)
@@ -106,6 +106,10 @@ extension Stage {
                 root.addChild(model)
             }
             rig.root.isEnabled = false
+            let backdrop = ModelEntity(mesh: .generatePlane(width: 0.9, height: 0.24),
+                                       materials: [UnlitMaterial(color: .white, applyPostProcessToneMap: false)])
+            backdrop.position = world(CGPoint(x: 516, y: 640), z: -0.06)
+            root.addChild(backdrop)
         }
         log("Candy lab \(mode): \(holder.children.count) pieces on the item, \(points.count) scoop points")
     }
