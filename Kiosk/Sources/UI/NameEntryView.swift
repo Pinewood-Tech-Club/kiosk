@@ -2,7 +2,7 @@ import SwiftUI
 
 struct NameEntryView: View {
     @Bindable var app: AppModel
-    @FocusState private var focused: Bool
+    @State private var focused = false
     @Namespace private var glass
     @State private var revealsContinue = false
 
@@ -53,22 +53,8 @@ struct NameEntryView: View {
     }
 
     private var nameField: some View {
-        TextField("", text: $app.customerName)
-            .font(Theme.serif(48, .medium))
-            .foregroundStyle(Theme.ink)
-            .tint(Theme.accentDeep)
-            .multilineTextAlignment(.center)
-            .textInputAutocapitalization(.words)
-            .autocorrectionDisabled()
-            .textContentType(nil)
-            .submitLabel(.continue)
-            .background(PublicKeyboard())
+        NameField(text: $app.customerName, isFocused: $focused, maxLength: 24, onSubmit: submit)
             .accessibilityLabel("Name for pickup")
-            .focused($focused)
-            .onSubmit { submit() }
-            .onChange(of: app.customerName) { _, value in
-                if value.count > 24 { app.customerName = String(value.prefix(24)) }
-            }
             .padding(.horizontal, 36)
             .frame(width: 660, height: 112)
             .glassField(isFocused: focused, cornerRadius: 56, morph: GlassMorph(id: "field", namespace: glass))
@@ -122,44 +108,85 @@ struct NameEntryView: View {
     }
 }
 
-/// Strips the keyboard's QuickType and shortcut bars from the name field: on a shared kiosk they would offer
-/// the device owner's contacts and clipboard to every customer. SwiftUI exposes neither, so this finds the
-/// field's backing `UITextField` in the window.
-private struct PublicKeyboard: UIViewRepresentable {
-    func makeUIView(context: Context) -> Probe { Probe() }
-    func updateUIView(_ probe: Probe, context: Context) { probe.configureSoon() }
+/// A UIKit field so every keyboard trait is set before the field first becomes first responder. Changing
+/// traits on a focused field needs `reloadInputViews()`, which drops the keyboard's auto-shift, and SwiftUI's
+/// `TextField` exposes neither the shortcut bar nor predictions. On a shared kiosk those would offer the
+/// device owner's contacts and clipboard to every customer.
+private struct NameField: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isFocused: Bool
+    let maxLength: Int
+    let onSubmit: () -> Void
 
-    final class Probe: UIView {
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            configureSoon()
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UITextField {
+        let field = UITextField()
+        field.delegate = context.coordinator
+        field.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
+        field.font = UIFont(name: Theme.SerifWeight.medium.rawValue, size: 48)
+        field.adjustsFontForContentSizeCategory = false
+        field.textColor = UIColor(Theme.ink)
+        field.tintColor = UIColor(Theme.accentDeep)
+        field.textAlignment = .center
+        field.borderStyle = .none
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        field.autocapitalizationType = .words
+        field.autocorrectionType = .no
+        field.spellCheckingType = .no
+        field.inlinePredictionType = .no
+        field.smartQuotesType = .no
+        field.smartDashesType = .no
+        field.smartInsertDeleteType = .no
+        field.textContentType = nil
+        field.writingToolsBehavior = .none
+        field.allowsEditingTextAttributes = false
+        field.returnKeyType = .continue
+        field.enablesReturnKeyAutomatically = true
+        field.inputAssistantItem.leadingBarButtonGroups = []
+        field.inputAssistantItem.trailingBarButtonGroups = []
+        return field
+    }
+
+    func updateUIView(_ field: UITextField, context: Context) {
+        context.coordinator.parent = self
+        if field.text != text { field.text = text }
+        field.isEnabled = context.environment.isEnabled
+        if isFocused, !field.isFirstResponder, field.window != nil {
+            field.becomeFirstResponder()
+        } else if !isFocused, field.isFirstResponder {
+            field.resignFirstResponder()
         }
+    }
 
-        func configureSoon() {
-            DispatchQueue.main.async { [weak self] in
-                guard let window = self?.window else { return }
-                Self.textFields(in: window).forEach(Self.configure)
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: NameField
+
+        init(_ parent: NameField) { self.parent = parent }
+
+        @objc func editingChanged(_ field: UITextField) {
+            guard field.markedTextRange == nil else { return }
+            var value = field.text ?? ""
+            if value.count > parent.maxLength {
+                value = String(value.prefix(parent.maxLength))
+                field.text = value
             }
+            if parent.text != value { parent.text = value }
         }
 
-        private static func textFields(in view: UIView) -> [UITextField] {
-            if let field = view as? UITextField { return [field] }
-            return view.subviews.flatMap(textFields(in:))
+        func textFieldDidBeginEditing(_ field: UITextField) {
+            if !parent.isFocused { parent.isFocused = true }
         }
 
-        private static func configure(_ field: UITextField) {
-            let assistant = field.inputAssistantItem
-            guard !assistant.leadingBarButtonGroups.isEmpty || !assistant.trailingBarButtonGroups.isEmpty
-                || field.autocorrectionType != .no || field.spellCheckingType != .no || field.inlinePredictionType != .no
-            else { return }
-            assistant.leadingBarButtonGroups = []
-            assistant.trailingBarButtonGroups = []
-            field.autocorrectionType = .no
-            field.spellCheckingType = .no
-            field.inlinePredictionType = .no
-            field.smartInsertDeleteType = .no
-            field.textContentType = nil
-            if field.isFirstResponder { field.reloadInputViews() }
+        func textFieldDidEndEditing(_ field: UITextField) {
+            if parent.isFocused { parent.isFocused = false }
+        }
+
+        func textFieldShouldReturn(_ field: UITextField) -> Bool {
+            parent.onSubmit()
+            return false
         }
     }
 }
