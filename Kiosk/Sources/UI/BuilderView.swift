@@ -43,19 +43,9 @@ private struct EditingSlot: View {
             .strokeBorder(Theme.ink.opacity(0.28), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
             .frame(width: slotSize.width, height: slotSize.height)
             .overlay(alignment: .topTrailing) {
-                Button(action: remove) {
-                    LucideIcon(name: "trash-2", size: 16)
-                        .foregroundStyle(Theme.ink)
-                        .frame(width: 34, height: 34)
-                        .background(Theme.card, in: .circle)
-                        .overlay(Circle().strokeBorder(Theme.inkFaint, lineWidth: 1))
-                        .shadow(color: Theme.cardShadow, radius: 6, y: 2)
-                        .frame(width: 48, height: 48)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(SlotPressStyle())
-                .accessibilityLabel("Remove this item")
-                .offset(x: 14, y: -14)
+                GlassIconButton(icon: "minus", size: 44, iconSize: 20, action: remove)
+                    .accessibilityLabel("Remove this item")
+                    .offset(x: 14, y: -14)
             }
     }
 }
