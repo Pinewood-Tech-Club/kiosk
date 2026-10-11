@@ -289,6 +289,9 @@ class Staff {
 
   setSoldOut(flavor, soldOut) {
     const action = { id: randomUUID(), type: "setSoldOut", flavor, soldOut, by: "Chaos" };
+    for (const [id, entry] of this.pending) {
+      if (entry.action.flavor === flavor && !this.hub.results.has(id)) this.pending.delete(id);
+    }
     this.intended[flavor] = soldOut;
     this.pending.set(action.id, { action, sentAt: 0 });
     this.stats.actions++;
