@@ -140,7 +140,6 @@ final class ScoopActor {
     var morphDirty = false
     var motion: Tween?
     var relayout: Tween?
-    /// The item this scoop belongs to (or is flying to).
     weak var rig: ItemRig?
     /// The rig whose body this scoop is attached to right now, if any. Differs from `rig` while it transfers.
     weak var mount: ItemRig?
@@ -201,7 +200,6 @@ final class TrayEntry {
     var index: Float
     var indexTween: Tween?
     var mode: Mode = .flying
-    /// Where a `.flying` entry is headed.
     var flyingToSummary = false
     var contentTop: Float
     var contentRadius: Float

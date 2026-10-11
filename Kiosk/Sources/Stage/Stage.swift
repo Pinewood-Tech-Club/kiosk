@@ -495,7 +495,6 @@ final class Stage {
         return Framing(position: [position.x, lowest - e.yMin * scale, position.z], scale: scale)
     }
 
-    /// Eases the hero to the framing for its current scoop count.
     func reframe(_ rig: ItemRig, animated: Bool = true) {
         let target = heroFraming(rig.vessel, count: rig.scoops.count, arriving: rig.scoops.contains { $0.isArriving })
         guard target != rig.framingTarget || rig.framing == nil else { return }

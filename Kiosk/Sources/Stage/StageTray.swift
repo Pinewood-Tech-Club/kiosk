@@ -129,7 +129,6 @@ extension Stage {
         }
     }
 
-    /// A tile for every item that is in the tray or on its way there; none while the order sheet is up.
     private func publishTrayTiles() {
         guard !summaryActive else {
             trayTiles.update([])

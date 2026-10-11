@@ -139,10 +139,6 @@ extension Stage {
         actor.mount = nil
     }
 
-    func after(_ delay: Double, _ action: @escaping () -> Void) -> Tween {
-        animate(delay: delay, duration: 0.0001, phase: .attachments, onStart: action) { _ in }
-    }
-
     /// Makes `rig` the only owner of `actors`, in that order. Ownership changes immediately; where each scoop
     /// is attached (`mount`) only changes when its motion gets there.
     func setOwner(_ actors: [ScoopActor], _ rig: ItemRig) {
@@ -288,7 +284,6 @@ extension Stage {
         }
     }
 
-    /// Lifts off gently, keeps moving, and eases onto the new vessel.
     static let transferCurve = TimingCurve(0.45, 0, 0.25, 1)
 
     private func height(_ position: SIMD3<Float>, above slot: Transform, on rig: ItemRig) -> Float {
