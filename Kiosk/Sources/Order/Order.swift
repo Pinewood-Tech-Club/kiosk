@@ -57,6 +57,28 @@ enum Topping: String, CaseIterable, Identifiable, Sendable {
     }
 
     var priceCents: Int { Pricing.toppingCents }
+
+    var group: ToppingGroup {
+        switch self {
+        case .whip, .chocolate: .creamAndSauces
+        case .gummies, .mms, .sprinkles: .candyAndSprinkles
+        }
+    }
+}
+
+enum ToppingGroup: String, CaseIterable, Identifiable, Sendable {
+    case creamAndSauces, candyAndSprinkles
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .creamAndSauces: "Cream & Sauces"
+        case .candyAndSprinkles: "Candy & Sprinkles"
+        }
+    }
+
+    var toppings: [Topping] { Topping.allCases.filter { $0.group == self } }
 }
 
 struct IceCreamItem: Identifiable, Equatable, Sendable {
@@ -76,7 +98,7 @@ struct IceCreamItem: Identifiable, Equatable, Sendable {
     var scoopCount: Int { flavors.count }
 
     var toppingSummary: String {
-        Topping.allCases.filter(toppings.contains).map(\.title).joined(separator: " · ")
+        Topping.allCases.filter(toppings.contains).map(\.title).formatted(.list(type: .and))
     }
 
     var title: String {

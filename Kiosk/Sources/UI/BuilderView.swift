@@ -157,7 +157,32 @@ struct BuilderBackdrop: View {
             }
             .transition(stepFade)
         case .toppings:
-            EmptyView()
+            ZStack {
+                ForEach(Topping.allCases) { topping in
+                    let card = Layout.toppingCardFrame(topping)
+                    let icon = Layout.toppingIconFrame(topping)
+                    ZStack {
+                        CardBackground(filled: app.hasTopping(topping), cornerRadius: Layout.toppingCardRadius)
+                            .frame(width: card.width, height: card.height)
+                        if !app.stageDrawsToppingIcons {
+                            ToppingGlyph(topping: topping, size: icon.height)
+                                .shadow(color: .black.opacity(app.hasTopping(topping) ? 0.22 : 0), radius: 4, y: 2)
+                                .offset(x: icon.midX - card.midX, y: icon.midY - card.midY)
+                        }
+                    }
+                    .modifier(PressEffect(pressed: app.pressedToppings.contains(topping)))
+                    .position(x: card.midX, y: card.midY)
+
+                    Color.clear
+                        .frame(width: icon.width, height: icon.height)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                            app.setToppingIconFrame(topping, frame)
+                        }
+                        .position(x: icon.midX, y: icon.midY)
+                        .allowsHitTesting(false)
+                }
+            }
+            .transition(stepFade)
         }
     }
 }
@@ -268,7 +293,7 @@ struct BuilderForeground: View {
             switch app.step {
             case .vessel: vesselCards.transition(stepFade)
             case .flavors: flavorCards.transition(stepFade)
-            case .toppings: EmptyView()
+            case .toppings: toppingCards.transition(stepFade)
             }
 
             previousStepButton
@@ -305,9 +330,6 @@ struct BuilderForeground: View {
                 .foregroundStyle(Theme.text)
                 .contentTransition(.opacity)
                 .position(x: Layout.midX, y: Layout.titleY)
-
-            subtitle
-                .position(x: Layout.midX, y: Layout.subtitleY + 10)
         }
         .animation(.easeInOut(duration: 0.3), value: app.step)
         .animation(.easeInOut(duration: 0.3), value: app.isEditing)
@@ -324,17 +346,7 @@ struct BuilderForeground: View {
         switch app.step {
         case .vessel: "Cup or cone?"
         case .flavors: "Pick your scoops"
-        case .toppings: "Toppings"
-        }
-    }
-
-    @ViewBuilder
-    private var subtitle: some View {
-        if app.step == .toppings {
-            Text("Coming soon")
-                .font(Theme.serif(22, .regular))
-                .foregroundStyle(Theme.text.opacity(0.6))
-                .transition(.opacity)
+        case .toppings: "Any toppings?"
         }
     }
 
@@ -420,6 +432,61 @@ struct BuilderForeground: View {
         }
         .animation(.easeInOut(duration: 0.25), value: full)
         .animation(.easeInOut(duration: 0.25), value: app.nextScoopCents)
+    }
+
+    private var toppingCards: some View {
+        ZStack {
+            ForEach(ToppingGroup.allCases) { group in
+                let header = Layout.toppingGroupHeader(group)
+                Text(group.title)
+                    .font(Theme.serif(18, .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.leading, 8)
+                    .padding(.bottom, 10)
+                    .frame(width: header.width, height: header.height, alignment: .bottomLeading)
+                    .position(x: header.midX, y: header.midY)
+            }
+
+            ForEach(Topping.allCases) { topping in
+                let frame = Layout.toppingCardFrame(topping)
+                let selected = app.hasTopping(topping)
+                Button { app.toggleTopping(topping) } label: {
+                    VStack(spacing: 3) {
+                        Spacer()
+                        Text(topping.title)
+                            .font(Theme.serif(19))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .foregroundStyle(selected ? Theme.onText : Theme.text)
+                        ZStack {
+                            Text("+\(topping.priceCents.formattedAsUSD)")
+                                .font(Theme.sans(15, .medium))
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.textSecondary)
+                                .opacity(selected ? 0 : 1)
+                            HStack(spacing: 4) {
+                                LucideIcon(name: "check", size: 15)
+                                Text("Added")
+                                    .font(Theme.sans(15, .semibold))
+                            }
+                            .foregroundStyle(Theme.onText.opacity(0.7))
+                            .opacity(selected ? 1 : 0)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 16)
+                    .frame(width: frame.width, height: frame.height)
+                    .contentShape(.rect(cornerRadius: Layout.toppingCardRadius))
+                    .animation(.easeInOut(duration: 0.2), value: selected)
+                }
+                .buttonStyle(CardPressStyle { app.setPressed(topping, $0) })
+                .modifier(PressEffect(pressed: app.pressedToppings.contains(topping)))
+                .accessibilityLabel(topping.title)
+                .accessibilityValue(selected ? "Added" : "+\(topping.priceCents.formattedAsUSD)")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .position(x: frame.midX, y: frame.midY)
+            }
+        }
     }
 
     private var primaryButton: some View {

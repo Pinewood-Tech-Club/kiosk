@@ -32,6 +32,7 @@
 		6AD8D94397D99092AF46F1B7 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 019AB8B349B0B11885D0A1B1 /* Config.swift */; };
 		7335163B03B0F6F959250B9A /* BoothOutbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */; };
 		74456A6B3CED1B853F498EDE /* ContactSolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B88A56B517EB00EB9EFB3F /* ContactSolver.swift */; };
+		7568C47CEA97F79633A7EA91 /* ToppingGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = B167035449C278995411C2B4 /* ToppingGlyph.swift */; };
 		7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DFD4680D9AC7197C5C0B25 /* Receipt.swift */; };
 		801D82FD48D19ED123B5E60D /* StaffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFA7ED72E4DEADA3ABEC34BA /* StaffView.swift */; };
 		80F62615D532B17AB4C91758 /* loop.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = CF19FBBFF9063473EF2C011F /* loop.mp4 */; };
@@ -125,8 +126,8 @@
 		98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopMesh.swift; sourceTree = "<group>"; };
 		A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Bold.ttf"; sourceTree = "<group>"; };
 		A313CBED428256A71A858FEA /* BuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuilderView.swift; sourceTree = "<group>"; };
-		A4AF753BDA765B17988D4DAB /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		AB066A180A20C3F6CB7774B4 /* StageIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageIcons.swift; sourceTree = "<group>"; };
+		B167035449C278995411C2B4 /* ToppingGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingGlyph.swift; sourceTree = "<group>"; };
 		B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareAPI.swift; sourceTree = "<group>"; };
 		B353824019534A970B3D1DE6 /* StageVessels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageVessels.swift; sourceTree = "<group>"; };
 		C1105750A779779A5507FAF2 /* Order.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Order.swift; sourceTree = "<group>"; };
@@ -260,7 +261,6 @@
 			isa = PBXGroup;
 			children = (
 				F84857165E0E1562299FB634 /* Kiosk.xcconfig */,
-				A4AF753BDA765B17988D4DAB /* Local.xcconfig */,
 				2B6A6A9019E6492315EB68CA /* Local.xcconfig.example */,
 			);
 			path = Config;
@@ -347,6 +347,7 @@
 				EFA7ED72E4DEADA3ABEC34BA /* StaffView.swift */,
 				4BF79193415195B4A4327886 /* SummaryView.swift */,
 				EF77AD1D7C8D64414EA6DB92 /* Theme.swift */,
+				B167035449C278995411C2B4 /* ToppingGlyph.swift */,
 				1D0BD8A918E962602B31E95B /* TrayTiles.swift */,
 			);
 			path = UI;
@@ -547,6 +548,7 @@
 				F86ED738CAD06D788946D97B /* StageView.swift in Sources */,
 				5C4E87910C7013DDFEBDB6ED /* SummaryView.swift in Sources */,
 				2B591179C416EC14B3DF661F /* Theme.swift in Sources */,
+				7568C47CEA97F79633A7EA91 /* ToppingGlyph.swift in Sources */,
 				FE0C1C733FBF872A34848749 /* ToppingLayer.swift in Sources */,
 				6735B223D0F752A9B4C1C427 /* TrayTiles.swift in Sources */,
 			);
