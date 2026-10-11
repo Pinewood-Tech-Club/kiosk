@@ -49,7 +49,7 @@ private struct EditingSlot: View {
             && x + slotSize.width / 2 <= Layout.trayItemsRect.maxX + 0.5
         ZStack {
             RoundedRectangle(cornerRadius: slotRadius, style: .continuous)
-                .strokeBorder(Theme.ink.opacity(0.28), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                .strokeBorder(Theme.text.opacity(0.28), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                 .frame(width: slotSize.width, height: slotSize.height)
                 .position(x: x - area.minX, y: Layout.trayCenterY - area.minY)
                 .frame(width: area.width, height: area.height)
@@ -59,7 +59,7 @@ private struct EditingSlot: View {
 
             Button { app.finishEditing(then: .newItem) } label: {
                 LucideIcon(name: "check", size: 28)
-                    .foregroundStyle(Theme.ink)
+                    .foregroundStyle(Theme.text)
                     .frame(width: 58, height: 58)
                     .glassEffect(.regular.interactive(), in: .circle)
                     .frame(width: slotSize.width, height: slotSize.height)
@@ -74,7 +74,7 @@ private struct EditingSlot: View {
 
             Button { app.requestDelete(id) } label: {
                 LucideIcon(name: "minus", size: 15)
-                    .foregroundStyle(Theme.ink)
+                    .foregroundStyle(Theme.text)
                     .frame(width: 30, height: 30)
                     .glassEffect(.regular.interactive(), in: .circle)
                     .frame(width: 44, height: 44)
@@ -292,7 +292,7 @@ struct BuilderForeground: View {
             if scoopHint {
                 Text("Add a scoop first")
                     .font(Theme.serif(18, .regular))
-                    .foregroundStyle(Theme.inkSecondary)
+                    .foregroundStyle(Theme.textSecondary)
                     .fixedSize()
                     .frame(width: 180, alignment: .leading)
                     .position(x: Layout.midX + 1.5 * GlassStepSelector<BuilderStep>.segmentWidth + 6 + 18 + 90,
@@ -302,7 +302,7 @@ struct BuilderForeground: View {
 
             Text(title)
                 .font(Theme.serif(52))
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(Theme.text)
                 .contentTransition(.opacity)
                 .position(x: Layout.midX, y: Layout.titleY)
 
@@ -333,7 +333,7 @@ struct BuilderForeground: View {
         if app.step == .toppings {
             Text("Coming soon")
                 .font(Theme.serif(22, .regular))
-                .foregroundStyle(Theme.ink.opacity(0.6))
+                .foregroundStyle(Theme.text.opacity(0.6))
                 .transition(.opacity)
         }
     }
@@ -358,10 +358,10 @@ struct BuilderForeground: View {
                         Spacer()
                         Text(vessel.title)
                             .font(Theme.serif(26))
-                            .foregroundStyle(Theme.ink)
+                            .foregroundStyle(Theme.text)
                         Text(vessel.priceLabel)
                             .font(Theme.sans(18, .medium))
-                            .foregroundStyle(Theme.inkSecondary)
+                            .foregroundStyle(Theme.textSecondary)
                     }
                     .padding(.bottom, 22)
                 }
@@ -380,11 +380,11 @@ struct BuilderForeground: View {
                         Spacer()
                         Text(flavor.title)
                             .font(Theme.serif(25))
-                            .foregroundStyle(Theme.ink)
+                            .foregroundStyle(Theme.text)
                         Text(soldOut ? "Sold out" : full ? "3 scoops max" : "+\(app.nextScoopCents.formattedAsUSD)")
                             .font(Theme.sans(18, soldOut ? .semibold : .medium))
                             .monospacedDigit()
-                            .foregroundStyle(soldOut ? Theme.ink : Theme.inkSecondary)
+                            .foregroundStyle(soldOut ? Theme.text : Theme.textSecondary)
                             .contentTransition(.numericText(value: Double(app.nextScoopCents)))
                     }
                     .padding(.bottom, 22)
@@ -484,7 +484,7 @@ struct BuilderForeground: View {
             if app.items.isEmpty {
                 Text("Added items appear here")
                     .font(Theme.serif(18, .regular))
-                    .foregroundStyle(Theme.inkSecondary)
+                    .foregroundStyle(Theme.textSecondary)
                     .position(x: Layout.trayItemsRect.midX, y: Layout.trayCenterY)
                     .transition(.opacity)
             }
@@ -522,9 +522,9 @@ struct BuilderForeground: View {
                 LucideIcon(name: "plus", size: 28)
                 Text("New item").font(Theme.serif(17, .medium))
             }
-            .foregroundStyle(Theme.ink.opacity(enabled ? 0.85 : 0.35))
+            .foregroundStyle(Theme.text.opacity(enabled ? 0.85 : 0.35))
             .frame(width: slotSize.width, height: slotSize.height)
-            .background(Theme.ink.opacity(0.055), in: .rect(cornerRadius: slotRadius, style: .continuous))
+            .background(Theme.text.opacity(0.055), in: .rect(cornerRadius: slotRadius, style: .continuous))
             .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
         }
         .buttonStyle(SlotPressStyle())
