@@ -4,7 +4,6 @@ import UIKit
 
 struct DrizzleStyle {
     let name: String
-    /// Where the syrup lies deep.
     var color: UIColor
     /// Where it thins out: the ribbon's rims, the drips and the falling strand.
     var thinColor: UIColor
@@ -259,7 +258,6 @@ private struct Projection {
     var lifts: [SIMD2<Float>]
     /// Curvature of the path toward `sides`, 1/m.
     var bends: [Float]
-    /// 0 to 1: how much of a hollow the syrup sits in.
     var pools: [Float]
     var drips: [DripPath]
     var top: Float
@@ -327,7 +325,6 @@ private func smoothstep(_ a: Float, _ b: Float, _ x: Float) -> Float {
 }
 
 private extension DrizzleLayer {
-    /// Height of the ribbon's cross-section across its width (x from -1 to 1): a flat-topped bead with rounded rims.
     nonisolated static func crownShape(_ x: Float) -> Float {
         let x2 = x * x
         return max(0, (1 - x2) * (1 + crown * x2))
@@ -344,7 +341,6 @@ private extension DrizzleLayer {
         var pace: Float
     }
 
-    /// Back-and-forth passes across a unit disc, advancing along +y, with the hand reversing past the rim.
     static func sweep(count: Int, span: Float, rng: inout ToppingRandom) -> [Pass] {
         let step = 2 * span / Float(count - 1)
         var passes: [Pass] = []
@@ -377,7 +373,6 @@ private extension DrizzleLayer {
         return passes.map { Pass(a: map($0.a), mid: map($0.mid), b: map($0.b), pace: $0.pace) }
     }
 
-    /// One zigzag sweep across the crown, then a shorter one back across it at an angle so the lines cross.
     static func makePath(radius: Float, rng: inout ToppingRandom) -> [PathSample] {
         let angle = Float.random(in: 0..<(2 * .pi), using: &rng)
         let countA = Int.random(in: 4...5, using: &rng)
@@ -561,7 +556,6 @@ private extension DrizzleLayer {
         }
     }
 
-    /// Eases a path point in so the passes reach the surface's edge in every direction without folding against it.
     static func fitted(_ q: SIMD2<Float>, _ limits: [Float]) -> SIMD2<Float> {
         let r = simd_length(q)
         guard r > 1e-5 else { return q }
@@ -952,7 +946,6 @@ private extension DrizzleLayer {
                                                  bounds: BoundingBox(min: lower, max: upper))])
     }
 
-    /// Writes the drizzle at `now` into `scratch`, keeping the settled start of the ribbon from the last fill.
     func fill(_ geometry: Projection, now: Double, drain: Float) {
         guard let scratch else { return }
         let clock = Float(min(now, removeStart ?? now) - pourStart)
