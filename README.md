@@ -13,7 +13,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
    - `SQUARE_ACCESS_TOKEN`, `SQUARE_LOCATION_ID`: a dev fallback only. The kiosk gets its access token and location from the [backend](#square-oauth-and-checkout) and keeps the last ones in the Keychain; the bundled pair is used only until it has reached the backend once.
    - `SQUARE_CATEGORY_NAME`: the catalog category holding the *1 Scoop*, *2nd Scoop*, *3rd+ Scoop* and *Waffle Cone* items (one fixed-price variation each). If it's missing or its prices don't match the kiosk's, orders fall back to ad-hoc line items and the debug bar shows the error.
    - `KIOSK_EVENT_NAME`, shown on the receipt screen.
-   - `BOOTH_URL` and `BOOTH_TOKEN` for the [backend](#backend). `BOOTH_URL` is a bare host (`techclub-icecream.adamxu.workers.dev`) because `//` starts a comment in an xcconfig. Leave them empty to run without the backend; the kiosk works the same either way (with the bundled Square token).
+   - `BOOTH_URL` and `BOOTH_TOKEN` for the [backend](#backend). `BOOTH_URL` is a bare host (`kiosk.jamboree.techclub.pw`) because `//` starts a comment in an xcconfig. Leave them empty to run without the backend; the kiosk works the same either way (with the bundled Square token).
    - Staff iPad only: `KIOSK_ROLE = staff` skips role setup and opens the staff screen; `BOOTH_STAFF_TOKEN` is the staff token it connects with (a staff session from a PIN sign-in, kept in the Keychain, also works).
 3. `xcodegen generate` (the project is generated from `project.yml`; rerun after adding source files), open `Kiosk.xcodeproj`, pick the iPad, Run.
 
@@ -86,8 +86,8 @@ xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk -destination 'platform=iO
 `StaffUITests` drives the staff screen against a live booth and skips unless it's given one. It acknowledges an alert, round-trips a sold-out toggle, signs in with the PIN after a refused token, and (with a reverse proxy it can take down) makes a change offline, relaunches and checks the change reached the hub. It changes that booth's state, so point it at staging:
 
 ```sh
-mitmdump --mode reverse:https://techclub-icecream-staging.adamxu.workers.dev --listen-port 8787   # optional, for the offline test
-TEST_RUNNER_STAFF_BOOTH_URL=techclub-icecream-staging.adamxu.workers.dev TEST_RUNNER_STAFF_TOKEN=$STAGING_STAFF_TOKEN \
+mitmdump --mode reverse:https://kiosk-staging.jamboree.techclub.pw --listen-port 8787   # optional, for the offline test
+TEST_RUNNER_STAFF_BOOTH_URL=kiosk-staging.jamboree.techclub.pw TEST_RUNNER_STAFF_TOKEN=$STAGING_STAFF_TOKEN \
 TEST_RUNNER_STAFF_PIN=$STAGING_STAFF_TOKEN TEST_RUNNER_STAFF_PROXY_URL=http://127.0.0.1:8787 \
 TEST_RUNNER_STAFF_PROXY_DOWN_FLAG=/tmp/staff-proxy/down \
 xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' \
@@ -134,8 +134,8 @@ Each feature lives in its own module and exports its routes; `src/index.ts` only
 | `dashboard.ts`, `session.ts` | `/dashboard` (live organizer view, `dashboard-page.ts` holds the HTML and script), PIN sign-in, staff sessions (`/v1/staff/session`) |
 | `http.ts` | Errors, auth (bearer and cookie), body parsing, retries |
 
-- Production: `https://techclub-icecream.adamxu.workers.dev/v1/` (account *Adam*; health check at `/v1/health`).
-- Staging, for chaos tests: `https://techclub-icecream-staging.adamxu.workers.dev/v1/`, with its own D1 database, hub and tokens.
+- Production: `https://kiosk.jamboree.techclub.pw/v1/` (account *Pinewood Tech Club*; health check at `/v1/health`).
+- Staging, for chaos tests: `https://kiosk-staging.jamboree.techclub.pw/v1/`, with its own D1 database, hub and tokens.
 
 ```
  kiosk iPad ──Bearer BOOTH_TOKEN──┐                       ┌── D1: logs (30 days), orders, checkouts, Square tokens
@@ -166,9 +166,9 @@ Vars in `wrangler.jsonc`: `SQUARE_ENVIRONMENT` (`production` or `sandbox`; produ
 
 One-time connection (per environment):
 
-1. In the Developer Console, open the application, pick *Production* (or *Sandbox* for staging), *OAuth*, and set the redirect URL to `https://techclub-icecream.adamxu.workers.dev/v1/square/oauth/callback` (staging: `https://techclub-icecream-staging.adamxu.workers.dev/v1/square/oauth/callback`).
+1. In the Developer Console, open the application, pick *Production* (or *Sandbox* for staging), *OAuth*, and set the redirect URL to `https://kiosk.jamboree.techclub.pw/v1/square/oauth/callback` (staging: `https://kiosk-staging.jamboree.techclub.pw/v1/square/oauth/callback`).
 2. `pnpm wrangler secret put SQUARE_APPLICATION_ID` and `pnpm wrangler secret put SQUARE_APPLICATION_SECRET` (add `--env staging` for staging).
-3. `set -a; . ~/.config/techclub-icecream/secrets.env; set +a; pnpm square` opens Square's authorize page; sign in as the seller and allow. `pnpm square status`, `pnpm square refresh` and `pnpm square revoke` manage it afterwards (staging: prefix `BOOTH_URL=https://techclub-icecream-staging.adamxu.workers.dev STAFF_TOKEN=$STAGING_STAFF_TOKEN`).
+3. `set -a; . ~/.config/techclub-icecream/secrets.env; set +a; pnpm square` opens Square's authorize page; sign in as the seller and allow. `pnpm square status`, `pnpm square refresh` and `pnpm square revoke` manage it afterwards (staging: prefix `BOOTH_URL=https://kiosk-staging.jamboree.techclub.pw STAFF_TOKEN=$STAGING_STAFF_TOKEN`).
 
 Staging currently runs on the sandbox personal access token as `SQUARE_ACCESS_TOKEN` (source `static`), so checkout works there without the OAuth step.
 

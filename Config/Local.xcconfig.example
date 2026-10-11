@@ -19,7 +19,7 @@ SQUARE_CATEGORY_NAME = TC
 KIOSK_EVENT_NAME = Tech Club Ice Cream
 
 // Staff dashboard backend. BOOTH_URL is a bare host because `//` starts a comment in an xcconfig file.
-BOOTH_URL = your-worker.example.workers.dev
+BOOTH_URL = kiosk.jamboree.techclub.pw
 BOOTH_TOKEN = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 // Optional. A staff iPad: KIOSK_ROLE = staff skips role setup and opens the staff screen, which connects with

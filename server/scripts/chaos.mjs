@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 import { startProxy } from "./chaos-proxy.mjs";
 
-const UPSTREAM = process.env.CHAOS_UPSTREAM ?? "https://techclub-icecream-staging.adamxu.workers.dev";
+const UPSTREAM = process.env.CHAOS_UPSTREAM ?? "https://kiosk-staging.jamboree.techclub.pw";
 const KIOSK_TOKEN = process.env.STAGING_BOOTH_TOKEN;
 const STAFF_TOKEN = process.env.STAGING_STAFF_TOKEN;
 const QUICK = process.argv.includes("--quick");

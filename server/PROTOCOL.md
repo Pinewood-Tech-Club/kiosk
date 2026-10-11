@@ -7,7 +7,7 @@ The booth backend is an HTTP API plus one websocket hub. Two kinds of client use
 
 It also owns the Square connection: the OAuth flow, token storage and refresh, and Square order creation for the kiosk.
 
-Base URL: `https://techclub-icecream.adamxu.workers.dev`. Every API path is under `/v1/`. A breaking change gets a new prefix (`/v2/`) and both are served until every client has moved. Three browser-facing paths live outside `/v1/`: `/r/<token>` (receipts), `/dashboard` (staff dashboard) and the OAuth callback page.
+Base URL: `https://kiosk.jamboree.techclub.pw`. Every API path is under `/v1/`. A breaking change gets a new prefix (`/v2/`) and both are served until every client has moved. Three browser-facing paths live outside `/v1/`: `/r/<token>` (receipts), `/dashboard` (staff dashboard) and the OAuth callback page.
 
 Everything below marked *(added)* was added to protocol 1 without breaking older clients: new fields are optional for senders and ignorable for readers, and clients ignore unknown `Change` kinds (they still advance `rev`).
 

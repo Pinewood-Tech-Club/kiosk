@@ -1,13 +1,13 @@
 // Live end-to-end check of a deployed booth.
 //   set -a; . ~/.config/techclub-icecream/secrets.env; set +a
 //   node scripts/smoke.mjs [--offline]                                   # production
-//   BOOTH_URL=https://techclub-icecream-staging.adamxu.workers.dev BOOTH_TOKEN=$STAGING_BOOTH_TOKEN \
+//   BOOTH_URL=https://kiosk-staging.jamboree.techclub.pw BOOTH_TOKEN=$STAGING_BOOTH_TOKEN \
 //     STAFF_TOKEN=$STAGING_STAFF_TOKEN node scripts/smoke.mjs --checkout # staging
 // --checkout creates a real (unpaid) Square order through /v1/checkout; leave it off for production.
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 
-const base = (process.env.BOOTH_URL ?? "https://techclub-icecream.adamxu.workers.dev").replace(/\/$/, "");
+const base = (process.env.BOOTH_URL ?? "https://kiosk.jamboree.techclub.pw").replace(/\/$/, "");
 const kioskToken = process.env.BOOTH_TOKEN;
 const staffToken = process.env.STAFF_TOKEN;
 const waitForOffline = process.argv.includes("--offline");
