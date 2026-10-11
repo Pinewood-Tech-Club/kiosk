@@ -1,22 +1,16 @@
-import { cookie, escapeHtml, html, HttpError, type Route } from "./http";
+import { dashboardBody, dashboardScript, loginBody, shell } from "./dashboard-page";
+import { cookie, html, HttpError, randomToken, type Route } from "./http";
 import { checkStaffSecret, clearedSessionCookie, createStaffSession, readStaffSession, sessionCookie, STAFF_COOKIE } from "./session";
 
-function page(title: string, body: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex"><title>${escapeHtml(title)}</title>
-<style>body{font:17px/1.5 system-ui,sans-serif;background:#000;color:#f5f5f5;margin:0;padding:3rem}input,button{font:inherit;padding:.5rem .8rem}</style>
-</head><body><main><h1>${escapeHtml(title)}</h1>${body}</main></body></html>`;
+function csp(nonce: string): Record<string, string> {
+  return {
+    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+  };
 }
 
 function loginPage(message: string | null, status = 200): Response {
-  const error = message ? `<p role="alert">${escapeHtml(message)}</p>` : "";
-  return html(
-    page(
-      "Booth dashboard",
-      `${error}<form method="post" action="/dashboard/login"><label>Staff PIN <input name="pin" type="password" autocomplete="current-password" required autofocus></label> <button>Sign in</button></form>`,
-    ),
-    status,
-  );
+  const nonce = randomToken(12);
+  return html(shell("Booth dashboard", loginBody(message), nonce), status, csp(nonce));
 }
 
 export async function staffSessionFromCookie(request: Request, env: Env) {
@@ -34,9 +28,8 @@ export const routes: Route[] = [
     path: "/dashboard",
     async handle({ request, env }) {
       if (!(await staffSessionFromCookie(request, env))) return loginPage(null);
-      return html(
-        page("Booth dashboard", `<p>Coming soon.</p><form method="post" action="/dashboard/logout"><button>Sign out</button></form>`),
-      );
+      const nonce = randomToken(12);
+      return html(shell("Booth dashboard", dashboardBody(), nonce, dashboardScript()), 200, csp(nonce));
     },
   },
   {

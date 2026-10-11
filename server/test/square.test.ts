@@ -438,7 +438,7 @@ describe("receipts, dashboard and staff sessions", () => {
     const setCookie = ok.headers.get("Set-Cookie")!;
     expect(setCookie).toMatch(/HttpOnly; Secure; SameSite=Strict/);
     const cookie = setCookie.split(";")[0];
-    expect((await call("/dashboard", { headers: { Cookie: cookie } })).body).toContain("Coming soon");
+    expect((await call("/dashboard", { headers: { Cookie: cookie } })).body).toContain('id="orders"');
     expect((await call("/v1/stats", { headers: { Cookie: cookie } })).status).toBe(200);
     expect((await call("/v1/square/refresh", { method: "POST", headers: { Cookie: cookie } })).status).toBe(403);
     expect((await call("/v1/events", { method: "POST", headers: { Cookie: cookie, Origin: BASE }, body: "{}" })).status).toBe(403);

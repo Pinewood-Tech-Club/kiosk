@@ -1,6 +1,7 @@
 import { authenticate, json, withRetry, type Route } from "./http";
 
 const HOUR_MS = 60 * 60_000;
+const RECENT_MS = 15 * 60_000;
 
 export interface StatsSummary {
   since: number;
@@ -21,6 +22,7 @@ export interface StatsSummary {
   toppingCounts: Record<string, number>;
   statuses: Record<string, number>;
   byHour: { hour: number; orders: number; totalCents: number }[];
+  last15Min: { orders: number; totalCents: number };
 }
 
 interface Row {
@@ -42,7 +44,7 @@ export async function summarize(env: Env, since: number, until: number, now = Da
   );
   const summary: StatsSummary = {
     since, until, generatedAt: now, orders: 0, simulatedOrders: 0, totalCents: 0, subtotalCents: 0, taxCents: 0, averageCents: 0,
-    items: 0, scoops: 0, cups: 0, cones: 0, toppings: 0, flavors: {}, toppingCounts: {}, statuses: {}, byHour: [],
+    items: 0, scoops: 0, cups: 0, cones: 0, toppings: 0, flavors: {}, toppingCounts: {}, statuses: {}, byHour: [], last15Min: { orders: 0, totalCents: 0 },
   };
   const hours = new Map<number, { orders: number; totalCents: number }>();
   for (const row of results) {
@@ -72,6 +74,10 @@ export async function summarize(env: Env, since: number, until: number, now = Da
         summary.toppings++;
         summary.toppingCounts[topping] = (summary.toppingCounts[topping] ?? 0) + 1;
       }
+    }
+    if (row.paid_at >= now - RECENT_MS && row.paid_at <= now) {
+      summary.last15Min.orders++;
+      summary.last15Min.totalCents += row.total_cents;
     }
     const hour = Math.floor(row.paid_at / HOUR_MS) * HOUR_MS;
     const bucket = hours.get(hour) ?? { orders: 0, totalCents: 0 };
