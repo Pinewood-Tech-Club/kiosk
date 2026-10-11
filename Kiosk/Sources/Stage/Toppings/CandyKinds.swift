@@ -92,16 +92,16 @@ struct GummyBears: ScatterKind {
         let standing = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
         let half = bear.halfExtents
         let layout: [(simd_quatf, SIMD3<Float>)] = [
-            (simd_quatf(angle: 0.18, axis: [0, 1, 0]) * simd_quatf(angle: -0.32, axis: [0, 0, 1])
+            (simd_quatf(angle: 0.15, axis: [0, 1, 0]) * simd_quatf(angle: -0.08, axis: [0, 0, 1])
                 * simd_quatf(angle: -0.3, axis: [1, 0, 0]) * standing,
-             [-0.0045, 0, -0.004]),
-            (simd_quatf(angle: -0.25, axis: [0, 1, 0]) * simd_quatf(angle: 0.3, axis: [0, 0, 1])
-                * simd_quatf(angle: -0.34, axis: [1, 0, 0]) * standing,
-             [0.0058, 0, -0.0055]),
+             [-0.0042, 0, -0.004]),
+            (simd_quatf(angle: -0.22, axis: [0, 1, 0]) * simd_quatf(angle: 0.1, axis: [0, 0, 1])
+                * simd_quatf(angle: -0.22, axis: [1, 0, 0]) * standing,
+             [0.0066, 0, -0.001]),
             (simd_quatf(angle: 0.55, axis: [0, 1, 0]) * simd_quatf(angle: 0.12, axis: [1, 0, 0]),
-             [-0.0062, 0, 0.009]),
+             [-0.006, 0, 0.0105]),
             (simd_quatf(angle: -0.7, axis: [0, 1, 0]) * simd_quatf(angle: -0.16, axis: [0, 0, 1]),
-             [0.0072, half.y * 0.5, 0.0075]),
+             [0.0075, half.y * 0.3, 0.0105]),
         ]
         return IconPile.compose(layout.enumerated().map { index, entry in
             (bear.mesh, materials[colors[index]], entry.0, entry.1)
@@ -162,11 +162,11 @@ struct CandyLentils: ScatterKind {
         let colors = Array(materials.indices.shuffled(using: &rng).prefix(4))
         let r = pieces[0].halfExtents.x
         let layout: [(simd_quatf, SIMD3<Float>)] = [
-            (simd_quatf(angle: 0.1, axis: [0, 0, 1]), [-r * 1.02, 0, r * 0.35]),
-            (simd_quatf(angle: -0.08, axis: [1, 0, 0]), [r * 1.02, 0, r * 0.45]),
-            (simd_quatf(angle: 0.05, axis: [1, 0, 0]), [0, 0, -r * 1.25]),
-            (simd_quatf(angle: -0.5, axis: [1, 0, 0]) * simd_quatf(angle: 0.3, axis: [0, 0, 1]),
-             [r * 0.05, pieces[0].halfExtents.y * 1.55, -r * 0.1]),
+            (simd_quatf(angle: 0.06, axis: [0, 0, 1]), [-r * 1.03, 0, r * 0.6]),
+            (simd_quatf(angle: -0.05, axis: [1, 0, 0]), [r * 1.03, 0, r * 0.6]),
+            (simd_quatf(angle: 0.04, axis: [1, 0, 0]), [0, 0, -r * 1.18]),
+            (simd_quatf(angle: 0.45, axis: [1, 0, 0]) * simd_quatf(angle: 0.2, axis: [0, 0, 1]),
+             [0, pieces[0].halfExtents.y * 1.4, r * 0.1]),
         ]
         return IconPile.compose(layout.enumerated().map { index, entry in
             (pieces[index % pieces.count].mesh, materials[colors[index]], entry.0, entry.1)
