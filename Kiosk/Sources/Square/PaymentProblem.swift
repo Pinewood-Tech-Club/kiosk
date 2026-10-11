@@ -16,7 +16,7 @@ enum PaymentProblem: Equatable {
     var title: String {
         switch self {
         case .cardDidNotGoThrough: "Your payment didn't go through"
-        case .timedOut: "That took a little too long"
+        case .timedOut: "Your payment wasn't completed in time"
         case .offline: "We can't reach the internet"
         case .readerNotReady: "The card reader isn't ready"
         case .paymentsPaused: "Card payments are paused"
