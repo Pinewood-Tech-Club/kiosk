@@ -120,6 +120,8 @@ final class AssetLibrary {
         return stride(from: 0, to: points.count, by: step).map { points[$0] }
     }
 
+    func vesselSurface(_ vessel: Vessel) -> ContactSolver.VesselGeometry? { vesselGeometry[vessel] }
+
     func vesselTop(_ vessel: Vessel) -> Float {
         vesselBounds[vessel]?.max.y ?? (vessel == .cup ? 0.0463 : 0.136)
     }

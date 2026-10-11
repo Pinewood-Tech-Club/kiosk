@@ -112,6 +112,7 @@ final class Stage {
     /// Screen frames of the confirmation receipt's 3D cells, and the visible part of the receipt's list.
     var receiptFrames: [UUID: CGRect] = [:]
     var receiptClip: CGRect = .zero
+    var clipCheck: ClipCheck?
 
     func attach(to content: inout RealityViewCameraContent) {
         content.add(root)
@@ -169,6 +170,25 @@ final class Stage {
             .map { "\($0.key)=\(String(format: "%.1f", $0.value * 1000))" }.joined(separator: " "))
         log(framingReport())
         log(approachReport())
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "kioskClipCheck") || defaults.string(forKey: "kioskScript") != nil { startClipCheck() }
+    }
+
+    private func startClipCheck() {
+        guard let assets else { return }
+        let surfaces = Vessel.allCases.compactMap { vessel in assets.vesselSurface(vessel).map { (vessel, $0) } }
+        Task { [weak self] in
+            let profiles = await Task.detached(priority: .userInitiated) {
+                Dictionary(uniqueKeysWithValues: surfaces.map { ($0.0, VesselProfile($0.1)) })
+            }.value
+            guard let self, let assets = self.assets else { return }
+            let check = ClipCheck(profiles: profiles, meshes: (1...3).map { assets.scoopSet($0).data }, log: self.log)
+            for (vessel, profile) in profiles.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                log("Clip profile \(vessel.rawValue): \(profile.summary)")
+            }
+            log(check.baseline(placements: assets.placements) { [unowned self] vessel, key in finalPoseName(vessel, key: key) })
+            clipCheck = check
+        }
     }
 
     private func configureScene(root: Entity, camera: Entity, ibl: Entity) {
@@ -257,6 +277,7 @@ final class Stage {
         tweens.removeAll { $0.isFinished }
         updateIcons()
         updateTray(dt: Float(dt))
+        clipCheck?.run(self)
         flushMorphs()
 
         stats.record(frame: realDelta, cpu: CACurrentMediaTime() - started)

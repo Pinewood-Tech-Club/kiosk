@@ -129,3 +129,308 @@ extension Stage {
         return issues
     }
 }
+
+/// The vessel as a solid of revolution about its local Y axis, measured from its mesh: outer and inner wall
+/// radius per height, the rim's height per azimuth (the cone's rim is slanted) and the cup's floor slab.
+struct VesselProfile: Sendable {
+    static let binHeight: Float = 0.0005
+    static let sectorCount = 90
+
+    enum Region { case above, cavity, solid, outside }
+
+    let yMin: Float
+    let outer: [Float]
+    let inner: [Float]
+    let top: [Float]
+    let topMax: Float
+    let radiusMax: Float
+    let floorTop: Float
+    let floorBottom: Float
+
+    nonisolated init(_ geometry: ContactSolver.VesselGeometry) {
+        var samples: [(p: SIMD3<Float>, n: SIMD3<Float>)] = []
+        var t = 0
+        let tris = geometry.triangles
+        while t + 2 < tris.count {
+            let a = tris[t], b = tris[t + 1], c = tris[t + 2]
+            t += 3
+            let cross = simd_cross(b - a, c - a)
+            let length = simd_length(cross)
+            guard length > 1e-12 else { continue }
+            let n = cross / length
+            for p in ContactSolver.densify(points: [a, b, c], triangles: [a, b, c], spacing: 0.0006) { samples.append((p, n)) }
+        }
+        if samples.isEmpty { samples = geometry.points.map { ($0, SIMD3<Float>(0, 1, 0)) } }
+        let yMin = samples.map(\.p.y).min() ?? 0
+        let yMax = samples.map(\.p.y).max() ?? 0.05
+        let bins = Int(((yMax - yMin) / Self.binHeight).rounded(.up)) + 1
+        func bin(_ y: Float) -> Int { min(max(Int((y - yMin) / Self.binHeight), 0), bins - 1) }
+        func radius(_ p: SIMD3<Float>) -> Float { simd_length(SIMD2(p.x, p.z)) }
+
+        var outer = [Float](repeating: -1, count: bins)
+        var radiusMax: Float = 0
+        for s in samples {
+            let r = radius(s.p)
+            outer[bin(s.p.y)] = max(outer[bin(s.p.y)], r)
+            radiusMax = max(radiusMax, r)
+        }
+        // Wall faces pointing at the axis are the inner surface; the winding is checked by which group lies further in.
+        var towardSum: Float = 0, towardCount: Float = 0, awaySum: Float = 0, awayCount: Float = 0
+        for s in samples {
+            let r = radius(s.p)
+            guard r > 1e-4 else { continue }
+            let facing = (s.n.x * s.p.x + s.n.z * s.p.z) / r
+            if facing < -0.3 { towardSum += r; towardCount += 1 }
+            if facing > 0.3 { awaySum += r; awayCount += 1 }
+        }
+        let flipped = towardCount > 0 && awayCount > 0 && towardSum / towardCount > awaySum / awayCount
+        var inner = [Float](repeating: .infinity, count: bins)
+        var floorTop = -Float.infinity, floorBottom = -Float.infinity
+        var top = [Float](repeating: -.infinity, count: Self.sectorCount)
+        for s in samples {
+            let r = radius(s.p)
+            let n = flipped ? -s.n : s.n
+            if r > 1e-4, (n.x * s.p.x + n.z * s.p.z) / r < -0.3 { inner[bin(s.p.y)] = min(inner[bin(s.p.y)], r) }
+            if r < 0.3 * radiusMax, s.p.y < (yMin + yMax) / 2 {
+                if n.y > 0.7 { floorTop = max(floorTop, s.p.y) }
+                if n.y < -0.7 { floorBottom = max(floorBottom, s.p.y) }
+            }
+            if r > 0.3 * radiusMax {
+                let sector = Self.sector(s.p.x, s.p.z)
+                top[sector] = max(top[sector], s.p.y)
+            }
+        }
+        func fill(_ values: inout [Float], missing: (Float) -> Bool) {
+            guard let first = values.firstIndex(where: { !missing($0) }) else { return }
+            var last = first
+            for i in 0..<values.count {
+                if missing(values[i]) { values[i] = values[last] } else { last = i }
+            }
+            for i in 0..<first { values[i] = values[first] }
+        }
+        fill(&outer) { $0 < 0 }
+        for i in 0..<bins where !inner[i].isFinite || inner[i] > outer[i] { inner[i] = outer[i] }
+        fill(&top) { !$0.isFinite }
+        self.yMin = yMin
+        self.outer = outer
+        self.inner = inner
+        self.top = top
+        self.topMax = top.max() ?? yMax
+        self.radiusMax = radiusMax
+        if floorTop.isFinite, floorBottom.isFinite, floorBottom < floorTop {
+            self.floorTop = floorTop
+            self.floorBottom = floorBottom
+        } else {
+            self.floorTop = yMin
+            self.floorBottom = yMin
+        }
+    }
+
+    nonisolated static func sector(_ x: Float, _ z: Float) -> Int {
+        let angle = atan2(z, x) + .pi
+        return min(Int(angle / (2 * .pi) * Float(sectorCount)), sectorCount - 1)
+    }
+
+    nonisolated func rim(_ x: Float, _ z: Float) -> Float { top[Self.sector(x, z)] }
+
+    /// Region of a point in the vessel's frame and how far it is from the nearest boundary of that region
+    /// (in the r–y plane), so a point just across a wall counts for little.
+    nonisolated func classify(_ p: SIMD3<Float>) -> (Region, Float) {
+        let rim = self.rim(p.x, p.z)
+        if p.y >= rim { return (.above, p.y - rim) }
+        if p.y < yMin { return (.outside, yMin - p.y) }
+        let b = min(max(Int((p.y - yMin) / Self.binHeight), 0), outer.count - 1)
+        let r = simd_length(SIMD2(p.x, p.z))
+        let ro = outer[b], ri = inner[b]
+        if r > ro { return (.outside, min(r - ro, rim - p.y)) }
+        if p.y < floorBottom {
+            return r < ri ? (.outside, min(floorBottom - p.y, ri - r)) : (.solid, min(r - ri, ro - r))
+        }
+        if p.y <= floorTop {
+            return (.solid, r < ri ? min(floorTop - p.y, p.y - floorBottom) : min(ro - r, max(floorTop - p.y, r - ri)))
+        }
+        if r < ri { return (.cavity, min(ri - r, rim - p.y, p.y - floorTop)) }
+        return (.solid, min(r - ri, ro - r, rim - p.y))
+    }
+
+    var summary: String {
+        let rimLow = top.min() ?? 0
+        let mid = outer.count / 2
+        return String(format: "rim %.1f-%.1f mm, outer r max %.1f, mid-height r %.1f/%.1f (in/out), floor %.1f-%.1f",
+                      rimLow * 1000, topMax * 1000, radiusMax * 1000, inner[mid] * 1000, outer[mid] * 1000,
+                      floorBottom * 1000, floorTop * 1000)
+    }
+}
+
+/// Per-frame check that no scoop's mesh crosses a vessel's wall: every frame, each scoop's current (morphed)
+/// shape is sampled and tested against every vessel in the scene. A solid scoop that has parts both inside the
+/// cavity and outside the wall below the rim must contain a piece of the wall, which is a visible intersection.
+@MainActor
+final class ClipCheck {
+    static let vertexStride = 16
+    static let tolerance: Float = 0.0005
+
+    struct Measure {
+        var cavity: Float = 0
+        var outside: Float = 0
+        var solid: Float = 0
+        var belowRim: Float = 0
+        var severity: Float { max(min(cavity, outside), solid) }
+    }
+
+    private struct Episode {
+        let label: String
+        var frames = 0
+        var worst = Measure()
+        var phases: [String] = []
+        let started: Double
+    }
+
+    let profiles: [Vessel: VesselProfile]
+    private let shapes: [[[SIMD3<Float>]]]
+    private let meshes: [ScoopMeshData]
+    private var morphFrom: [ObjectIdentifier: [SIMD3<Float>]] = [:]
+    private var open: [String: Episode] = [:]
+    private var unreported: [String] = []
+    private(set) var frames = 0
+    private(set) var pairs = 0
+    private(set) var episodes = 0
+    private var worst: Float = 0
+    private var closestGraze: Float = 0
+    let log: (String) -> Void
+
+    init(profiles: [Vessel: VesselProfile], meshes: [ScoopMeshData], log: @escaping (String) -> Void) {
+        self.profiles = profiles
+        self.meshes = meshes
+        self.log = log
+        shapes = meshes.map { mesh in mesh.poseNames.map { mesh.positions($0, stride: Self.vertexStride) } }
+    }
+
+    func shape(slot: Int, pose: String) -> [SIMD3<Float>] {
+        shapes[slot - 1][meshes[slot - 1].poseIndex(pose)]
+    }
+
+    private func currentShape(_ actor: ScoopActor) -> [SIMD3<Float>] {
+        let target = shape(slot: actor.slot, pose: actor.morpher != nil ? actor.morphTo : actor.staticPose)
+        guard actor.morpher != nil, let from = morphFrom[ObjectIdentifier(actor)], from.count == target.count else { return target }
+        let w = actor.morphWeight
+        return zip(from, target).map { $0 + ($1 - $0) * w }
+    }
+
+    func willBeginMorph(_ actor: ScoopActor) {
+        morphFrom[ObjectIdentifier(actor)] = currentShape(actor)
+    }
+
+    func forget(_ actor: ScoopActor) {
+        morphFrom[ObjectIdentifier(actor)] = nil
+    }
+
+    nonisolated static func measure(_ points: [SIMD3<Float>], _ m: simd_float4x4, _ profile: VesselProfile) -> Measure {
+        var result = Measure()
+        for v in points {
+            let w = m * SIMD4<Float>(v, 1)
+            let p = SIMD3<Float>(w.x, w.y, w.z)
+            let (region, depth) = profile.classify(p)
+            switch region {
+            case .above: break
+            case .cavity: result.cavity = max(result.cavity, depth)
+            case .solid: result.solid = max(result.solid, depth)
+            case .outside:
+                if depth > result.outside { result.outside = depth }
+                result.belowRim = max(result.belowRim, profile.rim(p.x, p.z) - p.y)
+            }
+        }
+        return result
+    }
+
+    /// How each placed pose sits against its vessel, for calibrating the check against the assets.
+    func baseline(placements: Placements, poseName: (Vessel, String) -> String) -> String {
+        var parts: [String] = []
+        for vessel in Vessel.allCases {
+            guard let profile = profiles[vessel] else { continue }
+            for key in vessel == .cup ? ["solo", "1", "2", "3"] : ["1", "2", "3"] {
+                let slot = key == "solo" ? 1 : Int(key)!
+                let m = placements.placement(vessel, key: key).transform.matrix
+                let r = Self.measure(shape(slot: slot, pose: poseName(vessel, key)), m, profile)
+                parts.append(String(format: "%@:%@ %@ (in %.1f out %.1f solid %.1f)", vessel.rawValue, key,
+                                    r.severity > Self.tolerance ? "CLIPS" : "clear", r.cavity * 1000, r.outside * 1000, r.solid * 1000))
+            }
+        }
+        return "Clip baseline (placed poses): " + parts.joined(separator: ", ")
+    }
+
+    func run(_ stage: Stage) {
+        frames += 1
+        var rigs: [(vessel: Vessel, root: Entity, body: Entity, label: String)] = []
+        var labels: [ObjectIdentifier: String] = [:]
+        for (vessel, rig) in stage.heroes { labels[ObjectIdentifier(rig.root)] = vessel == stage.selectedVessel ? "hero" : "outgoing hero" }
+        for entry in stage.tray { if let rig = entry.rig { labels[ObjectIdentifier(rig.root)] = "tray \(Int(entry.index.rounded()))" } }
+        for rig in stage.vesselIcons.values { labels[ObjectIdentifier(rig.root)] = "card icon" }
+        for child in stage.root.children where child.name.hasPrefix("rig-") && child.isEnabled {
+            guard let vessel = Vessel(rawValue: String(child.name.dropFirst(4))),
+                  let rolled = child.children.first?.children.first, rolled.isEnabled,
+                  let body = rolled.children.first?.children.first else { continue }
+            rigs.append((vessel, child, body, labels[ObjectIdentifier(child)] ?? "leaving"))
+        }
+        var seen = Set<String>()
+        for actor in stage.liveScoops.values where actor.model.isEnabledInHierarchy && actor.root.parent != nil {
+            let scoopWorld = actor.model.transformMatrix(relativeTo: nil)
+            var shape: [SIMD3<Float>]?
+            for rig in rigs {
+                guard let profile = profiles[rig.vessel] else { continue }
+                let bodyWorld = rig.body.transformMatrix(relativeTo: nil)
+                guard simd_length(SIMD3(bodyWorld.columns.0.x, bodyWorld.columns.0.y, bodyWorld.columns.0.z)) > 1e-3 else { continue }
+                let m = simd_inverse(bodyWorld) * scoopWorld
+                let scale = simd_length(SIMD3(m.columns.0.x, m.columns.0.y, m.columns.0.z))
+                let c4 = m * SIMD4<Float>(0, 0.022, 0, 1)
+                let reach = 0.04 * scale
+                guard simd_length(SIMD2(c4.x, c4.z)) - reach < profile.radiusMax, c4.y - reach < profile.topMax,
+                      c4.y + reach > profile.yMin else { continue }
+                if shape == nil { shape = currentShape(actor) }
+                pairs += 1
+                let result = Self.measure(shape!, m, profile)
+                guard result.severity > Self.tolerance else {
+                    closestGraze = max(closestGraze, result.severity)
+                    continue
+                }
+                let key = "\(ObjectIdentifier(actor).hashValue)-\(ObjectIdentifier(rig.root).hashValue)"
+                seen.insert(key)
+                var episode = open[key] ?? Episode(
+                    label: "\(actor.flavor.rawValue) slot \(actor.slot) vs \(rig.vessel.rawValue) \(rig.label)\(actor.rig.map { ObjectIdentifier($0.root) == ObjectIdentifier(rig.root) } == true ? " (own)" : "")",
+                    started: stage.now)
+                episode.frames += 1
+                if result.severity > episode.worst.severity { episode.worst = result }
+                if episode.phases.last != actor.phase { episode.phases.append(actor.phase) }
+                open[key] = episode
+            }
+        }
+        for (key, episode) in open where !seen.contains(key) {
+            open[key] = nil
+            close(episode)
+        }
+    }
+
+    private func close(_ episode: Episode) {
+        episodes += 1
+        worst = max(worst, episode.worst.severity)
+        let line = String(format: "%@ during %@: %d frames, %.1f mm deep (inside %.1f, outside %.1f, in wall %.1f; reaches %.1f mm below the rim) at t=%.2f",
+                          episode.label, episode.phases.joined(separator: "→"), episode.frames, episode.worst.severity * 1000,
+                          episode.worst.cavity * 1000, episode.worst.outside * 1000, episode.worst.solid * 1000,
+                          episode.worst.belowRim * 1000, episode.started)
+        unreported.append(line)
+        log("Clip: " + line)
+    }
+
+    /// Violations finished since the last call (episodes still in progress are closed first).
+    func takeIssues() -> [String] {
+        for episode in open.values { close(episode) }
+        open.removeAll()
+        defer { unreported.removeAll() }
+        return unreported.map { "clip: " + $0 }
+    }
+
+    var summary: String {
+        String(format: "Clip check: %d frames, %d scoop-vessel tests, %d violations (worst %.1f mm), deepest sub-threshold contact %.2f mm",
+               frames, pairs, episodes, worst * 1000, closestGraze * 1000)
+    }
+}

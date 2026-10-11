@@ -154,6 +154,8 @@ struct ScriptRunner {
             app.setPressed(.vessel(.cup), false)
             app.setPressed(.vessel(.cone), false)
             await wait(1)
+        case "clip-tour":
+            await clipTour()
         case "remove-middle":
             await wait(0.6)
             app.removeScoop(.chocolate)
@@ -406,7 +408,80 @@ struct ScriptRunner {
         default:
             log("unknown script \(script)")
         }
+        if let check = app.stage.clipCheck {
+            for issue in check.takeIssues() { log(issue) }
+            log(check.summary)
+        }
         log("end \(script)")
+    }
+
+    /// Every way a scoop moves against a vessel: adds into each slot, transfers with 1-3 scoops both ways,
+    /// top, middle and bottom removals, in the cup and the cone. Pair with the clip check's log lines.
+    private func clipTour() async {
+        func swap(to vessel: Vessel) async {
+            app.jumpToStep(.vessel)
+            await wait(0.6)
+            await select(vessel)
+            await wait(1.6)
+            app.jumpToStep(.flavors)
+            await wait(0.7)
+        }
+        func step(_ name: String) {
+            log("clip-tour \(name): \(app.current.vessel.rawValue) \(app.current.flavors.map(\.rawValue).joined(separator: ","))")
+        }
+        while app.stage.clipCheck == nil { try? await Task.sleep(for: .seconds(0.2)) }
+        app.jumpToStep(.flavors)
+        await wait(0.8)
+        step("cup adds")
+        for flavor in [Flavor.vanilla, .chocolate, .cookies] {
+            await add(flavor)
+            await wait(1.8)
+        }
+        step("transfers with 3")
+        await swap(to: .cone)
+        await swap(to: .cup)
+        step("cup top, re-add, middle")
+        app.removeScoop(.cookies)
+        await wait(1.8)
+        await add(.cookies)
+        await wait(1.8)
+        app.removeScoop(.chocolate)
+        await wait(2.2)
+        step("transfer with 2")
+        await swap(to: .cone)
+        step("cone add, middle, top")
+        await add(.chocolate)
+        await wait(1.8)
+        app.removeScoop(.cookies)
+        await wait(2.2)
+        app.removeScoop(.chocolate)
+        await wait(1.8)
+        step("transfers with 1")
+        await swap(to: .cup)
+        await swap(to: .cone)
+        await swap(to: .cup)
+        step("cup bottom removals")
+        app.removeScoop(.vanilla)
+        await wait(1.8)
+        await add(.vanilla)
+        await wait(1.8)
+        await add(.chocolate)
+        await wait(1.8)
+        app.removeScoop(.vanilla)
+        await wait(2.2)
+        app.removeScoop(.chocolate)
+        await wait(1.8)
+        step("cone adds and bottom removal")
+        await swap(to: .cone)
+        for flavor in [Flavor.cookies, .vanilla, .chocolate] {
+            await add(flavor)
+            await wait(1.8)
+        }
+        app.removeScoop(.cookies)
+        await wait(2.2)
+        step("transfer with 2 back")
+        await swap(to: .cup)
+        await wait(1.0)
     }
 }
 
@@ -480,6 +555,7 @@ struct StressRunner {
 
     private func check(settled: Bool) -> [String] {
         var issues = settled ? [] : ["never settled (\(app.stage.activeAnimationCount) tweens, \(app.stage.morphingCount) morphing)"]
+        issues += app.stage.clipCheck?.takeIssues() ?? []
         issues += app.stage.consistencyIssues(current: app.mode == .summary ? nil : app.current, items: app.items,
                                               editingID: app.editingID, showsCards: app.mode == .customize)
         return issues

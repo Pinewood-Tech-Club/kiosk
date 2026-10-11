@@ -235,6 +235,7 @@ extension Stage {
             }
             if actor.root.parent !== root { detachToWorld(actor) }
             actor.state = .flying
+            actor.phase = "transfer"
             start = actor.root.transform
             rise = up * 0.016 * start.scale.x
             pose = finalPoseName(rig.vessel, key: liveKey(actor, on: rig))
@@ -330,6 +331,7 @@ extension Stage {
         let needsMorph = actor.staticPose != "ball" || actor.morpher != nil
         if needsMorph { beginMorph(actor, to: "ball") }
         actor.state = .leaving
+        actor.phase = "unpress"
         let distance = max(contact - startHeight, 0)
         let duration = max(0.1, 0.2 * Double(contact > 0 ? distance / contact : 1))
         actor.motion = animate(duration: duration, phase: .attachments) { [unowned self] p in
@@ -353,6 +355,7 @@ extension Stage {
         let vessel = rig.vessel
         let key = actor.placementKey
         let from = actor.pressHeight
+        actor.phase = "hover"
         actor.motion = animate(duration: duration, phase: .attachments) { [unowned self] p in
             let h = from + rise * Ease.outCubic(p)
             actor.pressHeight = h
@@ -388,6 +391,7 @@ extension Stage {
         actor.motion = animate(delay: delay, duration: duration, phase: .attachments, onStart: { [unowned self] in
             if actor.root.parent !== root { detachToWorld(actor) }
             actor.state = .flying
+            actor.phase = squish > 0 ? "approach" : "restack"
             start = actor.root.transform
             morphToBall = actor.staticPose != "ball" || actor.morpher != nil
             if morphToBall { beginMorph(actor, to: "ball") }
@@ -485,6 +489,7 @@ extension Stage {
             press(actor, onto: rig, squish: squish)
             return
         }
+        actor.phase = "wait"
         actor.motion = animate(duration: 1.0 / 60, phase: .attachments) { [unowned self] _ in
             let goal = approachTransform(actor, on: rig, squish: squish)
             actor.root.transform = Transform(scale: goal.scale, rotation: goal.rotation, translation: goal.translation)
@@ -517,6 +522,7 @@ extension Stage {
         actor.pressHeight = startHeight + stackLift(below: actor, on: rig)
         actor.root.transform = slotLocal(vessel, key: key, height: actor.pressHeight)
         actor.state = .pressing
+        actor.phase = "press"
         actor.motion = animate(duration: duration, phase: .attachments) { [unowned self] p in
             let c = Self.pressCurve(p)
             let own = startHeight * (1 - c)
@@ -549,6 +555,7 @@ extension Stage {
         actor.pressHeight = 0
         actor.root.transform = slotLocal(rig.vessel, key: key, height: 0)
         actor.state = .landed
+        actor.phase = "landed"
         actor.motion = nil
         relayoutFirstScoop(on: rig, delay: 0)
         if actor.isArriving {
@@ -585,6 +592,7 @@ extension Stage {
             if actor.root.parent !== root { detachToWorld(actor) }
             actor.rig = nil
             actor.state = .flying
+            actor.phase = "home"
             start = actor.root.transform
             toBall = actor.staticPose != "ball" || actor.morpher != nil
             if toBall { beginMorph(actor, to: "ball") }
@@ -652,6 +660,7 @@ extension Stage {
             key = placementKey(index: 0, count: rig.scoops.count, vessel: .cup)
             guard rig.scoops.first === first, first.isLanded, first.slot == 1, first.mount === rig, first.motion == nil else { return }
             active = true
+            first.phase = "relayout"
             from = first.root.transform
             beginMorph(first, to: finalPoseName(.cup, key: key))
         }) { [unowned self] p in
@@ -664,6 +673,7 @@ extension Stage {
         } completion: { [weak self] in
             first.relayout = nil
             guard let self, active else { return }
+            first.phase = "landed"
             if first.morpher != nil { endMorph(first) }
             first.placementKey = key
             relayoutFirstScoop(on: rig, delay: 0)
@@ -689,6 +699,7 @@ extension Stage {
     func discard(_ scoop: ScoopActor) {
         guard !scoop.isDiscarded else { return }
         scoop.isDiscarded = true
+        clipCheck?.forget(scoop)
         liveScoops[ObjectIdentifier(scoop)] = nil
         scoop.cancelMotions()
         if let morpher = scoop.morpher {
@@ -705,6 +716,7 @@ extension Stage {
 
     func beginMorph(_ scoop: ScoopActor, to pose: String) {
         guard let assets else { return }
+        clipCheck?.willBeginMorph(scoop)
         let set = assets.scoopSet(scoop.slot)
         if let morpher = scoop.morpher, let from = scoop.morphFrom {
             assets.engine.blendPoses(into: morpher.scratch, from: from, to: set.pose(scoop.morphTo),

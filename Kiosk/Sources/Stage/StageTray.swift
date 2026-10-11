@@ -542,6 +542,7 @@ extension Stage {
             actor.mount = rig
             actor.placementKey = key
             actor.state = .landed
+            actor.phase = "landed"
             actor.root.transform = slotLocal(item.vessel, key: key, height: 0)
             rig.scoops.append(actor)
             rig.body.addChild(actor.root)

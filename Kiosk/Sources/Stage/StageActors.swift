@@ -149,6 +149,8 @@ final class ScoopActor {
     var placementKey = "1"
     var state: State = .flying
     var pressHeight: Float = 0
+    /// Name of the motion it's in, for the clip check's reports.
+    var phase = ""
 
     init(flavor: Flavor, slot: Int, model: ModelEntity, pose: String) {
         self.flavor = flavor
