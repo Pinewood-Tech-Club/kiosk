@@ -89,7 +89,7 @@ struct GummyBears: ScatterKind {
         case raspberry, orange, lemon, strawberry, pineapple
     }
 
-    /// The shell plus a smaller core inside it: material 0 is the core (drawn first), 1 the shell.
+    /// The shell plus a slightly smaller core inside it: material 0 is the opaque core, 1 the translucent shell.
     let bear: CandyMeshes.Built
     /// Per flavor: [core, shell].
     let materials: [[PhysicallyBasedMaterial]]
@@ -140,74 +140,82 @@ struct GummyBears: ScatterKind {
 
     /// The shell keeps the asset's UVs, which carry shading data (see gummy_bear.py): u = how face-on the surface is,
     /// v = jelly thickness behind it, roughened here with blotchy noise so the color mottles like the bubbles and starch
-    /// specks in a real bear. The core keeps u and swaps v for the noise alone.
+    /// specks in a real bear. The core is the shell pushed inward by a share of the local thickness, so a band of bare
+    /// shell lines every silhouette from any angle; it keeps u and swaps v for the noise alone.
     private static func withCore(_ mesh: MeshResource) throws -> MeshResource {
         guard let model = mesh.contents.models.first(where: { _ in true }) else { return mesh }
-        func parts(_ suffix: String, material: Int, uv: (MeshResource.Part, [SIMD2<Float>]) -> [SIMD2<Float>]) -> [MeshResource.Part] {
+        let ys = model.parts.flatMap { $0.positions.elements.map(\.y) }
+        let depth = (ys.max() ?? 0) - (ys.min() ?? 0)
+        func shading(_ part: MeshResource.Part) -> [SIMD2<Float>] {
+            if let file = part.textureCoordinates?.elements, file.count == part.positions.count { return file }
+            return (part.normals?.elements ?? part.positions.elements.map { simd_normalize($0) }).map { [abs($0.y), 0.4] }
+        }
+        func parts(_ suffix: String, material: Int, inset: Bool,
+                   uv: (SIMD3<Float>, SIMD2<Float>) -> SIMD2<Float>) -> [MeshResource.Part] {
             model.parts.map { part in
                 var copy = part
                 copy.id = part.id + suffix
                 copy.materialIndex = material
-                let shading: [SIMD2<Float>]
-                if let file = part.textureCoordinates?.elements, file.count == part.positions.count {
-                    shading = file
-                } else {
-                    shading = (part.normals?.elements ?? part.positions.elements.map { simd_normalize($0) }).map { [abs($0.y), 0.4] }
+                let shade = shading(part)
+                if inset, let normals = part.normals?.elements, normals.count == part.positions.count {
+                    copy.positions = MeshBuffers.Positions(zip(zip(part.positions.elements, normals), shade).map { pn, uv in
+                        pn.0 - pn.1 * min(0.1 * uv.y * 2 * depth + 0.0001, 0.0004, 0.4 * uv.y * 2 * depth)
+                    })
                 }
                 // Lookups stay between the outer texel centers: the default sampler wraps, so u = 1 would blend in u = 0.
-                let inset = Float(JellyShade.size - 1) / Float(JellyShade.size)
-                let texels = uv(part, shading).map { $0 * inset + 0.5 / Float(JellyShade.size) }
-                copy.textureCoordinates = MeshBuffers.TextureCoordinates(texels)
+                let scale = Float(JellyShade.size - 1) / Float(JellyShade.size)
+                copy.textureCoordinates = MeshBuffers.TextureCoordinates(zip(part.positions.elements, shade).map {
+                    uv($0, $1) * scale + 0.5 / Float(JellyShade.size)
+                })
                 copy.tangents = nil
                 copy.bitangents = nil
                 return copy
             }
         }
-        let core = parts("-core", material: 0) { part, shading in
-            zip(part.positions.elements, shading).map { p, uv in [uv.x, JellyNoise.blotches(p)] }
-        }
-        let shell = parts("-shell", material: 1) { part, shading in
-            zip(part.positions.elements, shading).map { p, uv in [uv.x, min(max(uv.y + (JellyNoise.blotches(p * 1.8) - 0.5) * 0.22, 0), 1)] }
+        let hasNormals = model.parts.allSatisfy { $0.normals?.count == $0.positions.count }
+        let core = parts("-core", material: 0, inset: hasNormals) { p, uv in [uv.x, JellyNoise.blotches(p)] }
+        let shell = parts("-shell", material: 1, inset: false) { p, uv in
+            [uv.x, min(max(uv.y + (JellyNoise.blotches(p * 1.8) - 0.5) * 0.22, 0), 1)]
         }
         var contents = MeshResource.Contents()
         contents.models = [MeshResource.Model(id: "core", parts: core), MeshResource.Model(id: "shell", parts: shell)]
         contents.instances = [MeshResource.Instance(id: "core", model: "core",
-                                                    at: simd_float4x4(diagonal: [0.84, 0.62, 0.88, 1])),
+                                                    at: hasNormals ? matrix_identity_float4x4 : simd_float4x4(diagonal: [0.84, 0.62, 0.88, 1])),
                               MeshResource.Instance(id: "shell", model: "shell")]
         return try MeshResource.generate(from: contents)
     }
 
     struct Recipe {
         let color: SIMD3<Float>
-        /// Thick parts and side walls.
+        /// Thick parts.
         let deep: SIMD3<Float>
-        /// How much paler the thin, face-on middle is than the base color, toward white.
+        /// How much paler the thin parts are than the base color, toward white.
         let pale: Float
-        /// Shell opacity where it is face-on and thin; side walls and thick parts are opaque.
+        /// Shell opacity where the jelly is thin, and where it is thick.
         let shell: Float
-        let core: Float
+        let shellThick: Float
         let glow: Float
     }
 
     private static func recipe(_ flavor: Flavor) -> Recipe {
         switch flavor {
-        case .raspberry: Recipe(color: [0.94, 0.07, 0.04], deep: [0.6, 0.0, 0.02], pale: 0.05, shell: 0.9, core: 0.95, glow: 2.0)
-        case .orange: Recipe(color: [1.0, 0.56, 0.03], deep: [0.85, 0.3, 0.0], pale: 0.06, shell: 0.9, core: 0.95, glow: 1.9)
-        case .lemon: Recipe(color: [1.0, 0.86, 0.06], deep: [0.95, 0.68, 0.0], pale: 0.06, shell: 0.9, core: 0.95, glow: 1.8)
-        case .strawberry: Recipe(color: [0.2, 0.56, 0.03], deep: [0.05, 0.3, 0.0], pale: 0.08, shell: 0.9, core: 0.95, glow: 2.1)
-        case .pineapple: Recipe(color: [0.96, 0.84, 0.56], deep: [0.84, 0.68, 0.4], pale: 0.0, shell: 0.8, core: 0.8, glow: 1.0)
+        case .raspberry: Recipe(color: [0.94, 0.07, 0.04], deep: [0.62, 0.0, 0.02], pale: 0.06, shell: 0.5, shellThick: 0.74, glow: 2.0)
+        case .orange: Recipe(color: [1.0, 0.56, 0.03], deep: [0.88, 0.32, 0.0], pale: 0.08, shell: 0.5, shellThick: 0.74, glow: 1.9)
+        case .lemon: Recipe(color: [1.0, 0.86, 0.06], deep: [0.96, 0.7, 0.0], pale: 0.08, shell: 0.48, shellThick: 0.72, glow: 1.8)
+        case .strawberry: Recipe(color: [0.2, 0.56, 0.03], deep: [0.06, 0.32, 0.0], pale: 0.1, shell: 0.5, shellThick: 0.74, glow: 2.1)
+        case .pineapple: Recipe(color: [1.0, 0.94, 0.74], deep: [0.92, 0.8, 0.52], pale: 0.04, shell: 0.44, shellThick: 0.66, glow: 1.35)
         }
     }
 
     /// RealityKit has no transmission or subsurface scattering, and alpha blending over a light background
     /// washes a tinted shell out to pastel where real jelly filters light and stays saturated. So a bright,
-    /// self-lit, mottled core sits inside a glossy shell whose glow and opacity follow the jelly's thickness:
-    /// pale and see-through to the core where it is face-on and thin, deep and opaque at the side walls and
-    /// thick parts, the way a real bear darkens toward its edges.
+    /// self-lit, mottled core sits just inside a translucent shell: along every silhouette only the shell is
+    /// crossed and the scoop shows through it, while the core glows through the middle. The core is opaque so
+    /// overlapping bears and other candy never sort wrongly against it; only the thin shells blend.
     private static func jelly(_ recipe: Recipe, shade: JellyShade?) -> [PhysicallyBasedMaterial] {
         let c = recipe.color
         let flat = UIColor(red: CGFloat(c.x), green: CGFloat(c.y), blue: CGFloat(c.z), alpha: 1)
-        let diffuse = UIColor(red: CGFloat(c.x * 0.22), green: CGFloat(c.y * 0.22), blue: CGFloat(c.z * 0.22), alpha: 1)
+        let diffuse = UIColor(red: CGFloat(c.x * 0.18), green: CGFloat(c.y * 0.18), blue: CGFloat(c.z * 0.18), alpha: 1)
         var core = PhysicallyBasedMaterial()
         core.baseColor = .init(tint: diffuse)
         core.metallic = 0.0
@@ -219,37 +227,33 @@ struct GummyBears: ScatterKind {
         var shell = PhysicallyBasedMaterial()
         shell.baseColor = .init(tint: diffuse)
         shell.metallic = 0.0
-        shell.roughness = 0.5
-        shell.specular = 0.14
-        shell.clearcoat = 0.14
-        shell.clearcoatRoughness = 0.24
-        shell.emissiveIntensity = recipe.glow * 0.62
+        shell.roughness = 0.62
+        shell.specular = 0.24
+        shell.clearcoat = 0.0
+        shell.clearcoatRoughness = 0.4
+        shell.emissiveIntensity = recipe.glow * 0.7
         shell.faceCulling = .back
 
         // A textured emissive ignores its tint, so the textures carry the color themselves.
         if let shade {
             core.emissiveColor = .init(texture: .init(shade.coreGlow))
-            core.blending = .transparent(opacity: .init(scale: 1, texture: .init(shade.coreOpacity)))
             shell.emissiveColor = .init(texture: .init(shade.shellGlow))
             shell.blending = .transparent(opacity: .init(scale: 1, texture: .init(shade.shellOpacity)))
         } else {
             core.emissiveColor = .init(color: flat)
-            core.blending = .transparent(opacity: .init(floatLiteral: recipe.core))
             shell.emissiveColor = .init(color: flat)
-            shell.blending = .transparent(opacity: .init(floatLiteral: 0.85))
+            shell.blending = .transparent(opacity: .init(floatLiteral: recipe.shell))
         }
         return [core, shell]
     }
 }
 
-/// Lookup textures indexed by the bear's UVs. Shell: u = face-on, v = thickness. Core: u = face-on, v = blotch noise;
-/// the core fades out toward its own silhouette so its outline never shows through the shell.
+/// Lookup textures indexed by the bear's UVs. Shell: u = face-on, v = thickness. Core: v = blotch noise.
 struct JellyShade {
     static let size = 64
     let shellGlow: TextureResource
     let shellOpacity: TextureResource
     let coreGlow: TextureResource
-    let coreOpacity: TextureResource
 
     init(_ recipe: GummyBears.Recipe) async throws {
         let c = recipe.color
@@ -260,15 +264,14 @@ struct JellyShade {
             let t = min(max((x - a) / (b - a), 0), 1)
             return t * t * (3 - 2 * t)
         }
-        func depth(_ u: Float, _ v: Float) -> Float { min(0.9 * pow(1 - u, 1.3) + 0.35 * smooth(0.3, 0.8, v), 1) }
-        shellGlow = try await Self.bake(.color) { u, v in light + (deep - light) * pow(depth(u, v), 0.85) }
+        func thick(_ v: Float) -> Float { smooth(0.12, 0.6, v) }
+        shellGlow = try await Self.bake(.color) { u, v in light + (deep - light) * min(0.7 * thick(v) + 0.5 * (1 - u), 1) }
         shellOpacity = try await Self.bake(.raw) { u, v in
-            SIMD3(repeating: recipe.shell + (1 - recipe.shell) * smooth(0.05, 0.55, depth(u, v)))
+            SIMD3(repeating: recipe.shell + (recipe.shellThick - recipe.shell) * thick(v) + 0.16 * (1 - u))
         }
         coreGlow = try await Self.bake(.color) { _, n in
-            c * (0.5 + 0.5 * n) + (one - c) * (0.12 * n * n * n)
+            c * (0.55 + 0.45 * n) + (one - c) * (0.14 * n * n * n)
         }
-        coreOpacity = try await Self.bake(.raw) { u, _ in SIMD3(repeating: recipe.core * smooth(0.12, 0.6, u)) }
     }
 
     private static func bake(_ semantic: TextureResource.Semantic, _ value: (Float, Float) -> SIMD3<Float>) async throws -> TextureResource {
