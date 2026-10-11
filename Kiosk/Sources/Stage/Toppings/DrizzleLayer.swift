@@ -246,8 +246,6 @@ private func smoothstep(_ a: Float, _ b: Float, _ x: Float) -> Float {
 }
 
 private extension DrizzleLayer {
-    // MARK: Path
-
     static func makePath(radius: Float, width: Float, rng: inout ToppingRandom) -> [PathSample] {
         let span: Float = 0.76
         let spacing = width * 2.05 / radius
@@ -368,8 +366,6 @@ private extension DrizzleLayer {
         }
     }
 
-    // MARK: Projection onto a surface
-
     static func probe(_ surface: ToppingSurface, _ xz: SIMD2<Float>, center: SIMD2<Float>) -> (SIMD3<Float>, SIMD3<Float>) {
         var q = xz
         for _ in 0..<12 {
@@ -480,8 +476,6 @@ private extension DrizzleLayer {
         return Projection(points: mixPoints(a.points, b.points), normals: mixNormals(a.normals, b.normals),
                           drips: drips, top: a.top + (b.top - a.top) * x)
     }
-
-    // MARK: Geometry
 
     /// Half width and height of the ribbon at sample `i`: flatter as it settles, fuller where it pools on the crown,
     /// thinner where it runs over a steep shoulder.
