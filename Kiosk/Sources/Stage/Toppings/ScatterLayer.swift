@@ -37,6 +37,7 @@ final class ScatterLayer: ToppingLayer {
     var occupied: [ScatterFootprint] = []
     private(set) var footprints: [ScatterFootprint] = []
     private(set) var isFinished = false
+    var isAnimating: Bool { animating }
     var launchPoint: (() -> SIMD3<Float>)?
 
     private struct Pose {
@@ -413,27 +414,24 @@ final class ScatterLayer: ToppingLayer {
         var below = occupied
         for index in pieces.indices {
             var piece = pieces[index]
-            var (rest, footprint) = settle(xzs[index], piece: piece, on: surface, over: below)
+            var (rest, footprint, stacked) = settle(xzs[index], piece: piece, on: surface, over: below)
             let thinnest = min(piece.half.x, min(piece.half.y, piece.half.z))
-            var stacked = rest.position.y - settle(xzs[index], piece: piece, on: surface, over: []).0.position.y
             var attempt = 1
-            while stacked > 0.3 * thinnest, attempt <= 10 {
+            while stacked > 0.3 * thinnest, attempt <= 6 {
                 let ring = Float((attempt + 1) / 2)
                 let turn = simd_quatf(angle: (attempt % 2 == 0 ? -0.32 : 0.32) * ring, axis: [0, 1, 0])
                 let offset = turn.act(SIMD3(xzs[index].x - apexXZ.x, 0, xzs[index].y - apexXZ.y)) * (1 + 0.05 * ring)
                 let candidate = clampToSurface(apexXZ + SIMD2(offset.x, offset.z), on: surface)
                 let tried = settle(candidate, piece: piece, on: surface, over: below)
-                let lift = tried.0.position.y - settle(candidate, piece: piece, on: surface, over: []).0.position.y
-                if lift < stacked {
-                    stacked = lift
-                    (rest, footprint) = tried
+                if tried.lift < stacked {
+                    (rest, footprint, stacked) = tried
                     xzs[index] = candidate
                 }
                 attempt += 1
             }
             if stacked > 0.3 * thinnest,
                let support = below.filter({ Self.separation(footprint, $0) != nil }).max(by: { $0.top < $1.top }) {
-                (rest, footprint) = settle(xzs[index], piece: piece, on: surface, over: below, lying: support.up)
+                (rest, footprint, _) = settle(xzs[index], piece: piece, on: surface, over: below, lying: support.up)
             }
             piece.rest = rest
             footprints.append(footprint)
@@ -441,7 +439,7 @@ final class ScatterLayer: ToppingLayer {
                 let start = apexXZ + (xzs[index] - apexXZ) * piece.slideFrom
                 piece.path = (0...4).map { step in
                     let t = Float(step) / 4
-                    return settle(simd_mix(start, xzs[index], SIMD2(repeating: t)), piece: piece, on: surface, over: below).0
+                    return settle(simd_mix(start, xzs[index], SIMD2(repeating: t)), piece: piece, on: surface, over: below).pose
                 }
                 piece.path[4] = piece.rest
             } else {
@@ -457,18 +455,20 @@ final class ScatterLayer: ToppingLayer {
     /// reads as resting rather than hovering. A tipped piece that could only clear the slope by
     /// hanging in the air under its middle is tipped less until it rests.
     private func settle(_ xz: SIMD2<Float>, piece: Piece, on surface: ToppingSurface,
-                        over pieces: [ScatterFootprint], lying up: SIMD3<Float>? = nil) -> (Pose, ScatterFootprint) {
+                        over pieces: [ScatterFootprint], lying up: SIMD3<Float>? = nil)
+        -> (pose: Pose, footprint: ScatterFootprint, lift: Float) {
         let center = surface.sample(x: xz.x, z: xz.y) ?? (surface.apex.y, SIMD3<Float>(0, 1, 0))
         let span = max(max(piece.half.x, piece.half.z) * 0.6, 0.001)
         let align = simd_quatf(from: [0, 1, 0], to: simd_normalize(up ?? Self.fittedNormal(xz, span: span, surface: surface) ?? center.normal))
         let thinnest = min(piece.half.x, min(piece.half.y, piece.half.z))
         let nestle = 0.08 * thinnest
         let reachable = pieces.filter { simd_distance($0.center, xz) < $0.halfLength + $0.radius + simd_length(piece.half) }
-        var result: (Pose, ScatterFootprint)?
+        var result: (pose: Pose, footprint: ScatterFootprint, lift: Float)?
         for tiltScale: Float in [1, 0.5, 0.2, 0] {
             let rotation = align * piece.local(tiltScale: tiltScale)
             var footprint = Self.footprint(xz, rotation: rotation, half: piece.half)
             var height = center.height + piece.half.y
+            var bare = height
             var found = false
             var reach: Float = 0, depth: Float = 0
             var floorUnder = center.height
@@ -478,15 +478,16 @@ final class ScatterLayer: ToppingLayer {
                 reach = max(reach, offset.y)
                 depth = max(depth, -offset.y)
                 let point = SIMD2(xz.x + offset.x, xz.y + offset.z)
-                guard var floor = surface.sample(x: point.x, z: point.y)?.height else { continue }
+                guard let ground = surface.sample(x: point.x, z: point.y)?.height else { continue }
+                var floor = ground
                 for other in reachable where other.contains(point) { floor = max(floor, other.top) }
-                let needed = floor - offset.y
-                height = found ? max(height, needed) : needed
+                height = found ? max(height, floor - offset.y) : floor - offset.y
+                bare = found ? max(bare, ground - offset.y) : ground - offset.y
                 found = true
             }
             footprint.top = height - nestle + reach * 0.92
             footprint.up = rotation.act([0, 1, 0])
-            result = (Pose(position: [xz.x, height - nestle, xz.y], rotation: rotation), footprint)
+            result = (Pose(position: [xz.x, height - nestle, xz.y], rotation: rotation), footprint, height - bare)
             let hang = height - depth - floorUnder
             if hang < 0.3 * thinnest + 0.0004 { break }
         }
@@ -540,14 +541,14 @@ final class ScatterLayer: ToppingLayer {
     }
 
     private static func footprint(_ xz: SIMD2<Float>, rotation: simd_quatf, half: SIMD3<Float>) -> ScatterFootprint {
-        let axes = [rotation.act([half.x, 0, 0]), rotation.act([0, half.y, 0]), rotation.act([0, 0, half.z])]
-            .map { SIMD2<Float>($0.x, $0.z) }
-        let lengths = axes.map(simd_length)
-        let long = lengths[0] >= lengths[1] ? (lengths[0] >= lengths[2] ? 0 : 2) : (lengths[1] >= lengths[2] ? 1 : 2)
-        let side = lengths.enumerated().filter { $0.offset != long }.map(\.element).max() ?? 0
-        let axis = lengths[long] > 1e-6 ? axes[long] / lengths[long] : SIMD2<Float>(1, 0)
-        return ScatterFootprint(center: xz, axis: axis, halfLength: max(lengths[long] - side, 0) * 0.95,
-                                radius: side * 0.9)
+        let x = rotation.act([half.x, 0, 0]), y = rotation.act([0, half.y, 0]), z = rotation.act([0, 0, half.z])
+        var long = SIMD2(x.x, x.z), other1 = SIMD2(y.x, y.z), other2 = SIMD2(z.x, z.z)
+        if simd_length_squared(other1) > simd_length_squared(long) { swap(&long, &other1) }
+        if simd_length_squared(other2) > simd_length_squared(long) { swap(&long, &other2) }
+        let length = simd_length(long)
+        let side = max(simd_length(other1), simd_length(other2))
+        let axis = length > 1e-6 ? long / length : SIMD2<Float>(1, 0)
+        return ScatterFootprint(center: xz, axis: axis, halfLength: max(length - side, 0) * 0.95, radius: side * 0.9)
     }
 
     /// How far to move `a` so it no longer overlaps `b`, or nil when they're already clear.
