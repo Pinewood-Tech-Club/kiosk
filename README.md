@@ -12,6 +12,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
    - `SQUARE_APPLICATION_ID`, `SQUARE_ACCESS_TOKEN`, `SQUARE_LOCATION_ID` from the [Developer Console](https://developer.squareup.com/apps). A `sandbox-…` application ID puts the app in Sandbox mode.
    - `SQUARE_CATEGORY_NAME`: the catalog category holding the *1 Scoop*, *2nd Scoop*, *3rd+ Scoop* and *Waffle Cone* items (one fixed-price variation each). If it's missing or its prices don't match the kiosk's, orders fall back to ad-hoc line items and the debug bar shows the error.
    - `KIOSK_EVENT_NAME`, shown on the receipt screen.
+   - `BOOTH_URL` and `BOOTH_TOKEN` for the [backend](#backend). `BOOTH_URL` is a bare host (`techclub-icecream.adamxu.workers.dev`) because `//` starts a comment in an xcconfig. Leave them empty to run without the backend; the kiosk works the same either way.
 3. `xcodegen generate` (the project is generated from `project.yml`; rerun after adding source files), open `Kiosk.xcodeproj`, pick the iPad, Run.
 
 `Kiosk/Resources/3D/` is a folder reference, so new or updated 3D assets are bundled without regenerating the project (do a clean build if Xcode misses a change). The Metal morph kernel is compiled at launch, so the separate Metal toolchain download isn't needed.
@@ -77,9 +78,53 @@ Example: `xcrun simctl launch booted com.adamxu.kiosk -kioskCurrent cup -kioskSt
 
 Square blocks payments while the screen is recorded or mirrored; the kiosk checks for that before creating the order.
 
+## Backend
+
+`server/` is a Cloudflare Worker (TypeScript, pnpm) with no UI: an HTTP API plus one websocket hub. The kiosk reports to it, and the toppings person will use another iPad running this app in a staff role (not built yet). The wire protocol, including auth, versioning, ordering and idempotency, is in [`server/PROTOCOL.md`](server/PROTOCOL.md).
+
+- Production: `https://techclub-icecream.adamxu.workers.dev/v1/` (account *Adam*; health check at `/v1/health`).
+- Staging, for chaos tests: `https://techclub-icecream-staging.adamxu.workers.dev/v1/`, with its own D1 database, hub and tokens.
+
+```
+ kiosk iPad ──Bearer BOOTH_TOKEN──┐                       ┌── D1: logs (30 days), orders (kept)
+                                  ├─ Worker: auth, zod,   ┤
+ staff iPad ──Bearer STAFF_TOKEN──┘  rate limits, routing └── Workers Logs: every request and kiosk log line
+                                          │
+                                          ▼
+                     Booth Durable Object (one instance, WebSocket Hibernation, SQLite):
+                     sold-out map, flavors, kiosk health, alerts, revision counter, processed ids
+```
+
+- **Hub**: on connect a client gets a snapshot with the hub's revision, then one patch per change carrying the next revision. Clients ignore stale patches and resync when they see a gap, so every client converges after drops and reconnects. Everything lives in SQLite, so eviction or a redeploy loses nothing; a Durable Object alarm raises *Kiosk offline* after 30 s without kiosk contact.
+- **Alerts for staff**: customer needs help (urgent), *Kiosk offline* (urgent, clears itself), kiosk health problems lasting 45 s (warning, clear themselves), sold-out changes (info). New paid orders are stored, not alerted.
+- **Kiosk side** (`Kiosk/Sources/Booth/`): help requests, health snapshots, orders and log lines are written to a durable outbox on the iPad before any send, retried with backoff and jitter, and flushed in order when the network comes back. Every item has a client-generated id and the server dedupes, so retries never double-count. Ordering and Square payments never wait on the backend.
+
+Secrets are Worker secrets and never committed. The owner's copies are in `~/.config/techclub-icecream/secrets.env` (`BOOTH_TOKEN`, `STAFF_TOKEN`, and `STAGING_BOOTH_TOKEN` / `STAGING_STAFF_TOKEN` for staging). The kiosk's copy goes in `Config/Local.xcconfig` as `BOOTH_TOKEN`; `-boothURL` and `-boothToken` launch arguments override it for testing. To rotate one:
+
+```sh
+cd server
+pnpm wrangler secret put BOOTH_TOKEN                  # add --env staging for staging
+```
+
+Develop, test and deploy:
+
+```sh
+cd server
+pnpm install
+pnpm test                  # Vitest in the Workers runtime: dedupe, ordering, convergence, auth, malformed input, alarm, eviction
+pnpm typecheck
+pnpm db:migrate            # apply server/migrations to production D1 (add --env staging for staging)
+pnpm run deploy            # production; `pnpm wrangler deploy --env staging` for staging
+set -a; . ~/.config/techclub-icecream/secrets.env; set +a
+pnpm smoke --offline       # live end-to-end check of production
+pnpm chaos                 # staging: drops, half-open sockets, a redeploy, replays, clock skew, a long offline spell
+```
+
+`pnpm smoke` leaves a few rows tagged `smoke-...` in production D1 (simulated orders, excluded from totals). `scripts/chaos-proxy.mjs` also runs on its own as a local proxy for testing the iPad app against staging (`node scripts/chaos-proxy.mjs`, then launch the app with `-boothURL http://127.0.0.1:8790 -boothToken <staging token>` and drive the proxy with `curl -X POST localhost:8791/mode/down`, `/mode/up`, `/mode/blackhole`, `/kill`).
+
 ## Not production-ready yet
 
-- The access token is baked into the app bundle. Square requires OAuth (tokens expire every 30 days) for production. Move order creation and token handling to a small backend.
+- The access token is baked into the app bundle. Square requires OAuth (tokens expire every 30 days) for production. Move order creation and token handling to the backend in `server/`.
 - `MockReaderUI` is linked into every build. Remove it from the target before shipping.
 - Buyers must be offered a digital or printed receipt (EMV requirement). The confirmation screen shows an itemized receipt and suggests a photo; there are no email receipts yet.
 - Lock the iPad to the app with Guided Access (Settings → Accessibility).
