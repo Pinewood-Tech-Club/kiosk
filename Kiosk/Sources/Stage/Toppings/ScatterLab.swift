@@ -105,7 +105,13 @@ final class ScatterLab {
                 kind(shape).apply(onto: surface, seed: UInt64(21 + index), animated: false, now: now)
             }
             if scene == "remove" {
-                steps = [(0.4, { [unowned self] in layers[1].remove(now: stage.now) })]
+                steps = [
+                    (0.4, { [unowned self] in layers[1].remove(now: stage.now) }),
+                    (0.55, { [unowned self] in
+                        layers[2].occupied = layers[0].footprints
+                        layers[2].resurface(to: base, duration: 0.4, now: stage.now)
+                    }),
+                ]
             } else {
                 let rising = scene == "up"
                 steps = [(0.4, { [unowned self] in
