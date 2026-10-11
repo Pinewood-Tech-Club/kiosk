@@ -309,12 +309,15 @@ Defaults to the last 24 hours. Counts real orders only (simulated ones are only 
 { "since": 0, "until": 0, "generatedAt": 0, "orders": 42, "simulatedOrders": 3, "totalCents": 39100, "subtotalCents": 39100, "taxCents": 0,
   "averageCents": 931, "items": 51, "scoops": 88, "cups": 30, "cones": 21, "toppings": 17,
   "flavors": { "vanilla": 30 }, "toppingCounts": { "whip": 8 }, "statuses": { "paid": 2, "collected": 40 },
-  "byHour": [{ "hour": 1796500800000, "orders": 12, "totalCents": 11200 }] }
+  "byHour": [{ "hour": 1796500800000, "orders": 12, "totalCents": 11200 }],
+  "last15Min": { "orders": 4, "totalCents": 3800 } }
 ```
 
 ## Dashboard: `GET /dashboard` *(added)*
 
-A server-rendered page for staff in a browser. Without a session it shows the PIN form (`POST /dashboard/login`, then a `303` back with the session cookie); `POST /dashboard/logout` clears it. The page itself is a placeholder; it can call any staff `/v1/` route with the cookie (same-origin `fetch`, which sends `Origin`).
+A single self-contained page (inline CSS, script and lucide SVG icons, no external requests, a per-request CSP nonce) for the organizer laptop. Without a session it shows the PIN form (`POST /dashboard/login`, then a `303` back with the session cookie); `POST /dashboard/logout` clears it. Dashboard pages send `Referrer-Policy: same-origin` so the browser sends the real `Origin` on the form post (with `no-referrer` Chrome sends `Origin: null` and the same-origin check refuses it).
+
+Signed in, the page opens `GET /v1/ws` with the cookie and follows the client rules above (replace on `snapshot`, apply a patch only at rev + 1, `sync` on a gap or a `pong` ahead, ping every 10 s, reconnect after 25 s of silence with 1 s to 30 s backoff, and again when the tab becomes visible or the network returns). It shows the order feed (real orders only), sold-out toggles and open alerts with acknowledge (sent as `POST /v1/actions` with `by: "Dashboard"`), and kiosk health, and refetches `GET /v1/stats?since=<local midnight>` after each order patch and every 30 s for the tiles and bars. A `401` or `403` from the API reloads the page, which shows the PIN form.
 
 ## Other routes
 
