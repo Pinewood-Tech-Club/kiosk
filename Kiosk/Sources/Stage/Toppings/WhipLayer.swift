@@ -159,6 +159,9 @@ final class WhipLayer: ToppingLayer {
         return 0.8 + 0.2 * Self.smoothstep(0, 2.4 * a, behind)
     }
 
+    /// The creases leave the cream's cross-section a little inside its nominal radius.
+    private static let meanScale: Float = 0.95
+
     /// Fine centerline samples as currently shown (revealed, deflated), with the head's rounded end.
     private func tubes() -> [WhipTube] {
         let length = sweep.length(atVolume: current.reveal)
@@ -167,10 +170,11 @@ final class WhipLayer: ToppingLayer {
         var out: [WhipTube] = []
         out.reserveCapacity(sweep.center.count + 4)
         for i in sweep.center.indices where sweep.arc[i] <= length {
-            out.append(deflated(sweep.center[i], radius: sweep.radius[i] * swell(sweep.arc[i], length: length), ground: ground))
+            out.append(deflated(sweep.center[i], radius: sweep.radius[i] * swell(sweep.arc[i], length: length) * Self.meanScale,
+                                ground: ground))
         }
         let head = sweep.sample(at: length)
-        let headRadius = head.radius * swell(length, length: length)
+        let headRadius = head.radius * swell(length, length: length) * Self.meanScale
         out.append(deflated(head.center, radius: headRadius, ground: ground))
         if headRadius > 1e-5 {
             let tip = head.center + head.tangent * headRadius * WhipMesh.capReach
