@@ -2,11 +2,13 @@ import CoreGraphics
 import RealityKit
 import UIKit
 
-/// Can-sprayed whipped cream: a star-nozzle tube swept along a rising, tightening spiral that ends in a soft peak.
+/// Aerosol whipped cream: a fat, softly ridged foam rope laid in a loose rosette of about two coils, ending in a small tuft.
 @MainActor
 final class WhipLayer: ToppingLayer {
     static let growDuration: Double = 1.5
     static let removeDuration: Double = 0.5
+    /// Share of `growDuration` spent spraying; the rest lets the freshest foam finish puffing up.
+    private static let sprayShare: Float = 0.86
 
     let entity = Entity()
     private(set) var isFinished = false
@@ -23,12 +25,14 @@ final class WhipLayer: ToppingLayer {
 
     private var sweep = WhipSweep()
     private var sweepMix: Float = -1
-    private var shown = WhipState(mix: -1, reveal: -1, deflate: -1)
-    private var current = WhipState(mix: 1, reveal: 1, deflate: 0)
+    private var shown = WhipState(mix: -1, reveal: -1, settle: -1, deflate: -1)
+    private var current = WhipState(mix: 1, reveal: 1, settle: 1, deflate: 0)
     private var buffers: WhipMesh?
     private var rings: [WhipRing] = []
     private var points: [SIMD3<Float>] = []
     private var shade: [Float] = []
+    private var lobes: [SIMD2<Float>] = []
+    private var wander: [SIMD2<Float>] = []
 
     init() {
         entity.name = "whip"
@@ -66,8 +70,8 @@ final class WhipLayer: ToppingLayer {
         entity.isEnabled = true
         entity.setOpacity(1)
         sweepMix = -1
-        shown = WhipState(mix: -1, reveal: -1, deflate: -1)
-        let resources = WhipMesh(ridges: style.ridges)
+        shown = WhipState(mix: -1, reveal: -1, settle: -1, deflate: -1)
+        let resources = WhipMesh(ridges: style.ridges, seed: seed)
         buffers = resources
         model.model = ModelComponent(mesh: resources.resource, materials: [resources.material])
         update(now: now)
@@ -122,14 +126,15 @@ final class WhipLayer: ToppingLayer {
     }
 
     private func refreshState(now: Double) {
-        var state = WhipState(mix: 1, reveal: 1, deflate: 0)
+        var state = WhipState(mix: 1, reveal: 1, settle: 1, deflate: 0)
         if blendDuration > 0 {
             let t = Float((now - blendStart) / blendDuration)
             state.mix = t >= 1 ? 1 : Ease.inOutCubic(Ease.clamp01(t))
         }
         if let growStart {
             let t = Float((now - growStart) / Self.growDuration)
-            state.reveal = t >= 1 ? 1 : Self.extrusion(Ease.clamp01(t))
+            state.reveal = t >= Self.sprayShare ? 1 : Self.extrusion(Ease.clamp01(t / Self.sprayShare))
+            state.settle = t >= 1 ? 1 : Self.smoothstep(Self.sprayShare, 1, t)
             if t >= 1 { self.growStart = nil }
         }
         if let removeStart {
@@ -138,12 +143,20 @@ final class WhipLayer: ToppingLayer {
         current = state
     }
 
-    /// Cream leaves a can at a near-constant rate: a quick start, steady volume, and the nozzle easing off at the peak.
+    /// Cream leaves a can at a near-constant rate: a quick start, steady volume, and the nozzle easing off at the end.
     private static let extrusion = TimingCurve(0.3, 0.12, 0.6, 1)
 
     nonisolated static func smoothstep(_ a: Float, _ b: Float, _ x: Float) -> Float {
         let t = Ease.clamp01((x - a) / (b - a))
         return t * t * (3 - 2 * t)
+    }
+
+    /// Foam leaves the nozzle narrow and puffs up over the next tube width or two.
+    private func swell(_ arc: Float, length: Float) -> Float {
+        guard current.settle < 1 else { return 1 }
+        let a = sweep.tube
+        let behind = length - arc + current.settle * 2.6 * a
+        return 0.8 + 0.2 * Self.smoothstep(0, 2.4 * a, behind)
     }
 
     /// Fine centerline samples as currently shown (revealed, deflated), with the head's rounded end.
@@ -154,13 +167,14 @@ final class WhipLayer: ToppingLayer {
         var out: [WhipTube] = []
         out.reserveCapacity(sweep.center.count + 4)
         for i in sweep.center.indices where sweep.arc[i] <= length {
-            out.append(deflated(sweep.center[i], radius: sweep.radius[i], ground: ground))
+            out.append(deflated(sweep.center[i], radius: sweep.radius[i] * swell(sweep.arc[i], length: length), ground: ground))
         }
         let head = sweep.sample(at: length)
-        out.append(deflated(head.center, radius: head.radius, ground: ground))
-        if head.radius > 1e-5 {
-            let tip = head.center + head.tangent * head.radius * WhipMesh.capReach
-            out.append(deflated(tip, radius: head.radius * 0.55, ground: ground))
+        let headRadius = head.radius * swell(length, length: length)
+        out.append(deflated(head.center, radius: headRadius, ground: ground))
+        if headRadius > 1e-5 {
+            let tip = head.center + head.tangent * headRadius * WhipMesh.capReach
+            out.append(deflated(tip, radius: headRadius * 0.55, ground: ground))
         }
         return out
     }
@@ -187,37 +201,61 @@ final class WhipLayer: ToppingLayer {
         model.isEnabled = true
         makeRings(length: length)
         let profile = buffers.profile
-        let stride = profile.count + 1
+        let count = profile.count
+        let stride = count + 1
+        let grain = buffers.grain
         let ground = currentGround
-        let d = current.deflate
+        let squash = WhipMesh.squash * (1 - 0.55 * current.deflate)
+        let ridges = style.ridges
+        let noise = style.noise
+        let a0 = max(sweep.tube, 1e-5)
+        let axis = sweep.axis
+        if lobes.count != ridges {
+            lobes = .init(repeating: .zero, count: ridges)
+            wander = .init(repeating: .zero, count: ridges)
+        }
+        let half = Float(ridges) / 2
         points.removeAll(keepingCapacity: true)
         shade.removeAll(keepingCapacity: true)
-        let axis = sweep.axis
-        for ring in rings {
-            let squash = WhipMesh.squash * (1 - 0.55 * d)
+        for (i, ring) in rings.enumerated() {
             let outward = simd_normalize(SIMD3(ring.center.x - axis.x, 0, ring.center.z - axis.y) + [0, 1e-5, 0])
             let ct = cos(ring.twist), st = sin(ring.twist)
             let e1 = ct * ring.normal + st * ring.binormal
             let e2 = ct * ring.binormal - st * ring.normal
-            let a = ring.arc * 610 + 3 * ring.twist + style.phases.x
-            let b = ring.arc * 270 - 2 * ring.twist + style.phases.y
-            let sa = sin(a), ca = cos(a), sb = sin(b), cb = cos(b)
-            for j in 0...profile.count {
-                let p = profile[j % profile.count]
+            let x = ring.arc / a0
+            let ends = 1 + 0.6 * (1 - Self.smoothstep(0, 2.5, x)) + 1.1 * (1 - Self.smoothstep(0, 2, (sweep.length - ring.arc) / a0))
+            for k in 0..<ridges {
+                let o = Float(k) * 17.3
+                let puff = 0.4 * noise(x * 1.1 + o) + 0.35 * noise(x * 2.6 + o + 101) + 0.25 * noise(x * 5.5 + o + 151)
+                let depth = 0.7 + 0.5 * noise(x * 1.2 + o + 211) + 0.45 * noise(x * 3.1 + o + 241)
+                lobes[k] = [puff * ends, max(depth, 0.08)]
+                let shift = half * 0.45 * (2 * .pi / Float(ridges)) * noise(x * 2 + o + 307)
+                wander[k] = [cos(shift), sin(shift)]
+            }
+            let fade = Self.smoothstep(0.12, 0.55, ring.radius / a0)
+            let row = min(i, WhipMesh.maxRings - 1) * count
+            for j in 0...count {
+                let jj = j % count
+                let p = profile[jj]
                 let u = p.cos * e1 + p.sin * e2
-                let bump = 1 + 0.03 * (sa * p.cos3 + ca * p.sin3) * (sb * p.cos2 - cb * p.sin2)
-                var offset = u * (ring.radius * p.scale * bump)
+                let lobe = simd_mix(lobes[p.lobe], lobes[p.next], SIMD2(repeating: p.blend)) * fade
+                let turn = simd_mix(wander[p.lobe], wander[p.next], SIMD2(repeating: p.blend))
+                let c = p.halfCos * turn.x - p.halfSin * turn.y
+                let c2 = c * c
+                let crease = c2 * lobe.y
+                let scale = (1 + WhipMesh.puff * lobe.x) * (1 - WhipMesh.groove * crease) * (1 + WhipMesh.grain * grain[row + jj])
+                var offset = u * (ring.radius * scale)
                 offset.y *= squash
                 var point = ring.center + offset
                 if ring.foot > 0, u.y < -0.1 {
                     let w = ring.foot * Self.smoothstep(0.1, 0.8, -u.y)
-                    let floor = ground.height(point.x, point.z) - 0.0006
-                    if point.y > floor { point.y -= min(point.y - floor, 0.9 * ring.radius) * w }
+                    let floor = ground.height(point.x, point.z) - 0.0012
+                    if point.y > floor { point.y -= min(point.y - floor, 0.6 * ring.radius) * w }
                 }
                 points.append(point)
                 let under = Self.smoothstep(-0.1, 0.85, -u.y)
                 let inner = Self.smoothstep(0.2, 1, -simd_dot(u, outward)) * Self.smoothstep(0.3, -0.2, u.y)
-                shade.append(min(0.8 * under + 0.3 * inner, 1) * ring.occlusion)
+                shade.append(min(0.6 * under + 0.3 * inner + 0.75 * crease, 1) * ring.occlusion)
             }
         }
         buffers.write(points: points, shade: shade, rings: rings, stride: stride)
@@ -228,31 +266,33 @@ final class WhipLayer: ToppingLayer {
         let ground = currentGround
         let step = sweep.length / Float(WhipMesh.bodyRings)
         let start = sweep.sample(at: 0)
+        let startSwell = swell(0, length: length)
         for k in 0..<WhipMesh.capRings {
             let angle = Float.pi / 2 * Float(k) / Float(WhipMesh.capRings)
             var tail = start
-            tail.center -= start.tangent * start.radius * WhipMesh.capReach * 0.8 * cos(angle)
+            tail.center -= start.tangent * start.radius * startSwell * WhipMesh.capReach * 0.8 * cos(angle)
             tail.radius *= sin(angle)
-            rings.append(ring(tail, ground: ground))
+            rings.append(ring(tail, scale: startSwell, ground: ground))
         }
         var arc: Float = 0
         while arc < length - 0.2 * step {
-            rings.append(ring(sweep.sample(at: arc), ground: ground))
+            rings.append(ring(sweep.sample(at: arc), scale: swell(arc, length: length), ground: ground))
             arc += step
         }
         let head = sweep.sample(at: length)
-        rings.append(ring(head, ground: ground))
+        let headSwell = swell(length, length: length)
+        rings.append(ring(head, scale: headSwell, ground: ground))
         for k in 1...WhipMesh.capRings {
             let angle = Float.pi / 2 * Float(k) / Float(WhipMesh.capRings)
             var cap = head
-            cap.center += head.tangent * head.radius * WhipMesh.capReach * sin(angle)
+            cap.center += head.tangent * head.radius * headSwell * WhipMesh.capReach * sin(angle)
             cap.radius *= cos(angle)
-            rings.append(ring(cap, ground: ground))
+            rings.append(ring(cap, scale: headSwell, ground: ground))
         }
     }
 
-    private func ring(_ sample: WhipSweep.Sample, ground: WhipGround) -> WhipRing {
-        let tube = deflated(sample.center, radius: sample.radius, ground: ground)
+    private func ring(_ sample: WhipSweep.Sample, scale: Float, ground: WhipGround) -> WhipRing {
+        let tube = deflated(sample.center, radius: sample.radius * scale, ground: ground)
         return WhipRing(center: tube.center, tangent: sample.tangent, normal: sample.normal, binormal: sample.binormal,
                         radius: tube.radius, arc: sample.arc, twist: sample.twist, foot: sample.foot * (1 - current.deflate),
                         occlusion: 1 - current.deflate)
@@ -262,6 +302,7 @@ final class WhipLayer: ToppingLayer {
 private struct WhipState: Equatable {
     var mix: Float
     var reveal: Float
+    var settle: Float
     var deflate: Float
 }
 
@@ -283,6 +324,22 @@ struct WhipRing {
     var occlusion: Float
 }
 
+/// Smooth 1D value noise in [-1, 1] with a period of 256.
+struct WhipNoise {
+    private let table: [Float]
+
+    init(rng: inout ToppingRandom) {
+        table = (0..<256).map { _ in Float.random(in: -1...1, using: &rng) }
+    }
+
+    func callAsFunction(_ x: Float) -> Float {
+        let f = x.rounded(.down)
+        let i = Int(f) & 255
+        let t = x - f
+        return lerp(table[i], table[(i + 1) & 255], t * t * (3 - 2 * t))
+    }
+}
+
 /// Per-item variation drawn from the seed.
 struct WhipStyle {
     var startAngle: Float
@@ -294,20 +351,20 @@ struct WhipStyle {
     var tube: Float
     var peak: Float
     var curl: Float
-    var phases: SIMD4<Float>
+    var noise: WhipNoise
 
     init(seed: UInt64) {
         var rng = ToppingRandom(seed: seed ^ 0x5717_C0DE)
         startAngle = .random(in: 0..<(2 * .pi), using: &rng)
         direction = Bool.random(using: &rng) ? 1 : -1
-        turns = .random(in: 2.1...2.35, using: &rng)
-        ridges = Float.random(in: 0...1, using: &rng) < 0.7 ? 8 : 7
-        twist = .random(in: 0.6...0.8, using: &rng) * (Bool.random(using: &rng) ? 1 : -1)
+        turns = .random(in: 1.5...1.75, using: &rng)
+        ridges = Float.random(in: 0...1, using: &rng) < 0.6 ? 8 : 7
+        twist = .random(in: 0.25...0.45, using: &rng) * (Bool.random(using: &rng) ? 1 : -1)
         spread = .random(in: 0.6...0.66, using: &rng)
-        tube = .random(in: 0.44...0.48, using: &rng)
-        peak = .random(in: 2.5...3.0, using: &rng)
-        curl = .random(in: 0.9...1.3, using: &rng)
-        phases = SIMD4((0..<4).map { _ in Float.random(in: 0..<(2 * .pi), using: &rng) })
+        tube = .random(in: 0.62...0.7, using: &rng)
+        peak = .random(in: 1.1...1.4, using: &rng)
+        curl = .random(in: 1.2...1.8, using: &rng)
+        noise = WhipNoise(rng: &rng)
     }
 }
 
@@ -414,7 +471,7 @@ struct WhipGround {
     }
 }
 
-/// The swirl's centerline: a spiral stacked turn on turn over the ground, then a rising, tapering peak.
+/// The rosette's centerline: a loose spiral, each coil slumping onto the one below, then a short lift that tips over.
 struct WhipSweep {
     struct Sample {
         var center: SIMD3<Float>
@@ -437,6 +494,7 @@ struct WhipSweep {
     var twist: [Float] = []
     var axis: SIMD2<Float> = .zero
     var outer: Float = 0
+    var tube: Float = 0
 
     var length: Float { arc.last ?? 0 }
 
@@ -444,14 +502,16 @@ struct WhipSweep {
 
     init(style: WhipStyle, ground: WhipGround) {
         let n = 420
-        let spiralEnd: Float = 0.86
+        let spiralEnd: Float = 0.88
         let squash = WhipMesh.squash
+        let noise = style.noise
         let apex = ground.apex
         axis = [apex.x, apex.z]
         let r0 = ground.radius * style.spread
         let a0 = r0 * style.tube
-        outer = r0 + a0
-        let rEnd = a0 * 0.66
+        tube = a0
+        outer = r0 + a0 * 1.3
+        let rEnd = a0 * 0.3
         let omega = 2 * Float.pi * style.turns / spiralEnd
         let ramp: Float = 0.8
 
@@ -469,10 +529,10 @@ struct WhipSweep {
             let s = Float(i) / Float(n)
             let u = max(0, (s - spiralEnd) / (1 - spiralEnd))
             let spiral = min(s / spiralEnd, 1)
-            let a = a0 * (1 - 0.35 * spiral) * (0.55 + 0.45 * WhipLayer.smoothstep(0, 0.1, s))
+            let puff = 1 + 0.13 * noise(s * 8 + 400) + 0.07 * noise(s * 21 + 450)
+            let a = a0 * (1 - 0.3 * spiral) * (0.6 + 0.4 * WhipLayer.smoothstep(0, 0.08, s)) * puff
             if u > 0 {
-                // The nozzle stops circling and lifts: the rope rises, then flops over to one side.
-                let pitch = 1.35 * sin(.pi * 0.9 * u) - 0.55 * u
+                let pitch = 1.35 * sin(.pi * 0.8 * u) - 1.0 * u
                 let turn = style.direction * style.curl * u
                 let along = simd_quatf(angle: turn, axis: [0, 1, 0]).act(heading)
                 rise += (cos(pitch) * along + SIMD3(0, sin(pitch), 0)) * (a0 * style.peak * du)
@@ -482,18 +542,18 @@ struct WhipSweep {
                 base[i] = base[i - 1]
                 foot.append(0)
                 center.append(peakStart + rise)
-                radius.append(a * (1 + 1.1 * u) * pow(max(1 - pow(u, 1.6), 0), 0.75))
+                radius.append(a * (1 + 0.15 * u) * pow(max(1 - u * u * u, 0), 0.5))
                 continue
             }
             theta[i] = omega * s
             let angle = style.startAngle + style.direction * theta[i]
-            let wobble = 1 + 0.03 * sin(angle * 2 + style.phases.z) + 0.015 * sin(theta[i] * 0.7 + style.phases.w)
-            let r = (rEnd + (r0 - rEnd) * pow(1 - spiral, 1.05)) * wobble
+            let wobble = 1 + 0.06 * noise(s * 6 + 300) + 0.02 * noise(s * 17 + 350)
+            let r = (rEnd + (r0 - rEnd) * pow(1 - spiral, 0.9)) * wobble
             spiralRadius[i] = r
             stackRadius[i] = a
             let x = axis.x + r * cos(angle)
             let z = axis.y + r * sin(angle)
-            let onGround = ground.height(x, z) + squash * a * 0.4
+            let onGround = ground.height(x, z) + squash * a * 0.35
             var onCream = onGround - a0
             while back < i, theta[back + 1] <= theta[i] - 2 * .pi { back += 1 }
             if theta[i] - 2 * .pi > -ramp {
@@ -503,7 +563,7 @@ struct WhipSweep {
                 let below = lerp(base[back], base[back + 1], t)
                 let belowR = lerp(spiralRadius[back], spiralRadius[back + 1], t)
                 let belowA = lerp(stackRadius[back], stackRadius[back + 1], t)
-                let reach = 0.92 * (belowA + a)
+                let reach = 0.8 * (belowA + a)
                 let d = belowR - r
                 let climb = WhipLayer.smoothstep(-ramp, 0, behind)
                 onCream = below + climb * squash * sqrt(max(reach * reach - d * d, 0))
@@ -530,7 +590,8 @@ struct WhipSweep {
         for i in 1...n {
             let dl = simd_distance(center[i], center[i - 1])
             arc.append(arc[i - 1] + dl)
-            twist.append(twist[i - 1] + style.twist * dl / max(radius[i], 0.4 * a0))
+            let rate = style.twist * (1 + 0.8 * noise(arc[i] / a0 * 0.4 + 500))
+            twist.append(twist[i - 1] + rate * dl / max(radius[i], 0.4 * a0))
             let a = (radius[i] + radius[i - 1]) / 2
             volume.append(volume[i - 1] + .pi * a * a * squash * dl)
         }
@@ -590,43 +651,72 @@ struct WhipSweep {
     }
 }
 
-/// One whip's mesh, rebuilt in place every animated frame; the material is shared per ridge count.
+/// One whip's mesh, rebuilt in place every animated frame; the material is shared by every whip.
 @MainActor
 final class WhipMesh {
     nonisolated static let squash: Float = 0.86
     static let bodyRings = 230
     static let capRings = 5
     static let capReach: Float = 0.62
-    static let samplesPerRidge = 8
+    static let samplesPerRidge = 9
     static let maxRings = bodyRings + 2 + 2 * capRings + 2
+    static let puff: Float = 0.18
+    static let groove: Float = 0.3
+    static let grain: Float = 0.035
+    static let bubble: Float = 0.12
 
     struct ProfilePoint {
-        var scale: Float
         var cos: Float
         var sin: Float
-        var cos2: Float
-        var sin2: Float
-        var cos3: Float
-        var sin3: Float
+        var halfCos: Float
+        var halfSin: Float
+        var lobe: Int
+        var next: Int
+        var blend: Float
     }
 
     let mesh: LowLevelMesh
     let resource: MeshResource
     let material: PhysicallyBasedMaterial
     let profile: [ProfilePoint]
+    /// Fixed per-vertex jitter that gives the foam its faintly bubbly surface.
+    let grain: [Float]
     private var normals: [SIMD3<Float>] = []
+    private let bubbles: [SIMD3<Float>]
 
-    private static var materials: [Int: PhysicallyBasedMaterial] = [:]
+    private static var sharedMaterial: PhysicallyBasedMaterial?
 
-    init(ridges: Int) {
+    init(ridges: Int, seed: UInt64) {
         let count = ridges * Self.samplesPerRidge
         profile = (0..<count).map { j in
             let angle = 2 * Float.pi * Float(j) / Float(count)
-            let groove = pow(1 - abs(sin(Float(ridges) * angle / 2)), 1.6)
-            return ProfilePoint(scale: 1 - 0.34 * groove, cos: cos(angle), sin: sin(angle), cos2: cos(2 * angle),
-                                sin2: sin(2 * angle), cos3: cos(3 * angle), sin3: sin(3 * angle))
+            let f = Float(ridges) * angle / (2 * .pi) - 0.5
+            let k = Int(f.rounded(.down))
+            let t = f - f.rounded(.down)
+            let c = cos(Float(ridges) * angle / 2)
+            return ProfilePoint(cos: cos(angle), sin: sin(angle), halfCos: c, halfSin: sin(Float(ridges) * angle / 2),
+                                lobe: (k + ridges) % ridges, next: (k + 1 + ridges) % ridges, blend: t * t * (3 - 2 * t))
+        }
+        var rng = ToppingRandom(seed: seed ^ 0xB0B_B1E5)
+        let raw = (0..<(Self.maxRings * count)).map { _ in Float.random(in: -1...1, using: &rng) }
+        let coarseRings = Self.maxRings / 4 + 2, coarseAround = count / 4
+        let coarse = (0..<(coarseRings * coarseAround)).map { _ in Float.random(in: -1...1, using: &rng) }
+        grain = (0..<(Self.maxRings * count)).map { v in
+            let ring = v / count, j = v % count
+            let up = min(ring + 1, Self.maxRings - 1) * count + j, down = max(ring - 1, 0) * count + j
+            let left = ring * count + (j + count - 1) % count, right = ring * count + (j + 1) % count
+            let fine = (2 * raw[v] + raw[up] + raw[down] + raw[left] + raw[right]) / 6
+            let fr = Float(ring) / 4, fj = Float(j) / 4
+            let r0 = Int(fr), j0 = Int(fj), tr = fr - Float(r0), tj = fj - Float(j0)
+            let j1 = (j0 + 1) % coarseAround
+            let top = lerp(coarse[r0 * coarseAround + j0], coarse[r0 * coarseAround + j1], tj)
+            let bottom = lerp(coarse[(r0 + 1) * coarseAround + j0], coarse[(r0 + 1) * coarseAround + j1], tj)
+            return fine + 0.8 * lerp(top, bottom, tr)
         }
         let stride = count + 1
+        bubbles = (0..<(Self.maxRings * stride)).map { _ in
+            SIMD3(Float.random(in: -1...1, using: &rng), Float.random(in: -1...1, using: &rng), Float.random(in: -1...1, using: &rng))
+        }
         let vertexCapacity = Self.maxRings * stride
         let indexCapacity = (Self.maxRings - 1) * count * 6
         let attributes: [LowLevelMesh.Attribute] = [
@@ -644,7 +734,7 @@ final class WhipMesh {
         mesh.withUnsafeMutableBytes(bufferIndex: 1) { raw in
             let uv = raw.bindMemory(to: SIMD2<Float>.self)
             for ring in 0..<Self.maxRings {
-                for j in 0...count { uv[ring * stride + j] = [0, Float(j) / Float(count)] }
+                for j in 0...count { uv[ring * stride + j] = [0, 0.5] }
             }
         }
         mesh.withUnsafeMutableIndices { raw in
@@ -662,11 +752,11 @@ final class WhipMesh {
         mesh.parts.replaceAll([LowLevelMesh.Part(indexCount: 0, topology: .triangle,
                                                  bounds: BoundingBox(min: .zero, max: .zero))])
         resource = try! MeshResource(from: mesh)
-        if let cached = Self.materials[ridges] {
-            material = cached
+        if let shared = Self.sharedMaterial {
+            material = shared
         } else {
-            material = Self.makeMaterial(ridges: ridges)
-            Self.materials[ridges] = material
+            material = Self.makeMaterial()
+            Self.sharedMaterial = material
         }
     }
 
@@ -685,7 +775,7 @@ final class WhipMesh {
                 if length < 1e-12 || ring.radius < 1e-6 {
                     n = i < ringCount / 2 ? -ring.tangent : ring.tangent
                 } else {
-                    n /= length
+                    n = simd_normalize(n / length + Self.bubble * bubbles[o])
                 }
                 normals[o] = n
             }
@@ -707,53 +797,44 @@ final class WhipMesh {
         }
         mesh.withUnsafeMutableBytes(bufferIndex: 1) { raw in
             let uv = raw.bindMemory(to: SIMD2<Float>.self)
-            for ring in 0..<ringCount {
-                for j in 0...count {
-                    let v = ring * stride + j
-                    uv[v] = [shade[v], Float(j) / Float(count)]
-                }
-            }
+            for v in 0..<used { uv[v].x = shade[v] }
         }
         mesh.parts.replaceAll([LowLevelMesh.Part(indexCount: max(ringCount - 1, 0) * count * 6, topology: .triangle,
                                                  bounds: BoundingBox(min: lo, max: hi))])
     }
 
-    /// No subsurface scattering in RealityKit: a warm, slightly emissive white with soft highlights stands in
-    /// for light diffusing through the foam, and a texture across the profile darkens and warms the grooves.
-    private static func makeMaterial(ridges: Int) -> PhysicallyBasedMaterial {
+    /// No subsurface scattering in RealityKit: a rough, barely sheened white with a faint emissive lift on exposed foam
+    /// stands in for light diffusing through it. uv0.x indexes how occluded or creased each vertex is.
+    private static func makeMaterial() -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()
         material.metallic = .init(floatLiteral: 0)
-        material.roughness = .init(floatLiteral: 0.5)
-        material.specular = .init(floatLiteral: 0.42)
-        material.clearcoat = .init(floatLiteral: 0.06)
-        material.clearcoatRoughness = .init(floatLiteral: 0.45)
-        material.sheen = .init(tint: UIColor(red: 0.3, green: 0.29, blue: 0.27, alpha: 1))
-        material.emissiveColor = .init(color: UIColor(red: 1, green: 0.94, blue: 0.84, alpha: 1))
-        material.emissiveIntensity = 0.12
-        let tint = UIColor(red: 1, green: 0.985, blue: 0.95, alpha: 1)
-        if let image = grooveImage(ridges: ridges),
+        material.roughness = .init(floatLiteral: 0.86)
+        material.specular = .init(floatLiteral: 0.18)
+        material.sheen = .init(tint: UIColor(white: 0.2, alpha: 1))
+        let tint = UIColor(red: 0.9, green: 0.895, blue: 0.885, alpha: 1)
+        if let image = shadeImage(open: [1, 1, 1], hidden: [0.66, 0.645, 0.625]),
            let texture = try? TextureResource(image: image, withName: nil, options: .init(semantic: .color)) {
             material.baseColor = .init(tint: tint, texture: .init(texture))
         } else {
             material.baseColor = .init(tint: tint)
         }
+        if let image = shadeImage(open: [1, 0.98, 0.95], hidden: [0.25, 0.24, 0.22]),
+           let texture = try? TextureResource(image: image, withName: nil, options: .init(semantic: .color)) {
+            material.emissiveColor = .init(color: .white, texture: .init(texture))
+        } else {
+            material.emissiveColor = .init(color: UIColor(red: 1, green: 0.97, blue: 0.92, alpha: 1))
+        }
+        material.emissiveIntensity = 0.07
         return material
     }
 
-    /// Across (v): the star profile, darker and warmer down in each groove. Along (u): how occluded the vertex is
-    /// (the underside of a turn resting on the one below, the inner side under the next turn).
-    private static func grooveImage(ridges: Int) -> CGImage? {
-        let width = 32, height = 512
+    private static func shadeImage(open: SIMD3<Float>, hidden: SIMD3<Float>) -> CGImage? {
+        let width = 64, height = 2
         var bytes = [UInt8](repeating: 255, count: width * height * 4)
-        let groove = SIMD3<Float>(0.84, 0.79, 0.71)
-        let shadow = SIMD3<Float>(0.66, 0.6, 0.52)
-        for y in 0..<height {
-            let v = (Float(y) + 0.5) / Float(height)
-            let depth = pow(1 - abs(sin(.pi * Float(ridges) * v)), 2.2)
-            let ridge = simd_mix(SIMD3<Float>(1, 1, 1), groove, .init(repeating: depth))
-            for x in 0..<width {
-                let occlusion = Float(x) / Float(width - 1)
-                let color = simd_mix(ridge, ridge * shadow, .init(repeating: occlusion))
+        for x in 0..<width {
+            let t = Float(x) / Float(width - 1)
+            let color = simd_mix(open, hidden, SIMD3(repeating: t * t * (3 - 2 * t)))
+            for y in 0..<height {
                 let o = (y * width + x) * 4
                 bytes[o] = UInt8(min(color.x, 1) * 255)
                 bytes[o + 1] = UInt8(min(color.y, 1) * 255)
