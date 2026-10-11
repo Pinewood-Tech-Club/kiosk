@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03822A063466F1A5E65DCD19 /* ScatterLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 149F2B0E24E64D43367C334D /* ScatterLab.swift */; };
 		0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */; };
 		13BA8C20840B4FEE6E0C80E2 /* StageScoops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */; };
 		1673ECA689F29B1FA803C815 /* ScatterLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D65867471778683C1CB36618 /* ScatterLayer.swift */; };
@@ -82,6 +83,7 @@
 		032C0963C55D1F2DDA3E4886 /* SquareCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareCatalog.swift; sourceTree = "<group>"; };
 		0709C534BE54B5155CA2586D /* BoothAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothAPI.swift; sourceTree = "<group>"; };
 		0B1947CA65BE6B0AE411C69D /* KioskUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KioskUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		149F2B0E24E64D43367C334D /* ScatterLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScatterLab.swift; sourceTree = "<group>"; };
 		1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		1D0BD8A918E962602B31E95B /* TrayTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrayTiles.swift; sourceTree = "<group>"; };
 		26416F94519A9065695E9BE2 /* StageTray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageTray.swift; sourceTree = "<group>"; };
@@ -299,6 +301,7 @@
 			isa = PBXGroup;
 			children = (
 				C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */,
+				149F2B0E24E64D43367C334D /* ScatterLab.swift */,
 				D65867471778683C1CB36618 /* ScatterLayer.swift */,
 				48740B6EF1BC55783B05082A /* ToppingLayer.swift */,
 			);
@@ -520,6 +523,7 @@
 				EEE905EC1942EFD25A5F0730 /* PlaceholderScatterKind.swift in Sources */,
 				7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */,
 				0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */,
+				03822A063466F1A5E65DCD19 /* ScatterLab.swift in Sources */,
 				1673ECA689F29B1FA803C815 /* ScatterLayer.swift in Sources */,
 				C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */,
 				E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */,
