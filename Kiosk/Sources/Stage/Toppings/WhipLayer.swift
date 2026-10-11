@@ -196,12 +196,16 @@ final class WhipLayer: ToppingLayer {
         for ring in rings {
             let squash = WhipMesh.squash * (1 - 0.55 * d)
             let outward = simd_normalize(SIMD3(ring.center.x - axis.x, 0, ring.center.z - axis.y) + [0, 1e-5, 0])
+            let ct = cos(ring.twist), st = sin(ring.twist)
+            let e1 = ct * ring.normal + st * ring.binormal
+            let e2 = ct * ring.binormal - st * ring.normal
+            let a = ring.arc * 610 + 3 * ring.twist + style.phases.x
+            let b = ring.arc * 270 - 2 * ring.twist + style.phases.y
+            let sa = sin(a), ca = cos(a), sb = sin(b), cb = cos(b)
             for j in 0...profile.count {
                 let p = profile[j % profile.count]
-                let angle = p.angle + ring.twist
-                let u = cos(angle) * ring.normal + sin(angle) * ring.binormal
-                let bump = 1 + 0.03 * sin(ring.arc * 610 + angle * 3 + style.phases.x)
-                    * sin(ring.arc * 270 - angle * 2 + style.phases.y)
+                let u = p.cos * e1 + p.sin * e2
+                let bump = 1 + 0.03 * (sa * p.cos3 + ca * p.sin3) * (sb * p.cos2 - cb * p.sin2)
                 var offset = u * (ring.radius * p.scale * bump)
                 offset.y *= squash
                 var point = ring.center + offset
@@ -597,8 +601,13 @@ final class WhipMesh {
     static let maxRings = bodyRings + 2 + 2 * capRings + 2
 
     struct ProfilePoint {
-        var angle: Float
         var scale: Float
+        var cos: Float
+        var sin: Float
+        var cos2: Float
+        var sin2: Float
+        var cos3: Float
+        var sin3: Float
     }
 
     let mesh: LowLevelMesh
@@ -614,7 +623,8 @@ final class WhipMesh {
         profile = (0..<count).map { j in
             let angle = 2 * Float.pi * Float(j) / Float(count)
             let groove = pow(1 - abs(sin(Float(ridges) * angle / 2)), 1.6)
-            return ProfilePoint(angle: angle, scale: 1 - 0.34 * groove)
+            return ProfilePoint(scale: 1 - 0.34 * groove, cos: cos(angle), sin: sin(angle), cos2: cos(2 * angle),
+                                sin2: sin(2 * angle), cos3: cos(3 * angle), sin3: sin(3 * angle))
         }
         let stride = count + 1
         let vertexCapacity = Self.maxRings * stride
