@@ -76,7 +76,6 @@ final class BoothConnection {
     @ObservationIgnored private var pendingActions: [PendingAction] = []
     @ObservationIgnored private var actionHTTPInFlight = false
 
-    /// `actionStore` keeps unsent staff actions on disk so they survive a relaunch.
     init(api: BoothAPI, role: Role, actionStore: URL? = nil, log: @escaping (String) -> Void) {
         self.api = api
         self.role = role

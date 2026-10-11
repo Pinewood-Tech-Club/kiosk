@@ -72,7 +72,6 @@ final class StaffLink {
         ackIntents[id].map { $0.settledAt == nil } ?? false
     }
 
-    /// Converts a server timestamp (ms) to this iPad's clock.
     func localDate(_ serverMillis: Double) -> Date {
         Date(timeIntervalSince1970: serverMillis / 1000 - clockOffset)
     }
