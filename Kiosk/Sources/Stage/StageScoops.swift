@@ -470,13 +470,16 @@ extension Stage {
                 reslot(actor, to: index + 1)
                 beginMorph(actor, to: pose)
             }
-            // Reshapes only while clear of the old rim. The cone's opening only fits the cone pose, so that is complete
-            // before it goes in; into the cup it reshapes in step with its descent, like the press, since a cup pose
-            // lowered whole would drag its collar past the cup's rolled rim.
+            // The cone's opening only fits the cone pose: a scoop reshapes only once out of it, and is in the cone pose
+            // before it goes in. In and out of the cup it reshapes in step with its height, like the press, since a cup
+            // pose moved whole would drag its collar past the cup's rolled rim.
             var w = Ease.inOutSine(Ease.segment(p, 0.15, 0.7))
             if let origin, origin.rig.root.parent != nil {
                 let old = opening(position, rig: origin.rig, slot: origin.slot)
-                w = min(w, lerp(1, Ease.clamp01((old.height - origin.clear) / landing), old.over))
+                let out = origin.rig.vessel == .cone
+                    ? Ease.clamp01((old.height - origin.clear) / landing)
+                    : Ease.clamp01(old.height / max(origin.clear, landing))
+                w = min(w, lerp(1, out, old.over))
             }
             w = max(w, rig.vessel == .cone ? inside : max(0, 1 - max(new.height, 0) / max(clear, landing)) * new.over)
             setMorphWeight(actor, w)

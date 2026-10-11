@@ -596,6 +596,7 @@ struct StressRunner {
         log("seed \(seed), \(rounds) rounds, tray \(includeTray)")
         var failures = 0
         var clipRounds = 0
+        var vesselRounds = 0
         var actions = 0
         for round in 0..<rounds {
             let burst = 6 + Int(rng.next() % 30)
@@ -621,14 +622,19 @@ struct StressRunner {
                 failures += 1
                 log("round \(round) FAIL after [\(trace.joined(separator: " "))]: \(issues.joined(separator: "; "))")
             }
-            let clips = app.stage.clipCheck?.takeIssues() ?? []
+            let found = app.stage.clipCheck?.takeIssues() ?? []
+            let clips = found.filter { !$0.isVessels }, overlaps = found.filter(\.isVessels)
             if clips.contains(where: \.isVisible) {
                 clipRounds += 1
                 log("round \(round) CLIP after [\(trace.joined(separator: " "))]: \(clips.filter(\.isVisible).map(\.text).joined(separator: "; "))")
             }
             for graze in clips where !graze.isVisible { log("round \(round) graze under \(ClipCheck.visibleDepth * 1000) mm: \(graze.text)") }
+            if overlaps.contains(where: \.isVisible) {
+                vesselRounds += 1
+                log("round \(round) VESSELS after [\(trace.joined(separator: " "))]: \(overlaps.filter(\.isVisible).map(\.text).joined(separator: "; "))")
+            }
         }
-        log("done: \(rounds - failures)/\(rounds) rounds consistent, \(clipRounds) with a scoop through a vessel, \(actions) actions, seed \(seed)")
+        log("done: \(rounds - failures)/\(rounds) rounds consistent, \(clipRounds) with a scoop through a vessel, \(vesselRounds) with vessels passing through each other, \(actions) actions, seed \(seed)")
         if let check = app.stage.clipCheck { log(check.summary) }
     }
 

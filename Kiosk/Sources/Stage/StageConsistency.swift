@@ -146,6 +146,8 @@ struct VesselProfile: Sendable {
     let radiusMax: Float
     let floorTop: Float
     let floorBottom: Float
+    /// A few thousand points spread over the surface, for testing this vessel against another.
+    let samples: [SIMD3<Float>]
 
     nonisolated init(_ geometry: ContactSolver.VesselGeometry) {
         var samples: [(p: SIMD3<Float>, n: SIMD3<Float>)] = []
@@ -211,6 +213,7 @@ struct VesselProfile: Sendable {
         fill(&outer) { $0 < 0 }
         for i in 0..<bins where !inner[i].isFinite || inner[i] > outer[i] { inner[i] = outer[i] }
         fill(&top) { !$0.isFinite }
+        self.samples = stride(from: 0, to: samples.count, by: max(1, samples.count / 3000)).map { samples[$0].p }
         self.yMin = yMin
         self.outer = outer
         self.inner = inner
@@ -263,8 +266,9 @@ struct VesselProfile: Sendable {
 }
 
 /// Per-frame check that no scoop's mesh crosses a vessel's wall: every frame, each scoop's current (morphed)
-/// shape is sampled and tested against every vessel in the scene. A solid scoop that has parts both inside the
-/// cavity and outside the wall below the rim must contain a piece of the wall, which is a visible intersection.
+/// shape is sampled and tested against every vessel in the scene, and the moving heroes against each other.
+/// A solid scoop that has parts both inside the cavity and outside the wall below the rim must contain a piece
+/// of the wall, which is a visible intersection.
 @MainActor
 final class ClipCheck {
     static let vertexStride = 16
@@ -275,6 +279,8 @@ final class ClipCheck {
     struct Issue {
         let text: String
         let depth: Float
+        /// Two vessels passing through each other rather than a scoop through a vessel.
+        let isVessels: Bool
         var isVisible: Bool { depth > ClipCheck.visibleDepth }
     }
 
@@ -290,6 +296,7 @@ final class ClipCheck {
 
     private struct Episode {
         let label: String
+        var isVessels = false
         var frames = 0
         var worst = Measure()
         var phases: [String] = []
@@ -419,6 +426,31 @@ final class ClipCheck {
                 open[key] = episode
             }
         }
+        // Vessels passing each other during a swap, where both are moving through the space under the stack.
+        let moving = rigs.filter { ["hero", "outgoing hero", "leaving"].contains($0.label) }
+        for a in moving {
+            for b in moving where a.root !== b.root {
+                guard let profileA = profiles[a.vessel], let profileB = profiles[b.vessel] else { continue }
+                let worldA = a.body.transformMatrix(relativeTo: nil), worldB = b.body.transformMatrix(relativeTo: nil)
+                let scaleA = simd_length(SIMD3(worldA.columns.0.x, worldA.columns.0.y, worldA.columns.0.z))
+                let scaleB = simd_length(SIMD3(worldB.columns.0.x, worldB.columns.0.y, worldB.columns.0.z))
+                guard scaleA > 1e-3, scaleB > 1e-3 else { continue }
+                let reachA = max(profileA.topMax, profileA.radiusMax) * scaleA, reachB = max(profileB.topMax, profileB.radiusMax) * scaleB
+                guard simd_distance(SIMD3(worldA.columns.3.x, worldA.columns.3.y, worldA.columns.3.z),
+                                    SIMD3(worldB.columns.3.x, worldB.columns.3.y, worldB.columns.3.z)) < reachA + reachB else { continue }
+                pairs += 1
+                let result = Self.measure(profileA.samples, simd_inverse(worldB) * worldA, profileB)
+                guard result.severity > Self.tolerance else { continue }
+                let key = "v-\(ObjectIdentifier(a.root).hashValue)-\(ObjectIdentifier(b.root).hashValue)"
+                seen.insert(key)
+                var episode = open[key] ?? Episode(label: "\(a.vessel.rawValue) \(a.label) through \(b.vessel.rawValue) \(b.label)",
+                                                   isVessels: true, started: stage.now)
+                episode.frames += 1
+                if result.severity > episode.worst.severity { episode.worst = result }
+                if episode.phases.isEmpty { episode.phases = ["vessels passing"] }
+                open[key] = episode
+            }
+        }
         for (key, episode) in open where !seen.contains(key) {
             open[key] = nil
             close(episode)
@@ -428,12 +460,14 @@ final class ClipCheck {
     private func close(_ episode: Episode) {
         episodes += 1
         worst = max(worst, episode.worst.severity)
-        let line = String(format: "%@ during %@: %d frames, %.1f mm deep (inside %.1f, outside %.1f, in wall %.1f; reaches %.1f mm below the rim; base r %.1f y %.1f, size ×%.2f) at t=%.2f",
+        let base = episode.worst.base.z > 0
+            ? String(format: "; base r %.1f y %.1f, size ×%.2f", episode.worst.base.x * 1000, episode.worst.base.y * 1000, episode.worst.base.z)
+            : ""
+        let line = String(format: "%@ during %@: %d frames, %.1f mm deep (inside %.1f, outside %.1f, in wall %.1f; reaches %.1f mm below the rim%@) at t=%.2f",
                           episode.label, episode.phases.joined(separator: "→"), episode.frames, episode.worst.severity * 1000,
                           episode.worst.cavity * 1000, episode.worst.outside * 1000, episode.worst.solid * 1000,
-                          episode.worst.belowRim * 1000, episode.worst.base.x * 1000, episode.worst.base.y * 1000,
-                          episode.worst.base.z, episode.started)
-        unreported.append(Issue(text: "clip: " + line, depth: episode.worst.severity))
+                          episode.worst.belowRim * 1000, base, episode.started)
+        unreported.append(Issue(text: "clip: " + line, depth: episode.worst.severity, isVessels: episode.isVessels))
         log("Clip: " + line)
     }
 

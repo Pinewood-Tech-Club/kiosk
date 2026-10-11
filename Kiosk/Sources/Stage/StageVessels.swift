@@ -155,7 +155,7 @@ extension Stage {
                dip: fromIcon && !underScoops, timing: .flight, axisIn: axisIn, attitude: underScoops ? 0...0.7 : 0...1,
                control: { p0, p1 in
                    underScoops
-                       ? SIMD3<Float>(p1.x, lerp(p0.y, p1.y, 0.35), 0.28)
+                       ? SIMD3<Float>(p1.x, lerp(p0.y, p1.y, 0.35), 0.7)
                        : (p0 + p1) / 2 + SIMD3<Float>(side * 0.2, -0.03, 0.14)
                },
                target: { [unowned self] in
@@ -180,7 +180,7 @@ extension Stage {
                axisOut: axisOut, attitude: fromUnderScoops ? 0.3...1 : 0...1,
                control: { p0, p1 in
                    fromUnderScoops
-                       ? SIMD3<Float>(p0.x, lerp(p0.y, p1.y, 0.75), -0.4)
+                       ? SIMD3<Float>(p0.x, lerp(p0.y, p1.y, 0.75), -1.0)
                        : (p0 + p1) / 2 + SIMD3<Float>(side * 0.17, 0.02, -0.1)
                },
                target: { [unowned self] in iconPose(vessel) }) { [weak self] in
@@ -304,7 +304,10 @@ extension Stage {
         let (incoming, isNew) = heroRig(vessel)
         setOwner(scoops, incoming)
         reframe(incoming, animated: !isNew)
-        launch(incoming, isNew: isNew, duration: carrying ? duration - 0.06 : duration, underScoops: carrying)
+        // Carrying scoops, both vessels pass under the stack; the incoming one starts a beat later, in front, so it
+        // never meets the outgoing one dropping away behind.
+        launch(incoming, isNew: isNew, duration: carrying ? duration - 0.16 : duration, delay: carrying ? 0.1 : 0,
+               underScoops: carrying)
         if let outgoing = heroes[old] {
             flyHeroHome(outgoing, duration: carrying ? 0.75 : 1.0, leavingScoops: scoops.count)
         }
