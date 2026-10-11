@@ -60,7 +60,9 @@ final class AppModel {
     var builderVisible = false
     private(set) var mode: BuilderMode = .customize
     private(set) var step: BuilderStep = .vessel
-    private(set) var current = IceCreamItem()
+    private(set) var current = IceCreamItem() {
+        didSet { if current.toppings != oldValue.toppings { stage.setToppings(current.toppings, itemID: current.id) } }
+    }
     private(set) var items: [IceCreamItem] = []
     private(set) var editingID: UUID?
     private(set) var stageReady = false
@@ -68,11 +70,8 @@ final class AppModel {
     var assetsFailed: Bool { assetLoadFailed || forcedError == .assets }
     var forcedError: ForcedError?
     private(set) var pressedCards: Set<CardKey> = []
-    private(set) var pressedToppings: Set<Topping> = []
-    /// Screen frames of the topping cards' icon areas, as laid out, for the stage's 3D topping icons.
-    @ObservationIgnored private(set) var toppingIconFrames: [Topping: CGRect] = [:]
     /// The cards draw a flat glyph in each icon area until the stage draws its 3D icons there.
-    var stageDrawsToppingIcons = false
+    private(set) var stageDrawsToppingIcons = false
     var confirmation: Confirmation?
     var notice: Notice?
     var receipt: Receipt?
@@ -178,6 +177,7 @@ final class AppModel {
             let assets = forcedError == .assets ? nil : await AssetLibrary.load(log: { [weak self] in self?.square.record($0) })
             if let assets {
                 stage.build(with: assets)
+                stageDrawsToppingIcons = true
                 assets.checkContacts { [weak self] in self?.square.record($0) }
                 stageReady = true
                 try? await Task.sleep(for: .seconds(0.4))
@@ -249,7 +249,6 @@ final class AppModel {
         mode = .customize
         step = .vessel
         pressedCards = []
-        pressedToppings = []
         confirmation = nil
         notice = nil
         receipt = nil
@@ -276,16 +275,8 @@ final class AppModel {
         stage.setPressed(card, pressed)
     }
 
-    func setPressed(_ topping: Topping, _ pressed: Bool) {
-        if pressed {
-            pressedToppings.insert(topping)
-        } else {
-            pressedToppings.remove(topping)
-        }
-    }
-
     func setToppingIconFrame(_ topping: Topping, _ frame: CGRect) {
-        toppingIconFrames[topping] = frame
+        stage.setToppingIconFrame(topping, frame)
     }
 
     func selectVessel(_ vessel: Vessel) {
@@ -513,7 +504,6 @@ final class AppModel {
         current = IceCreamItem()
         step = .vessel
         pressedCards = []
-        pressedToppings = []
         stage.resetBuilderUnderSheet()
     }
 
@@ -670,7 +660,6 @@ final class AppModel {
     }
 
     func setCustomerNameForScript(_ name: String) { customerName = name }
-
     func setSummaryScroll(_ offset: CGFloat) {
         stage.summaryScroll = offset
     }

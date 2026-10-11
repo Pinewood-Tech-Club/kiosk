@@ -3,7 +3,7 @@ import SwiftUI
 
 extension Stage {
     /// Top of the item (vessel plus placed scoops) and its widest horizontal radius, in the vessel's frame.
-    func itemMetrics(_ item: IceCreamItem) -> (top: Float, radius: Float) {
+    func itemMetrics(_ item: IceCreamItem, rig: ItemRig? = nil) -> (top: Float, radius: Float) {
         guard let assets else { return (0.1, 0.045) }
         var top = assets.vesselTop(item.vessel)
         var radius = assets.vesselHalfWidth(item.vessel)
@@ -15,6 +15,7 @@ extension Stage {
             let reach = max(abs(bounds.min.x), abs(bounds.max.x), abs(bounds.min.z), abs(bounds.max.z))
             radius = max(radius, simd_length(SIMD2(placement.translation.x, placement.translation.z)) + reach)
         }
+        if let toppings = rig?.toppings?.top { top = max(top, toppings) }
         return (top, radius)
     }
 
@@ -220,7 +221,7 @@ extension Stage {
         heroes[selectedVessel] = nil
         isDragging = false
         scoops.removeAll()
-        let entry = TrayEntry(item: item, rig: hero, index: Float(tray.count), metrics: itemMetrics(item))
+        let entry = TrayEntry(item: item, rig: hero, index: Float(tray.count), metrics: itemMetrics(item, rig: hero))
         tray.append(entry)
         if !summaryActive { animateTrayScroll(to: maxTrayScroll, duration: 0.4) }
         flyEntry(entry, duration: summaryActive ? 0.75 : 1.05)
@@ -233,7 +234,7 @@ extension Stage {
         scoops.removeAll()
         entry.item = item
         entry.rig = hero
-        entry.setMetrics(itemMetrics(item))
+        entry.setMetrics(itemMetrics(item, rig: hero))
         if !summaryActive {
             animateTrayScroll(to: trayScroll(showing: Int(entry.index.rounded())), duration: 0.6)
         }
@@ -515,6 +516,8 @@ extension Stage {
             icon.appearTween = nil
         }
         for actor in Array(liveScoops.values) { discard(actor) }
+        removeDetachedToppings()
+        for icon in toppingIcons.values { icon.reset() }
         controlsVisible = true
         setStep(.vessel, animated: false)
         updateIcons()
@@ -524,7 +527,7 @@ extension Stage {
         reset()
         for item in items {
             let rig = makeItemRig(item)
-            let entry = TrayEntry(item: item, rig: rig, index: Float(tray.count), metrics: itemMetrics(item))
+            let entry = TrayEntry(item: item, rig: rig, index: Float(tray.count), metrics: itemMetrics(item, rig: rig))
             entry.mode = .docked
             tray.append(entry)
             root.addChild(rig.root)
@@ -566,6 +569,7 @@ extension Stage {
             rig.scoops.append(actor)
             rig.body.addChild(actor.root)
         }
+        applyToppings(item, to: rig)
         return rig
     }
 }

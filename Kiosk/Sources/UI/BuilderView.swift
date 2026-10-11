@@ -170,7 +170,7 @@ struct BuilderBackdrop: View {
                                 .offset(x: icon.midX - card.midX, y: icon.midY - card.midY)
                         }
                     }
-                    .modifier(PressEffect(pressed: app.pressedToppings.contains(topping)))
+                    .modifier(PressEffect(pressed: app.pressedCards.contains(.topping(topping))))
                     .position(x: card.midX, y: card.midY)
 
                     Color.clear
@@ -479,8 +479,8 @@ struct BuilderForeground: View {
                     .contentShape(.rect(cornerRadius: Layout.toppingCardRadius))
                     .animation(.easeInOut(duration: 0.2), value: selected)
                 }
-                .buttonStyle(CardPressStyle { app.setPressed(topping, $0) })
-                .modifier(PressEffect(pressed: app.pressedToppings.contains(topping)))
+                .buttonStyle(CardPressStyle { app.setPressed(.topping(topping), $0) })
+                .modifier(PressEffect(pressed: app.pressedCards.contains(.topping(topping))))
                 .accessibilityLabel(topping.title)
                 .accessibilityValue(selected ? "Added" : "+\(topping.priceCents.formattedAsUSD)")
                 .accessibilityAddTraits(selected ? .isSelected : [])

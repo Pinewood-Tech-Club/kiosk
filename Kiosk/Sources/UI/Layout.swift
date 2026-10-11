@@ -9,7 +9,6 @@ enum Layout {
     static let backButtonCenter = CGPoint(x: 104, y: 112)
     static let stepIndicatorY: CGFloat = 106
     static let titleY: CGFloat = 190
-    static let subtitleY: CGFloat = 246
 
     static let dragArea = CGRect(x: 150, y: 286, width: 732, height: 548)
 
@@ -44,11 +43,6 @@ enum Layout {
         let card = toppingCardFrame(topping)
         return CGRect(x: card.midX - toppingIconSize.width / 2, y: card.minY + 16,
                       width: toppingIconSize.width, height: toppingIconSize.height)
-    }
-
-    static func toppingIconCenter(_ topping: Topping) -> CGPoint {
-        let frame = toppingIconFrame(topping)
-        return CGPoint(x: frame.midX, y: frame.midY)
     }
 
     static func toppingGroupHeader(_ group: ToppingGroup) -> CGRect {
