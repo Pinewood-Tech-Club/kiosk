@@ -316,7 +316,7 @@ struct CandyLentils: ScatterKind {
     static let shapeCount = 8
     static let colors: [SIMD3<Float>] = [
         [0.80, 0.05, 0.06], [1.0, 0.40, 0.03], [1.0, 0.80, 0.05],
-        [0.08, 0.60, 0.22], [0.04, 0.38, 0.82], [0.30, 0.16, 0.09],
+        [0.08, 0.60, 0.22], [0.04, 0.40, 0.84], [0.25, 0.12, 0.07],
     ]
     static let shades = 2
 
@@ -411,12 +411,12 @@ enum LentilPrint {
             }
 
             let font = UIFont(name: "AmericanTypewriter-Semibold", size: 100) ?? .systemFont(ofSize: 100, weight: .heavy)
-            let ink = UIColor(red: 0.95, green: 0.94, blue: 0.91, alpha: 0.9)
+            let ink = UIColor(red: 0.95, green: 0.94, blue: 0.91, alpha: 0.85)
             let glyph = NSAttributedString(string: "m", attributes: [.font: font, .foregroundColor: ink,
                                                                      .strokeColor: ink, .strokeWidth: -2.5])
             let bounds = glyph.boundingRect(with: CGSize(width: 400, height: 400), options: [.usesLineFragmentOrigin], context: nil)
             let xHeight = font.xHeight
-            let scale = side * 0.37 / bounds.width
+            let scale = side * 0.41 / bounds.width
             cg.saveGState()
             cg.translateBy(x: side * 0.5 + CGFloat.random(in: -3...3, using: &rng),
                            y: side * 0.5 + CGFloat.random(in: -3...3, using: &rng))
