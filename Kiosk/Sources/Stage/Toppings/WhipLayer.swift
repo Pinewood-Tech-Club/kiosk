@@ -204,7 +204,6 @@ final class WhipLayer: ToppingLayer {
         let count = profile.count
         let stride = count + 1
         let grain = buffers.grain
-        let ground = currentGround
         let squash = WhipMesh.squash * (1 - 0.55 * current.deflate)
         let ridges = style.ridges
         let noise = style.noise
@@ -246,13 +245,10 @@ final class WhipLayer: ToppingLayer {
                 let scale = (1 + WhipMesh.puff * lobe.x) * (1 - WhipMesh.groove * crease) * (1 + WhipMesh.grain * grain[row + jj])
                 var offset = u * (ring.radius * scale)
                 offset.y *= squash
-                var point = ring.center + offset
                 if ring.foot > 0, u.y < -0.1 {
-                    let w = ring.foot * Self.smoothstep(0.1, 0.8, -u.y)
-                    let floor = ground.height(point.x, point.z) - 0.0012
-                    if point.y > floor { point.y -= min(point.y - floor, 0.6 * ring.radius) * w }
+                    offset.y *= 1 - 0.35 * ring.foot * Self.smoothstep(0.1, 0.8, -u.y)
                 }
-                points.append(point)
+                points.append(ring.center + offset)
                 let under = Self.smoothstep(-0.1, 0.85, -u.y)
                 let inner = Self.smoothstep(0.2, 1, -simd_dot(u, outward)) * Self.smoothstep(0.3, -0.2, u.y)
                 shade.append(min(0.6 * under + 0.3 * inner + 0.75 * crease, 1) * ring.occlusion)
@@ -360,9 +356,9 @@ struct WhipStyle {
         turns = .random(in: 1.5...1.75, using: &rng)
         ridges = Float.random(in: 0...1, using: &rng) < 0.6 ? 8 : 7
         twist = .random(in: 0.25...0.45, using: &rng) * (Bool.random(using: &rng) ? 1 : -1)
-        spread = .random(in: 0.6...0.66, using: &rng)
+        spread = .random(in: 0.68...0.74, using: &rng)
         tube = .random(in: 0.62...0.7, using: &rng)
-        peak = .random(in: 1.1...1.4, using: &rng)
+        peak = .random(in: 1.2...1.5, using: &rng)
         curl = .random(in: 1.2...1.8, using: &rng)
         noise = WhipNoise(rng: &rng)
     }
@@ -399,6 +395,7 @@ struct WhipHeightGrid {
         } else if valid < count * count {
             Self.fillGaps(&h, count: count)
         }
+        Self.soften(&h, count: count)
         heights = h
     }
 
@@ -421,6 +418,19 @@ struct WhipHeightGrid {
                         h[iz * count + ix] = sum / n
                         changed = true
                     }
+                }
+            }
+        }
+    }
+
+    /// Blurs away the stair steps of coarse height fields so the cream's squashed foot follows a smooth floor.
+    private static func soften(_ h: inout [Float], count: Int) {
+        for _ in 0..<2 {
+            let source = h
+            for iz in 1..<(count - 1) {
+                for ix in 1..<(count - 1) {
+                    let i = iz * count + ix
+                    h[i] = (4 * source[i] + source[i - 1] + source[i + 1] + source[i - count] + source[i + count]) / 8
                 }
             }
         }
@@ -563,7 +573,7 @@ struct WhipSweep {
                 let below = lerp(base[back], base[back + 1], t)
                 let belowR = lerp(spiralRadius[back], spiralRadius[back + 1], t)
                 let belowA = lerp(stackRadius[back], stackRadius[back + 1], t)
-                let reach = 0.8 * (belowA + a)
+                let reach = 0.82 * (belowA + a)
                 let d = belowR - r
                 let climb = WhipLayer.smoothstep(-ramp, 0, behind)
                 onCream = below + climb * squash * sqrt(max(reach * reach - d * d, 0))
@@ -811,7 +821,7 @@ final class WhipMesh {
         material.roughness = .init(floatLiteral: 0.86)
         material.specular = .init(floatLiteral: 0.18)
         material.sheen = .init(tint: UIColor(white: 0.2, alpha: 1))
-        let tint = UIColor(red: 0.9, green: 0.895, blue: 0.885, alpha: 1)
+        let tint = UIColor(red: 0.93, green: 0.925, blue: 0.915, alpha: 1)
         if let image = shadeImage(open: [1, 1, 1], hidden: [0.66, 0.645, 0.625]),
            let texture = try? TextureResource(image: image, withName: nil, options: .init(semantic: .color)) {
             material.baseColor = .init(tint: tint, texture: .init(texture))
@@ -824,7 +834,7 @@ final class WhipMesh {
         } else {
             material.emissiveColor = .init(color: UIColor(red: 1, green: 0.97, blue: 0.92, alpha: 1))
         }
-        material.emissiveIntensity = 0.07
+        material.emissiveIntensity = 0.09
         return material
     }
 
