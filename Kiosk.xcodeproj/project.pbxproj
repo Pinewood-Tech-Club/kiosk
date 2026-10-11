@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0DB3FAFF3FEE7F0C6F1B9A36 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5701FD802D3A088526716CC8 /* Keychain.swift */; };
 		0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */; };
+		104FC2A6ED64042650293395 /* DrizzleLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E677D9645BB623E14ACDFD5 /* DrizzleLab.swift */; };
 		13BA8C20840B4FEE6E0C80E2 /* StageScoops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */; };
 		1673ECA689F29B1FA803C815 /* ScatterLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D65867471778683C1CB36618 /* ScatterLayer.swift */; };
 		1BB0562605F01093714A5FD4 /* BoothCheckout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DBF1469A678F767112B34C4 /* BoothCheckout.swift */; };
@@ -39,6 +40,7 @@
 		74456A6B3CED1B853F498EDE /* ContactSolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B88A56B517EB00EB9EFB3F /* ContactSolver.swift */; };
 		7568C47CEA97F79633A7EA91 /* ToppingGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = B167035449C278995411C2B4 /* ToppingGlyph.swift */; };
 		7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DFD4680D9AC7197C5C0B25 /* Receipt.swift */; };
+		7BA5F30548207E9109087F13 /* DrizzleLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8B17032539D12086EC034E /* DrizzleLayer.swift */; };
 		801D82FD48D19ED123B5E60D /* StaffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFA7ED72E4DEADA3ABEC34BA /* StaffView.swift */; };
 		80F62615D532B17AB4C91758 /* loop.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = CF19FBBFF9063473EF2C011F /* loop.mp4 */; };
 		8446E36717CEF4B196007F30 /* StageConsistency.swift in Sources */ = {isa = PBXBuildFile; fileRef = C47A1B344994FAF846FD449E /* StageConsistency.swift */; };
@@ -110,6 +112,7 @@
 		37DFD4680D9AC7197C5C0B25 /* Receipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Receipt.swift; sourceTree = "<group>"; };
 		3A427B0BBC2F44DCB35CDA2F /* StageToppings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageToppings.swift; sourceTree = "<group>"; };
 		3A5C513CA4EED620DB0C9835 /* ScoopSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopSurface.swift; sourceTree = "<group>"; };
+		3E677D9645BB623E14ACDFD5 /* DrizzleLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrizzleLab.swift; sourceTree = "<group>"; };
 		3E7BD938DB6C7D3B7D320A5E /* GummyBears-CC-BY-4.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "GummyBears-CC-BY-4.0.txt"; sourceTree = "<group>"; };
 		3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Regular.ttf"; sourceTree = "<group>"; };
 		41288991151D7382A2F4C89D /* 3D */ = {isa = PBXFileReference; lastKnownFileType = folder; name = 3D; path = Kiosk/Resources/3D; sourceTree = SOURCE_ROOT; };
@@ -136,6 +139,7 @@
 		7703DC11C0C31F62DC6BD09D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		80DA186C645E6612A99CD769 /* StageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageView.swift; sourceTree = "<group>"; };
 		8B362FE7742C73DA7798FF13 /* SquareCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareCredentials.swift; sourceTree = "<group>"; };
+		8B8B17032539D12086EC034E /* DrizzleLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrizzleLayer.swift; sourceTree = "<group>"; };
 		8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentProblem.swift; sourceTree = "<group>"; };
 		94D96DB54BCDC2006C377D8F /* SquareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareService.swift; sourceTree = "<group>"; };
 		955D9B0FEA00CB8CCA27E91D /* Stage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage.swift; sourceTree = "<group>"; };
@@ -334,6 +338,8 @@
 			children = (
 				4649965D4D60FFAD3C4019DC /* CandyKinds.swift */,
 				984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */,
+				3E677D9645BB623E14ACDFD5 /* DrizzleLab.swift */,
+				8B8B17032539D12086EC034E /* DrizzleLayer.swift */,
 				C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */,
 				D65867471778683C1CB36618 /* ScatterLayer.swift */,
 				C6EB437FE04FC84CEA440D1E /* ScatterPhysics.swift */,
@@ -557,6 +563,8 @@
 				8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */,
 				74456A6B3CED1B853F498EDE /* ContactSolver.swift in Sources */,
 				9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */,
+				104FC2A6ED64042650293395 /* DrizzleLab.swift in Sources */,
+				7BA5F30548207E9109087F13 /* DrizzleLayer.swift in Sources */,
 				F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */,
 				DF96ED4630E78827B560EDCB /* Glass.swift in Sources */,
 				536DCDE99FE4949A7CD2BFC7 /* HelpButton.swift in Sources */,

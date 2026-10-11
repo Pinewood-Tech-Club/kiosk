@@ -123,6 +123,7 @@ final class Stage {
     var receiptClip: CGRect = .zero
     var clipCheck: ClipCheck?
     var toppingLab: ToppingLab?
+    let drizzleLab = DrizzleLab()
 
     func attach(to content: inout RealityViewCameraContent) {
         content.add(root)
@@ -316,6 +317,7 @@ final class Stage {
         toppingLab?.update(now: now)
         updateTray(dt: Float(dt))
         updateToppings()
+        drizzleLab?.update(self)
         clipCheck?.run(self)
         flushMorphs()
 
