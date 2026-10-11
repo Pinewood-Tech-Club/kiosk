@@ -11,6 +11,7 @@
 		13BA8C20840B4FEE6E0C80E2 /* StageScoops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */; };
 		1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF36BF94972C41A51D71D966 /* KioskApp.swift */; };
 		1D208167E95C76C2B5B5A490 /* BoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */; };
+		26DDA3A6B7252388900B3E37 /* ToppingLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A1568D90FE5A52B433D80B /* ToppingLab.swift */; };
 		2B591179C416EC14B3DF661F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF77AD1D7C8D64414EA6DB92 /* Theme.swift */; };
 		2F1D9CFC58D885C3AD6E9BEA /* NotoSerif-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */; };
 		31E11CF00B709FFA3131CDD2 /* PaymentProblem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */; };
@@ -123,6 +124,7 @@
 		B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareAPI.swift; sourceTree = "<group>"; };
 		B353824019534A970B3D1DE6 /* StageVessels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageVessels.swift; sourceTree = "<group>"; };
 		C1105750A779779A5507FAF2 /* Order.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Order.swift; sourceTree = "<group>"; };
+		C2A1568D90FE5A52B433D80B /* ToppingLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingLab.swift; sourceTree = "<group>"; };
 		C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothOutbox.swift; sourceTree = "<group>"; };
 		C47A1B344994FAF846FD449E /* StageConsistency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageConsistency.swift; sourceTree = "<group>"; };
 		CBB1DFC96A2B464467CC2110 /* StageActors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageActors.swift; sourceTree = "<group>"; };
@@ -296,6 +298,7 @@
 		933EFE036EC4FB9DBB0AC00F /* Toppings */ = {
 			isa = PBXGroup;
 			children = (
+				C2A1568D90FE5A52B433D80B /* ToppingLab.swift */,
 				48740B6EF1BC55783B05082A /* ToppingLayer.swift */,
 				A340C15A80FAF3849CA78721 /* WhipLayer.swift */,
 			);
@@ -530,6 +533,7 @@
 				F86ED738CAD06D788946D97B /* StageView.swift in Sources */,
 				5C4E87910C7013DDFEBDB6ED /* SummaryView.swift in Sources */,
 				2B591179C416EC14B3DF661F /* Theme.swift in Sources */,
+				26DDA3A6B7252388900B3E37 /* ToppingLab.swift in Sources */,
 				FE0C1C733FBF872A34848749 /* ToppingLayer.swift in Sources */,
 				6735B223D0F752A9B4C1C427 /* TrayTiles.swift in Sources */,
 				978A90B9BB7DA98E01B83A03 /* WhipLayer.swift in Sources */,
