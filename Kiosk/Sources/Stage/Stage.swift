@@ -115,6 +115,7 @@ final class Stage {
     var receiptFrames: [UUID: CGRect] = [:]
     var receiptClip: CGRect = .zero
     var clipCheck: ClipCheck?
+    let drizzleLab = DrizzleLab()
 
     func attach(to content: inout RealityViewCameraContent) {
         content.add(root)
@@ -280,6 +281,7 @@ final class Stage {
         tweens.removeAll { $0.isFinished }
         updateIcons()
         updateTray(dt: Float(dt))
+        drizzleLab?.update(self)
         clipCheck?.run(self)
         flushMorphs()
 

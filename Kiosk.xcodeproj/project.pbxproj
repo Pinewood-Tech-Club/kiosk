@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */; };
+		104FC2A6ED64042650293395 /* DrizzleLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E677D9645BB623E14ACDFD5 /* DrizzleLab.swift */; };
 		13BA8C20840B4FEE6E0C80E2 /* StageScoops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */; };
 		1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF36BF94972C41A51D71D966 /* KioskApp.swift */; };
 		1D208167E95C76C2B5B5A490 /* BoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */; };
@@ -90,6 +91,7 @@
 		3576D0AAEDEAFA110046DA31 /* AttractView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttractView.swift; sourceTree = "<group>"; };
 		37AB58ED0D97D8805BD8DAA1 /* NameEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameEntryView.swift; sourceTree = "<group>"; };
 		37DFD4680D9AC7197C5C0B25 /* Receipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Receipt.swift; sourceTree = "<group>"; };
+		3E677D9645BB623E14ACDFD5 /* DrizzleLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrizzleLab.swift; sourceTree = "<group>"; };
 		3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Regular.ttf"; sourceTree = "<group>"; };
 		41288991151D7382A2F4C89D /* 3D */ = {isa = PBXFileReference; lastKnownFileType = folder; name = 3D; path = Kiosk/Resources/3D; sourceTree = SOURCE_ROOT; };
 		425B72639F56A451EDADC970 /* Layout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Layout.swift; sourceTree = "<group>"; };
@@ -294,6 +296,7 @@
 		933EFE036EC4FB9DBB0AC00F /* Toppings */ = {
 			isa = PBXGroup;
 			children = (
+				3E677D9645BB623E14ACDFD5 /* DrizzleLab.swift */,
 				8B8B17032539D12086EC034E /* DrizzleLayer.swift */,
 				48740B6EF1BC55783B05082A /* ToppingLayer.swift */,
 			);
@@ -502,6 +505,7 @@
 				8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */,
 				74456A6B3CED1B853F498EDE /* ContactSolver.swift in Sources */,
 				9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */,
+				104FC2A6ED64042650293395 /* DrizzleLab.swift in Sources */,
 				7BA5F30548207E9109087F13 /* DrizzleLayer.swift in Sources */,
 				F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */,
 				DF96ED4630E78827B560EDCB /* Glass.swift in Sources */,
