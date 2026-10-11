@@ -1,0 +1,47 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "techclub-icecream",
+  "account_id": "496fbe0bf0003addc2e0116caff5d215",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    "run_worker_first": ["/v1/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "BOOTH", "class_name": "Booth" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Booth"] }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "techclub-icecream",
+      "database_id": "0944efa8-228f-4e2b-aa8b-8440f6aab7d0",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "PIN_LIMITER",
+      "namespace_id": "4207",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
+  "triggers": {
+    "crons": ["17 9 * * *"]
+  },
+  "vars": {
+    "LOG_RETENTION_DAYS": "30"
+  },
+  "secrets": {
+    "required": ["BOOTH_TOKEN", "STAFF_PIN"]
+  }
+}
