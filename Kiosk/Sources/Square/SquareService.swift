@@ -49,8 +49,7 @@ final class SquareService: NSObject {
     private(set) var catalogStatus: CatalogStatus = .notConfigured
     @ObservationIgnored private(set) var catalog: SquareCatalog?
     private(set) var cardPrompt: CardPrompt?
-    /// Square's default payment screen instead of the kiosk's own card prompt; a fallback kept for debugging.
-    var usesSquarePrompt = UserDefaults.standard.bool(forKey: "kioskSquarePrompt") {
+    var usesSquarePrompt = UserDefaults.standard.object(forKey: "kioskSquarePrompt") as? Bool ?? true {
         didSet { UserDefaults.standard.set(usesSquarePrompt, forKey: "kioskSquarePrompt") }
     }
 
@@ -61,7 +60,7 @@ final class SquareService: NSObject {
     @ObservationIgnored private var continuation: CheckedContinuation<PaymentResult, Never>?
     @ObservationIgnored private var pending: (quote: OrderQuote, name: String, number: Int, order: SquareAPI.CreatedOrder)?
     @ObservationIgnored private weak var presenter: UIViewController?
-    @ObservationIgnored private var promptMode: PromptMode = .custom
+    @ObservationIgnored private var promptMode: PromptMode = .default
     @ObservationIgnored private var cancelIntent: CancelIntent?
     @ObservationIgnored private var waitingSince: ContinuousClock.Instant?
     @ObservationIgnored private var promptTimer: Task<Void, Never>?
