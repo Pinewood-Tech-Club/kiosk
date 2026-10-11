@@ -45,6 +45,19 @@ final class ToppingLab {
 
     func update(now realNow: Double) {
         var now = realNow
+        if defaults.object(forKey: "kioskToppingLabYaw") != nil {
+            rig.pose.yaw = Float(defaults.double(forKey: "kioskToppingLabYaw"))
+            if defaults.object(forKey: "kioskToppingLabPitch") != nil {
+                rig.pose.pitch = Float(defaults.double(forKey: "kioskToppingLabPitch"))
+            }
+            rig.apply()
+        }
+        if defaults.object(forKey: "kioskToppingLabZoom") != nil {
+            rig.apply()
+            rig.root.scale *= Float(defaults.double(forKey: "kioskToppingLabZoom"))
+            let focus = rig.body.convert(position: surface.apex + [0, Float(defaults.double(forKey: "kioskToppingLabFocus")), 0], to: nil)
+            rig.root.position += SIMD3<Float>(0, 0.3, rig.root.position.z) - [focus.x, focus.y, rig.root.position.z]
+        }
         if !applied {
             guard now >= start else { return }
             applied = true
@@ -164,13 +177,12 @@ struct ScoopHeightField: ToppingSurface {
         heights = h
         let peak = top.max { $0.y < $1.y }!
         let topMid = (top.map(\.y).min()! + peak.y) / 2
-        var reach: Float = 0
-        for p in top where p.y > topMid {
-            reach = max(reach, simd_length(SIMD2(p.x - peak.x, p.z - peak.z)))
-        }
-        let centroid = top.filter { $0.y > topMid }.reduce(SIMD3<Float>.zero, +) / Float(max(top.filter { $0.y > topMid }.count, 1))
+        let upper = top.filter { $0.y > topMid }
+        let centroid = upper.reduce(SIMD3<Float>.zero, +) / Float(max(upper.count, 1))
+        let distances = upper.map { simd_length(SIMD2($0.x - centroid.x, $0.z - centroid.z)) }.sorted()
         apex = [centroid.x, peak.y, centroid.z]
-        radius = reach * 0.9
+        radius = distances.isEmpty ? 0.02 : distances[distances.count * 9 / 10]
+        print("WhipLab surface: apex \(apex) peak \(peak) radius \(radius) scoops \(rig.scoops.map { "\($0.slot):\($0.staticPose)" })")
     }
 
     func lowered(_ amount: Float) -> ScoopHeightField {
