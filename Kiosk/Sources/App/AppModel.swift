@@ -62,6 +62,9 @@ final class AppModel {
     private(set) var items: [IceCreamItem] = []
     private(set) var editingID: UUID?
     private(set) var stageReady = false
+    private var assetLoadFailed = false
+    var assetsFailed: Bool { assetLoadFailed || forcedError == .assets }
+    var forcedError: ForcedError?
     private(set) var pressedCards: Set<CardKey> = []
     var confirmation: Confirmation?
     var notice: Notice?
@@ -94,6 +97,7 @@ final class AppModel {
         let defaults = UserDefaults.standard
         debugBarHidden = defaults.bool(forKey: "debugBarHidden")
         simulatePayment = false
+        forcedError = defaults.string(forKey: "kioskForceError").flatMap(ForcedError.init(rawValue:))
     }
 
     /// Everything that would be charged right now, with the item being edited in place of its saved version.
@@ -160,14 +164,17 @@ final class AppModel {
             }
         }
         Task {
-            if let assets = await AssetLibrary.load(log: { [weak self] in self?.square.record($0) }) {
+            let assets = forcedError == .assets ? nil : await AssetLibrary.load(log: { [weak self] in self?.square.record($0) })
+            if let assets {
                 stage.build(with: assets)
                 assets.checkContacts { [weak self] in self?.square.record($0) }
                 stageReady = true
                 try? await Task.sleep(for: .seconds(0.4))
                 applyLaunchOptions()
             } else {
-                square.record("3D assets failed to load")
+                assetLoadFailed = true
+                square.record(forcedError == .assets ? "3D assets failed to load (forced)" : "3D assets failed to load")
+                if LaunchOptions.current.role == "kiosk", screen == .roleSetup { screen = .attract }
             }
         }
     }
@@ -182,7 +189,7 @@ final class AppModel {
     }
 
     func beginOrder() {
-        guard stageReady, screen == .attract else { return }
+        guard stageReady, !assetsFailed, screen == .attract else { return }
         resetEverything()
         stage.restore(current: current, items: [], step: .vessel)
         builderVisible = true
@@ -506,7 +513,9 @@ final class AppModel {
         let number = nextOrderNumber()
         Task {
             let result: PaymentResult
-            if simulatePayment {
+            if let forcedError, forcedError != .assets {
+                result = await square.simulate(forcedError)
+            } else if simulatePayment {
                 square.record("Simulating payment for order #\(number) (\(quote.totalCents.formattedAsUSD))")
                 try? await Task.sleep(for: .seconds(1.2))
                 result = .succeeded(.simulated(quote: quote, customerName: name, orderNumber: number,
@@ -520,8 +529,8 @@ final class AppModel {
                 self.receipt = receipt
                 stage.enterReceipt()
                 withAnimation(.easeInOut(duration: 0.45)) { screen = .confirmation }
-            case .failed(let title, let details):
-                notice = Notice(title: title, details: details)
+            case .failed(let problem):
+                notice = Notice(title: problem.title, details: problem.details)
                 backToSummary()
             case .canceled:
                 backToSummary()
@@ -559,6 +568,7 @@ final class AppModel {
                 step = .vessel
                 stage.restore(current: current, items: items, step: .vessel, summary: true)
                 mode = .summary
+                builderVisible = true
                 screen = .name
             case "confirmation":
                 stage.restore(current: nil, items: items, step: .vessel, summary: true)

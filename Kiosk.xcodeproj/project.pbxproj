@@ -12,6 +12,7 @@
 		1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF36BF94972C41A51D71D966 /* KioskApp.swift */; };
 		2B591179C416EC14B3DF661F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF77AD1D7C8D64414EA6DB92 /* Theme.swift */; };
 		2F1D9CFC58D885C3AD6E9BEA /* NotoSerif-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */; };
+		31E11CF00B709FFA3131CDD2 /* PaymentProblem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */; };
 		330D40F9722FCB8FC0082573 /* Stage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 955D9B0FEA00CB8CCA27E91D /* Stage.swift */; };
 		38B1CA4705AFB81ABDBA21E7 /* NotoSerif-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */; };
 		565858834D2F23FCC9892AE8 /* LaunchOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5212A82265C88FFEC5453F08 /* LaunchOptions.swift */; };
@@ -79,6 +80,7 @@
 		6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Medium.ttf"; sourceTree = "<group>"; };
 		7703DC11C0C31F62DC6BD09D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		80DA186C645E6612A99CD769 /* StageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageView.swift; sourceTree = "<group>"; };
+		8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentProblem.swift; sourceTree = "<group>"; };
 		94D96DB54BCDC2006C377D8F /* SquareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareService.swift; sourceTree = "<group>"; };
 		955D9B0FEA00CB8CCA27E91D /* Stage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage.swift; sourceTree = "<group>"; };
 		96A26E074420B8AC97F15E75 /* FrameStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStats.swift; sourceTree = "<group>"; };
@@ -135,6 +137,7 @@
 		3031DF17343630066974846C /* Square */ = {
 			isa = PBXGroup;
 			children = (
+				8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */,
 				37DFD4680D9AC7197C5C0B25 /* Receipt.swift */,
 				B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */,
 				032C0963C55D1F2DDA3E4886 /* SquareCatalog.swift */,
@@ -397,6 +400,7 @@
 				BC87549B0A11F97F418AB61F /* Layout.swift in Sources */,
 				A27FF852B7F37FBECEA57119 /* NameEntryView.swift in Sources */,
 				C0FFE25ACFD95D63EC7D4169 /* Order.swift in Sources */,
+				31E11CF00B709FFA3131CDD2 /* PaymentProblem.swift in Sources */,
 				7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */,
 				0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */,
 				C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */,

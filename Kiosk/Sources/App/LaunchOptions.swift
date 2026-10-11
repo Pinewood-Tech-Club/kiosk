@@ -343,6 +343,12 @@ struct ScriptRunner {
                 app.delete(target.id)
             }
             await wait(1.5)
+        case "pay":
+            if app.screen != .name { app.completeOrder() }
+            await wait(0.8)
+            if app.customerName.isEmpty { app.setCustomerNameForScript("Alex") }
+            app.submitName()
+            await wait(3.0)
         case "demo":
             if app.screen == .attract {
                 await wait(1.0)

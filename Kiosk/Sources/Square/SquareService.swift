@@ -11,7 +11,7 @@ import MockReaderUI
 
 enum PaymentResult {
     case succeeded(Receipt)
-    case failed(title: String, details: [String])
+    case failed(PaymentProblem)
     case canceled
 }
 
@@ -198,7 +198,7 @@ final class SquareService: NSObject {
         record("Authorizing for location \(locationID)…")
         sdk.authorizationManager.authorize(withAccessToken: token, locationID: locationID) { [weak self] error in
             if let error {
-                self?.record("Authorization failed: \(error.localizedDescription)")
+                self?.record("Authorization failed: \(Self.describe(error))")
             } else {
                 self?.record("Authorized")
             }
@@ -235,18 +235,20 @@ final class SquareService: NSObject {
     @MainActor
     func pay(quote: OrderQuote, customerName: String, orderNumber: Int, from viewController: UIViewController) async -> PaymentResult {
         guard phase == .idle else {
-            return .failed(title: "A payment is already in progress", details: [])
+            return refuse(.stillFinishing, because: Self.alreadyInProgressReason)
         }
         guard let api else {
-            return .failed(title: "Square isn't configured", details: ["Add Square credentials in Config/Local.xcconfig, or turn on Simulate payment success in the debug bar."])
+            return refuse(.needsStaff, because: Self.notConfiguredReason)
         }
         guard isAuthorized else {
             authorize()
-            return .failed(title: "Payments aren't ready yet", details: ["The kiosk isn't authorized with Square. Please ask a volunteer for help."])
+            return refuse(.needsStaff, because: Self.notAuthorizedReason + " (state: \(authorizationState))")
+        }
+        guard !readers.isEmpty else {
+            return refuse(.readerNotReady, because: Self.noReaderReason)
         }
         if let problem = Self.displayProblem(viewController) {
-            record("Refusing to charge: \(problem)")
-            return .failed(title: "Can't take payments right now", details: [problem] + Self.unsupportedModeHelp)
+            return refuse(.paymentsPaused, because: problem)
         }
 
         let referenceID = String(format: "kiosk-%04d", orderNumber)
@@ -259,8 +261,7 @@ final class SquareService: NSObject {
                                               sourceName: "\(Config.eventName) Kiosk")
         } catch {
             phase = .idle
-            record("CreateOrder failed: \(error.localizedDescription)")
-            return .failed(title: "Couldn't create your order", details: [error.localizedDescription])
+            return orderFailed(error)
         }
         record("Order \(order.id) created (\(order.usedCatalog ? "catalog" : "ad-hoc") line items), total \(order.totalCents.formattedAsUSD) (tax \(order.taxCents.formattedAsUSD))")
         if order.totalCents - order.taxCents != quote.totalCents {
@@ -288,25 +289,89 @@ final class SquareService: NSObject {
             )
             if paymentHandle == nil {
                 record("startPayment returned no handle")
-                finish(.failed(title: "Couldn't start the card reader", details: ["Square didn't start the payment. Check the reader in the debug bar."]))
+                finish(.failed(.readerNotReady))
             }
         }
     }
 
-    private static let unsupportedModeHelp = [
-        "Square blocks payments while the screen is being recorded, mirrored or AirPlayed, or while the app is in Split View.",
-        "Stop any screen recording or mirroring and keep the kiosk full screen, then try again.",
-    ]
+    private static let alreadyInProgressReason = "A payment is already in progress"
+    private static let notConfiguredReason = "Square credentials missing in Config/Local.xcconfig; use Simulate payment success"
+    private static let notAuthorizedReason = "SDK not authorized with Square; retrying authorization"
+    private static let noReaderReason = "No card reader paired; pair one with Readers (or Mock Reader in sandbox)"
+    private static let screenCapturedReason = "The screen is being recorded or mirrored"
+    private static let notFullScreenReason = "The kiosk isn't full screen (Split View or Slide Over)"
+
+    private func refuse(_ problem: PaymentProblem, because reason: String) -> PaymentResult {
+        record("Refusing to charge: \(reason)")
+        return .failed(problem)
+    }
+
+    private func orderFailed(_ error: Error) -> PaymentResult {
+        record("CreateOrder failed: \(Self.describe(error))")
+        return .failed(PaymentProblem(orderError: error))
+    }
+
+    private func paymentFailed(_ error: Error) -> PaymentResult {
+        let nsError = error as NSError
+        let code = nsError.domain == PaymentProblem.paymentErrorDomain
+            ? PaymentError(rawValue: nsError.code).map { "\($0)" } ?? "\(nsError.code)"
+            : "\(nsError.code)"
+        record("Payment failed (\(code)): \(Self.describe(error))")
+        return .failed(PaymentProblem(paymentError: error))
+    }
+
+    private static func describe(_ error: Error) -> String {
+        let nsError = error as NSError
+        var text = "\(nsError.domain) \(nsError.code): \(error.localizedDescription)"
+        if let reason = nsError.localizedFailureReason { text += " Reason: \(reason)" }
+        if let suggestion = nsError.localizedRecoverySuggestion { text += " Suggestion: \(suggestion)" }
+        return text
+    }
+
+    @MainActor
+    func simulate(_ forced: ForcedError) async -> PaymentResult {
+        record("Forcing error: \(forced.rawValue)")
+        try? await Task.sleep(for: .seconds(1))
+        switch forced {
+        case .declined:
+            return paymentFailed(NSError(domain: "KioskForcedError", code: 1,
+                                         userInfo: [NSLocalizedDescriptionKey: "Simulated decline with no PaymentError code"]))
+        case .timeout: return paymentFailed(PaymentProblem.paymentError(.timedOut))
+        case .offline: return orderFailed(URLError(.notConnectedToInternet))
+        case .paymentOffline: return paymentFailed(PaymentProblem.paymentError(.noNetwork))
+        case .notConfigured: return refuse(.needsStaff, because: Self.notConfiguredReason)
+        case .notAuthorized: return refuse(.needsStaff, because: Self.notAuthorizedReason)
+        case .noReader: return refuse(.readerNotReady, because: Self.noReaderReason)
+        case .readerFailedToStart:
+            record("startPayment returned no handle")
+            return .failed(.readerNotReady)
+        case .screenShared: return refuse(.paymentsPaused, because: Self.screenCapturedReason)
+        case .notFullScreen: return refuse(.paymentsPaused, because: Self.notFullScreenReason)
+        case .unsupportedMode: return paymentFailed(PaymentProblem.paymentError(.unsupportedMode))
+        case .locationPermission: return paymentFailed(PaymentProblem.paymentError(.locationPermissionNeeded))
+        case .orderRejected:
+            return orderFailed(SquareAPI.APIError(message: "UNAUTHORIZED: This request could not be authorized."))
+        case .alreadyInProgress: return refuse(.stillFinishing, because: Self.alreadyInProgressReason)
+        case .paidWithoutOrder:
+            record("Payment finished without a pending order")
+            return .failed(.paidWithoutOrder)
+        case .canceled:
+            record("Payment canceled")
+            return .canceled
+        case .assets:
+            return .canceled
+        }
+    }
 
     /// Mirrors the conditions under which the SDK fails a payment with `unsupportedMode`,
     /// so we can refuse up front instead of after the order is created.
     private static func displayProblem(_ viewController: UIViewController) -> String? {
         guard let window = viewController.view.window, let scene = window.windowScene else { return nil }
         if scene.traitCollection.sceneCaptureState == .active {
-            return "The screen is being recorded or mirrored."
+            return screenCapturedReason
         }
         if window.bounds.size != scene.screen.bounds.size {
-            return "The kiosk isn't full screen."
+            return notFullScreenReason
         }
         return nil
     }
@@ -378,7 +443,8 @@ extension SquareService: PaymentManagerDelegate {
         }
         let total = Int(payment.totalMoney.amount)
         guard let pending else {
-            finish(.failed(title: "Payment finished without an order", details: ["Payment ID: \(paymentID)"]))
+            record("Payment \(paymentID) finished without a pending order")
+            finish(.failed(.paidWithoutOrder))
             return
         }
         let receipt = Receipt(
@@ -392,13 +458,7 @@ extension SquareService: PaymentManagerDelegate {
     }
 
     func paymentManager(_ paymentManager: PaymentManager, didFail payment: Payment, withError error: Error) {
-        let nsError = error as NSError
-        let code = PaymentError(rawValue: nsError.code).map { "\($0)" } ?? "\(nsError.code)"
-        record("Payment failed (\(code)): \(error.localizedDescription)")
-        let details = PaymentError(rawValue: nsError.code) == .unsupportedMode
-            ? Self.unsupportedModeHelp
-            : [error.localizedDescription]
-        finish(.failed(title: "Payment didn't go through", details: details))
+        finish(paymentFailed(error))
     }
 
     func paymentManager(_ paymentManager: PaymentManager, didCancel payment: Payment) {
@@ -411,6 +471,7 @@ extension SquareService: PaymentManagerDelegate {
 
 extension SquareService: AuthorizationStateObserver {
     func authorizationStateDidChange(_ authorizationState: AuthorizationState) {
+        record("Authorization state: \(authorizationState)")
         self.authorizationState = authorizationState
     }
 }

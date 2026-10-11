@@ -13,6 +13,8 @@ struct DebugBar: View {
                     StatusDot(text: square.environmentName, color: square.isSandbox ? .orange : (square.isConfigured ? .green : .red))
                     StatusDot(text: authText, color: square.isAuthorized ? .green : .red)
                     StatusDot(text: readerText, color: readerColor)
+                    if square.isConfigured { StatusDot(text: square.catalogStatus.badgeText, color: catalogColor) }
+                    if let forced = app.forcedError { StatusDot(text: "Forcing: \(forced.label)", color: .red) }
                     if app.simulatePayment { StatusDot(text: "Simulated pay", color: .purple) }
                     if app.slowMotion != 1 { StatusDot(text: "×\(app.slowMotion.formatted())", color: .blue) }
                 }
@@ -28,6 +30,11 @@ struct DebugBar: View {
                 Button("Log") { app.showsLog = true }
                 Menu("Debug") {
                     Toggle("Simulate payment success", isOn: $app.simulatePayment)
+                    Picker("Simulate error", selection: $app.forcedError) {
+                        Text("None").tag(ForcedError?.none)
+                        ForEach(ForcedError.allCases) { Text($0.label).tag(ForcedError?.some($0)) }
+                    }
+                    .pickerStyle(.menu)
                     Picker("Animation speed", selection: $app.slowMotion) {
                         Text("Normal").tag(1.0)
                         Text("0.5× slow-mo").tag(0.5)

@@ -16,12 +16,16 @@ struct AttractView: View {
             LoopingVideoView(url: Bundle.main.url(forResource: "loop", withExtension: "mp4"), isPlaying: playing)
 
             GlassEffectContainer {
-                if showsButton {
+                if app.assetsFailed {
+                    NotReadyNotice()
+                        .glassEffectTransition(.materialize)
+                } else if showsButton {
                     BeginOrderButton { app.beginOrder() }
                         .glassEffectTransition(.materialize)
                 }
             }
             .position(x: Layout.midX, y: 1228)
+            .animation(.smooth(duration: 0.8), value: app.assetsFailed)
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
         .contentShape(Rectangle())
@@ -41,6 +45,22 @@ struct AttractView: View {
                 }
             }
         }
+    }
+}
+
+private struct NotReadyNotice: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("We're not quite ready")
+                .font(Theme.serif(40))
+            Text("Please ask a staff member for help.")
+                .font(Theme.serif(24, .regular))
+        }
+        .foregroundStyle(Theme.ink)
+        .padding(.horizontal, 56)
+        .padding(.vertical, 30)
+        .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(Theme.background.opacity(0.78)).padding(2))
+        .glassEffect(.regular.tint(Theme.background), in: .rect(cornerRadius: 44))
     }
 }
 
