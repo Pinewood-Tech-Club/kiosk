@@ -6,13 +6,13 @@ function csp(nonce: string, url: URL): Record<string, string> {
   const socket = `${url.protocol === "http:" ? "ws" : "wss"}://${url.host}`;
   return {
     "Referrer-Policy": "same-origin",
-    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self' ${socket}; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self' ${socket}; media-src blob:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
   };
 }
 
 function loginPage(url: URL, message: string | null, status = 200): Response {
   const nonce = randomToken(12);
-  return html(shell("Booth dashboard", loginBody(message), nonce), status, csp(nonce, url));
+  return html(shell("Booth counter", loginBody(message), nonce), status, csp(nonce, url));
 }
 
 export async function staffSessionFromCookie(request: Request, env: Env) {
@@ -31,7 +31,7 @@ export const routes: Route[] = [
     async handle({ request, env, url }) {
       if (!(await staffSessionFromCookie(request, env))) return loginPage(url, null);
       const nonce = randomToken(12);
-      return html(shell("Booth dashboard", dashboardBody(), nonce, dashboardScript()), 200, csp(nonce, url));
+      return html(shell("Booth counter", dashboardBody(), nonce, dashboardScript()), 200, csp(nonce, url));
     },
   },
   {

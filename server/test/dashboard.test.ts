@@ -31,6 +31,7 @@ describe("dashboard page", () => {
     const response = await call("/dashboard");
     expect(response.status).toBe(200);
     expect(response.text).toContain('name="pin"');
+    expect(response.text).toContain('inputmode="numeric"');
     expect(response.text).not.toContain("WebSocket");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("Referrer-Policy")).toBe("same-origin");
@@ -43,11 +44,16 @@ describe("dashboard page", () => {
     expect(response.text).toContain("new WebSocket");
     expect(response.text).toContain('id="orders"');
     expect(response.text).toContain('id="soldout"');
+    expect(response.text).toContain("setOrderStatus");
+    expect(response.text).toContain("booth.outbox.v1");
+    expect(response.text).toContain("viewport-fit=cover");
+    expect(response.text).not.toMatch(/\u2014/);
     expect(response.text).not.toMatch(/(src|href)="https?:/);
     const csp = response.headers.get("Content-Security-Policy")!;
     const nonce = /script-src 'nonce-([^']+)'/.exec(csp)![1];
     expect(response.text).toContain(`<script nonce="${nonce}">`);
     expect(csp).toContain("connect-src 'self' wss://booth.test");
+    expect(csp).toContain("media-src blob:");
     const second = await call("/dashboard", { headers: { Cookie: cookie } });
     expect(second.headers.get("Content-Security-Policy")).not.toBe(csp);
   });
@@ -81,6 +87,37 @@ describe("dashboard page", () => {
     expect(ws.status).toBe(101);
     ws.webSocket?.accept();
     ws.webSocket?.close();
+  });
+});
+
+describe("dashboard offline queue", () => {
+  it("dedupes a resent action from the same browser device and applies queued changes in order", async () => {
+    const cookie = await signIn();
+    const device = `web-${crypto.randomUUID().slice(0, 12)}`;
+    const headers = { Cookie: cookie, Origin: BASE, "Content-Type": "application/json", "X-Booth-Device": device };
+    const first = { id: crypto.randomUUID(), type: "setSoldOut", flavor: "vanilla", soldOut: true, by: "Dashboard" };
+    const second = { id: crypto.randomUUID(), type: "setSoldOut", flavor: "vanilla", soldOut: false, by: "Dashboard" };
+    const send = (actions: unknown[]) => call("/v1/actions", { method: "POST", headers, body: JSON.stringify({ actions }) }).then((r) => JSON.parse(r.text));
+    const sent = await send([first, second]);
+    expect(sent.results.map((r: { status: string }) => r.status)).toEqual(["ok", "ok"]);
+    const resent = await send([first, second]);
+    expect(resent.results.map((r: { status: string }) => r.status)).toEqual(["duplicate", "duplicate"]);
+    const state = JSON.parse((await call("/v1/state", { headers: { Cookie: cookie } })).text);
+    expect(state.flavors.find((f: { id: string }) => f.id === "vanilla")?.soldOut ?? false).toBe(false);
+  });
+
+  it("rejects a status change for an order that isn't in the feed without failing the batch", async () => {
+    const cookie = await signIn();
+    const headers = { Cookie: cookie, Origin: BASE, "Content-Type": "application/json", "X-Booth-Device": "web-status-check" };
+    const actions = [
+      { id: crypto.randomUUID(), type: "setOrderStatus", orderId: "no-such-order", status: "ready", by: "Dashboard" },
+      { id: crypto.randomUUID(), type: "ack", alertId: "no-such-alert", by: "Dashboard" },
+    ];
+    const response = await call("/v1/actions", { method: "POST", headers, body: JSON.stringify({ actions }) });
+    expect(response.status).toBe(200);
+    const body = JSON.parse(response.text);
+    expect(body.results[0]).toMatchObject({ status: "rejected", error: { code: "not_found" } });
+    expect(body.results).toHaveLength(2);
   });
 });
 
