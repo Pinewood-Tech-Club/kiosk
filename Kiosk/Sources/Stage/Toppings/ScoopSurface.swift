@@ -24,6 +24,9 @@ struct ScoopSurface: ToppingSurface, Sendable {
     let normals: [SIMD3<Float>]
     let apex: SIMD3<Float>
     let radius: Float
+    /// No deeper than a little below the vessel's rim: lower, a piece is out of sight in the gap between the
+    /// scoop and the cup's wall.
+    let floor: Float
 
     func sample(x: Float, z: Float) -> (height: Float, normal: SIMD3<Float>)? {
         let fx = (x - originX) / Self.cell - 0.5
@@ -47,7 +50,7 @@ struct ScoopSurface: ToppingSurface, Sendable {
         return (height / weight, simd_normalize(normal))
     }
 
-    nonisolated static func build(_ parts: [Part]) -> ScoopSurface {
+    nonisolated static func build(_ parts: [Part], rim: Float) -> ScoopSurface {
         var placed: [(positions: [SIMD3<Float>], normals: [SIMD3<Float>], indices: [UInt32])] = []
         var lo = SIMD2<Float>(repeating: .greatestFiniteMagnitude)
         var hi = SIMD2<Float>(repeating: -.greatestFiniteMagnitude)
@@ -71,7 +74,7 @@ struct ScoopSurface: ToppingSurface, Sendable {
             placed.append((positions, normals, data.indices))
         }
         guard lo.x < hi.x else {
-            return ScoopSurface(originX: 0, originZ: 0, columns: 0, rows: 0, heights: [], normals: [], apex: .zero, radius: 0)
+            return ScoopSurface(originX: 0, originZ: 0, columns: 0, rows: 0, heights: [], normals: [], apex: .zero, radius: 0, floor: 0)
         }
         let cell = Self.cell
         let originX = lo.x - cell, originZ = lo.y - cell
@@ -126,7 +129,7 @@ struct ScoopSurface: ToppingSurface, Sendable {
         var highest: Float = -.infinity
         for h in heights where h > highest { highest = h }
         let field = ScoopSurface(originX: originX, originZ: originZ, columns: columns, rows: rows,
-                                 heights: heights, normals: normals, apex: .zero, radius: 0)
+                                 heights: heights, normals: normals, apex: .zero, radius: 0, floor: 0)
         // A stack's top scoop often leans, so its highest point sits near one edge of the cap. Center the
         // covered disc on the high point that leaves the widest cap around it instead.
         var best: (score: Float, center: SIMD3<Float>, radius: Float) = (-.infinity, .zero, 0)
@@ -142,7 +145,8 @@ struct ScoopSurface: ToppingSurface, Sendable {
         }
         let radius = field.coverRadius(around: best.center, directions: 48)
         return ScoopSurface(originX: originX, originZ: originZ, columns: columns, rows: rows,
-                            heights: heights, normals: normals, apex: best.center, radius: radius)
+                            heights: heights, normals: normals, apex: best.center, radius: radius,
+                            floor: max(best.center.y - 2.5 * radius, rim - 0.01))
     }
 
     /// Normals averaged over neighboring cells, so pieces lie on the scoop's shape rather than on its lumps.

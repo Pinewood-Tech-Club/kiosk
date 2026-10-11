@@ -24,9 +24,9 @@ final class ToppingCardIcon {
     static let refillDuration = 0.36
     static let squishDuration = 0.55
 
-    init(topping: Topping) {
+    init(topping: Topping, candy: CandyLibrary?) {
         self.topping = topping
-        let (model, jiggling) = ToppingFactory.iconModel(topping)
+        let (model, jiggling) = ToppingFactory.iconModel(topping, candy: candy)
         self.jiggling = jiggling
         jiggleRest = jiggling.map(\.transform)
         holder.name = "topping-\(topping.rawValue)"
@@ -113,30 +113,6 @@ final class ToppingCardIcon {
         let u = t - 1
         return 1 + (c + 1) * u * u * u + c * u * u
     }
-
-    static func pile(_ kind: any ScatterKind, topping: Topping) -> (root: Entity, pieces: [Entity]) {
-        var random = ToppingRandom(seed: 0x5EED_0000 &+ UInt64(topping.stackRank))
-        let made = kind.makePieces(rng: &random)
-        let count = min(made.count, topping == .sprinkles ? 36 : 7)
-        let largest = made.prefix(count).map { max($0.halfExtents.x, $0.halfExtents.z) }.max() ?? 0.004
-        let spread = largest * (topping == .sprinkles ? 3.2 : 2.3)
-        let root = Entity()
-        var pieces: [Entity] = []
-        for i in 0..<count {
-            let piece = made[i]
-            let f = Float(i) / Float(max(count - 1, 1))
-            let r = spread * sqrt(f)
-            let angle = Float(i) * 2.39996
-            let mound = largest * 1.6 * (1 - f)
-            let model = ModelEntity(mesh: piece.mesh, materials: piece.materials)
-            let tilt = simd_quatf(angle: Float.random(in: -0.5...0.5, using: &random), axis: simd_normalize(SIMD3(cos(angle), 0, sin(angle))))
-            model.orientation = tilt * simd_quatf(angle: Float.random(in: 0..<(2 * .pi), using: &random), axis: [0, 1, 0])
-            model.position = [cos(angle) * r, mound + piece.halfExtents.y, sin(angle) * r]
-            root.addChild(model)
-            pieces.append(model)
-        }
-        return (root, pieces)
-    }
 }
 
 extension Stage {
@@ -151,7 +127,7 @@ extension Stage {
 
     func makeToppingIcons() {
         for topping in Topping.allCases {
-            let icon = ToppingCardIcon(topping: topping)
+            let icon = ToppingCardIcon(topping: topping, candy: assets?.candy)
             applyLighting(icon.holder)
             toppingIcons[topping] = icon
             root.addChild(icon.holder)

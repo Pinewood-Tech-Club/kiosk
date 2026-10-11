@@ -9,6 +9,12 @@ protocol ToppingSurface {
     var apex: SIMD3<Float> { get }
     /// Horizontal radius around the apex's axis that toppings may cover.
     var radius: Float { get }
+    /// A scattered piece that ends up below this has slid off the part of the item a customer sees.
+    var floor: Float { get }
+}
+
+extension ToppingSurface {
+    var floor: Float { apex.y - 2.5 * radius }
 }
 
 /// One layer of toppings on an item. The stack is always scoops, whip, drizzle, scattered,

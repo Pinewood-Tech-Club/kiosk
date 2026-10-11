@@ -153,7 +153,7 @@ struct ScatterSettle {
     static let recordEvery = 4
     static var recordInterval: Float { step * Float(recordEvery) }
     static let gravity: Float = 9.8
-    static let creamFriction: Float = 1.0
+    static let creamFriction: Float = 1.5
     static let candyFriction: Float = 0.4
     static let creamBounce: Float = 0
     static let candyBounce: Float = 0.15

@@ -25,27 +25,28 @@ extension Stage {
     }
 
     func scoopSurface(_ vessel: Vessel, count: Int) -> ScoopSurface? {
-        guard count > 0, assets != nil else { return nil }
+        guard count > 0, let assets else { return nil }
         let key = "\(vessel.rawValue)\(min(count, 3))"
         if let surface = scoopSurfaces[key] { return surface }
         let started = CACurrentMediaTime()
-        let surface = ScoopSurface.build(scoopSurfaceParts(vessel, count: count))
+        let surface = ScoopSurface.build(scoopSurfaceParts(vessel, count: count), rim: assets.vesselTop(vessel))
         scoopSurfaces[key] = surface
         log(String(format: "Scoop surface %@ built on demand in %.1f ms", key, (CACurrentMediaTime() - started) * 1000))
         return surface
     }
 
     func precomputeScoopSurfaces() {
-        var jobs: [(String, [ScoopSurface.Part])] = []
+        guard let assets else { return }
+        var jobs: [(String, [ScoopSurface.Part], Float)] = []
         for vessel in Vessel.allCases {
             for count in 1...3 where scoopSurfaces["\(vessel.rawValue)\(count)"] == nil {
-                jobs.append(("\(vessel.rawValue)\(count)", scoopSurfaceParts(vessel, count: count)))
+                jobs.append(("\(vessel.rawValue)\(count)", scoopSurfaceParts(vessel, count: count), assets.vesselTop(vessel)))
             }
         }
         Task { [weak self] in
             let started = CACurrentMediaTime()
             let built = await Task.detached(priority: .userInitiated) {
-                jobs.map { ($0.0, ScoopSurface.build($0.1)) }
+                jobs.map { ($0.0, ScoopSurface.build($0.1, rim: $0.2)) }
             }.value
             guard let self else { return }
             for (key, surface) in built where scoopSurfaces[key] == nil { scoopSurfaces[key] = surface }
@@ -59,6 +60,7 @@ extension Stage {
         if let stack = rig.toppings { return stack }
         let stack = ToppingStack(rig: rig)
         stack.light = { [unowned self] in applyLighting($0) }
+        stack.candy = assets?.candy
         rig.toppings = stack
         toppingStacks.append(stack)
         return stack
@@ -116,6 +118,7 @@ extension Stage {
     }
 
     func toppingHeadroom(_ rig: ItemRig) -> Float {
+        rig.toppings?.framedTop = rig.toppings?.top
         guard let top = rig.toppings?.top, let scoops = scoopSurface(rig.vessel, count: rig.scoops.count) else { return 0 }
         return max(0, top - scoops.apex.y)
     }
@@ -130,6 +133,7 @@ extension Stage {
                 if stack.scoopCount != before, heroes[selectedVessel] === rig { reframe(rig) }
             }
             stack.update(now: now)
+            if heroes[selectedVessel] === rig, let top = stack.top, abs(top - (stack.framedTop ?? top)) > 0.002 { reframe(rig) }
         }
         guard !detachedToppings.isEmpty else { return }
         for detached in detachedToppings {

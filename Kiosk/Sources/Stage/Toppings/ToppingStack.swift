@@ -51,10 +51,12 @@ final class ToppingStack {
     let root = Entity()
     weak var rig: ItemRig?
     var light: (Entity) -> Void = { _ in }
+    var candy: CandyLibrary?
     private(set) var toppings: [Topping] = []
     private(set) var itemSeed: UInt64 = 0
     private(set) var base: (any ToppingSurface)?
     private(set) var scoopCount = 0
+    var framedTop: Float?
     private var baseVersion = 0
     private var placed: [Placed] = []
     private var leaving: [any ToppingLayer] = []
@@ -64,6 +66,7 @@ final class ToppingStack {
         let topping: Topping
         let layer: any ToppingLayer
         var beneath: [Topping]
+        var scatteredBeneath: [Topping]
         var baseVersion: Int
     }
 
@@ -85,7 +88,9 @@ final class ToppingStack {
     var top: Float? {
         guard var surface: ToppingSurface = base, !placed.isEmpty else { return nil }
         for entry in placed { surface = entry.layer.surfaceAbove(surface) }
-        return surface.apex.y + (placed.contains { !$0.topping.isLayered } ? 0.006 : 0)
+        let scattered = placed.compactMap { $0.layer as? ScatterLayer }
+        let pieces = scattered.map(\.pieceHeight).max() ?? 0
+        return max(surface.apex.y + pieces, scattered.compactMap(\.restingTop).max() ?? -.infinity)
     }
 
     func setSeed(_ seed: UInt64) { itemSeed = seed }
@@ -131,6 +136,7 @@ final class ToppingStack {
     func detachLayers(into container: Entity, now: Double) -> [any ToppingLayer] {
         var detached = leaving
         for entry in placed {
+            entry.layer.launchPoint = nil
             entry.layer.remove(now: now)
             detached.append(entry.layer)
         }
@@ -159,10 +165,16 @@ final class ToppingStack {
     private func reconcile(animated: Bool, now: Double, baseDuration: Double, launch: ((Topping) -> ToppingLaunch?)?) {
         let wanted = base == nil ? [] : Topping.stacked(toppings)
         var changeDuration: Double = 0
+        var scatterChangeDuration: Double = 0
         for entry in placed where !wanted.contains(entry.topping) {
+            entry.layer.launchPoint = animated ? launch?(entry.topping)?.point : nil
             entry.layer.remove(now: now)
             leaving.append(entry.layer)
-            if entry.topping.isLayered { changeDuration = max(changeDuration, entry.layer.removeDuration) }
+            if entry.topping.isLayered {
+                changeDuration = max(changeDuration, entry.layer.removeDuration)
+            } else {
+                scatterChangeDuration = max(scatterChangeDuration, entry.layer.removeDuration)
+            }
         }
         guard let base else {
             placed = []
@@ -170,18 +182,29 @@ final class ToppingStack {
         }
         var surface: ToppingSurface = base
         var beneath: [Topping] = []
+        var scatteredBeneath: [Topping] = []
+        var scattered: [ScatterLayer] = []
+        let crowd = wanted.filter { !$0.isLayered }.count
         var result: [Placed] = []
         for topping in wanted {
             let layer: any ToppingLayer
+            let scatter: ScatterLayer?
             if let existing = placed.first(where: { $0.topping == topping }) {
                 layer = existing.layer
+                scatter = layer as? ScatterLayer
                 let baseChanged = existing.baseVersion != baseVersion
-                if baseChanged || existing.beneath != beneath {
-                    let duration = animated ? max(changeDuration, baseChanged ? baseDuration : 0) : 0
+                let scatteredChanged = existing.scatteredBeneath != scatteredBeneath
+                if baseChanged || existing.beneath != beneath || scatteredChanged {
+                    scatter?.occupied = scattered.flatMap(\.footprints)
+                    let duration = animated
+                        ? max(changeDuration, baseChanged ? baseDuration : 0, scatteredChanged ? scatterChangeDuration : 0) : 0
                     layer.resurface(to: surface, duration: duration, now: now)
                 }
             } else {
-                layer = ToppingFactory.layer(topping)
+                layer = ToppingFactory.layer(topping, candy: candy)
+                scatter = layer as? ScatterLayer
+                scatter?.occupied = scattered.flatMap(\.footprints)
+                scatter?.crowd = crowd
                 let tap = animated ? launch?(topping) : nil
                 if let tap {
                     layer.launchPoint = tap.point
@@ -193,39 +216,46 @@ final class ToppingStack {
                 if let icon = tap?.icon, layer.cardIcon == nil { icon.playTap(for: topping, layer: layer) }
                 if animated, topping.isLayered { changeDuration = max(changeDuration, layer.growDuration) }
             }
-            result.append(Placed(topping: topping, layer: layer, beneath: beneath, baseVersion: baseVersion))
+            result.append(Placed(topping: topping, layer: layer, beneath: beneath, scatteredBeneath: scatteredBeneath,
+                                 baseVersion: baseVersion))
             surface = layer.surfaceAbove(surface)
             if topping.isLayered { beneath.append(topping) }
+            if let scatter {
+                scatteredBeneath.append(topping)
+                scattered.append(scatter)
+            }
         }
         placed = result
     }
 }
 
-/// Topping → layer, card icon and scattered piece kind. The placeholders stand in until the real layers land;
+/// Topping → layer, card icon and scattered piece kind. Whip and drizzle are placeholders until their real layers land;
 /// swapping them in only changes these functions.
 @MainActor
 enum ToppingFactory {
-    static func layer(_ topping: Topping) -> any ToppingLayer {
+    static func layer(_ topping: Topping, candy: CandyLibrary?) -> any ToppingLayer {
         switch topping {
         case .whip: PlaceholderShellLayer(style: .whip)
         case .chocolate: PlaceholderShellLayer(style: .drizzle)
-        case .gummies, .mms, .sprinkles: PlaceholderScatterLayer(kind: scatterKind(topping))
+        case .gummies, .mms, .sprinkles: ScatterLayer(kind: scatterKind(topping, candy: candy))
         }
     }
 
-    static func scatterKind(_ topping: Topping) -> any ScatterKind {
-        PlaceholderScatterKind(shape: topping == .gummies ? .gummy : topping == .mms ? .lentil : .sprinkle)
+    /// The placeholder pieces show only if the candy meshes failed to build.
+    static func scatterKind(_ topping: Topping, candy: CandyLibrary?) -> any ScatterKind {
+        candy?.kind(topping) ?? PlaceholderScatterKind(shape: topping == .gummies ? .gummy : topping == .mms ? .lentil : .sprinkle)
     }
 
-    static func iconModel(_ topping: Topping) -> (model: Entity, jiggling: [Entity]) {
+    static func iconModel(_ topping: Topping, candy: CandyLibrary?) -> (model: Entity, jiggling: [Entity]) {
         switch topping {
         case .whip:
             return (PlaceholderShellLayer.iconModel(.whip), [])
         case .chocolate:
             return (PlaceholderShellLayer.iconModel(.drizzle), [])
         case .gummies, .mms, .sprinkles:
-            let pile = ToppingCardIcon.pile(scatterKind(topping), topping: topping)
-            return (pile.root, topping == .gummies ? pile.pieces : [])
+            var random = ToppingRandom(seed: ToppingSeed.layer(item: 0x5EED, topping: topping))
+            let pile = scatterKind(topping, candy: candy).makeIconPile(rng: &random)
+            return (pile, topping == .gummies ? Array(pile.children) : [])
         }
     }
 }
@@ -307,6 +337,7 @@ struct ShellSurface: ToppingSurface {
     }
 
     var radius: Float { profile.style == .whip ? profile.radius * 0.62 : below.radius }
+    var floor: Float { below.floor }
 }
 
 /// Stand-in for the whip and drizzle layers: a conforming shell that grows out from the apex.
@@ -499,143 +530,5 @@ final class PlaceholderShellLayer: ToppingLayer {
         descriptor.primitives = .triangles(indices)
         if let mesh = try? MeshResource.generate(from: [descriptor]) { model.model?.mesh = mesh }
         entity.isEnabled = growth > 0.001
-    }
-}
-
-/// Stand-in for the scatter layer: pieces fly in from the card (or drop from above), lie on the surface, follow it.
-@MainActor
-final class PlaceholderScatterLayer: ToppingLayer {
-    private struct Piece {
-        let entity: ModelEntity
-        let piece: ScatterPiece
-        let x: Float
-        let z: Float
-        let yaw: Float
-        let delay: Double
-        var from = Transform()
-        var to = Transform()
-    }
-
-    let entity = Entity()
-    let kind: any ScatterKind
-    var launchPoint: (() -> SIMD3<Float>)?
-    private var pieces: [Piece] = []
-    private var start: Double = 0
-    private var duration: Double = 0
-    private enum Motion { case none, flyIn, drop, move, shrink }
-    private var motion = Motion.none
-    private(set) var isFinished = false
-
-    var growDuration: Double { 0.8 }
-    var removeDuration: Double { 0.3 }
-
-    init(kind: any ScatterKind) {
-        self.kind = kind
-        entity.name = "placeholder-scatter"
-    }
-
-    func apply(onto surface: ToppingSurface, seed: UInt64, animated: Bool, now: Double) {
-        var random = ToppingRandom(seed: seed)
-        let made = kind.makePieces(rng: &random)
-        let reach = surface.radius * 0.88
-        let stagger = min(0.012, 0.3 / Double(max(made.count, 1)))
-        for (i, piece) in made.enumerated() {
-            let r = reach * sqrt(Float.random(in: 0...1, using: &random))
-            let angle = Float.random(in: 0..<(2 * .pi), using: &random)
-            let model = ModelEntity(mesh: piece.mesh, materials: piece.materials)
-            entity.addChild(model)
-            var placed = Piece(entity: model, piece: piece, x: surface.apex.x + cos(angle) * r, z: surface.apex.z + sin(angle) * r,
-                               yaw: Float.random(in: 0..<(2 * .pi), using: &random), delay: Double(i) * stagger)
-            placed.to = pose(placed, on: surface)
-            placed.from = placed.to
-            model.transform = placed.to
-            pieces.append(placed)
-        }
-        guard animated else { return }
-        start = now
-        duration = 0.45
-        motion = launchPoint != nil ? .flyIn : .drop
-        update(now: now)
-    }
-
-    func resurface(to surface: ToppingSurface, duration: Double, now: Double) {
-        for i in pieces.indices {
-            pieces[i].from = pieces[i].entity.transform
-            pieces[i].to = pose(pieces[i], on: surface)
-        }
-        if motion == .flyIn || motion == .drop {
-            return
-        }
-        start = now
-        self.duration = duration
-        motion = .move
-        if duration <= 0 { update(now: now) }
-    }
-
-    func remove(now: Double) {
-        for i in pieces.indices { pieces[i].from = pieces[i].entity.transform }
-        start = now
-        duration = removeDuration
-        motion = .shrink
-    }
-
-    func update(now: Double) {
-        guard motion != .none, !isFinished else { return }
-        var done = true
-        for piece in pieces {
-            let local = motion == .move || motion == .shrink ? 0 : piece.delay
-            let raw = duration > 0 ? Float((now - start - local) / duration) : 1
-            let p = Ease.clamp01(raw)
-            if raw < 1 { done = false }
-            switch motion {
-            case .flyIn:
-                let launch = launchPoint?() ?? piece.to.translation
-                let end = piece.to.translation
-                let control = (launch + end) / 2 + SIMD3<Float>(0, max(0.03, simd_length(end - launch) * 0.35), 0)
-                let e = Ease.inOutSine(p)
-                let position = quadraticBezier(launch, control, end, e)
-                let tumble = simd_quatf(angle: (1 - e) * 6, axis: simd_normalize(SIMD3<Float>(1, 0.4, 0.2)))
-                piece.entity.transform = Transform(scale: .init(repeating: max(lerp(0.6, 1, e), 1e-4)),
-                                                   rotation: simd_slerp(tumble * piece.to.rotation, piece.to.rotation, e),
-                                                   translation: position)
-                piece.entity.isEnabled = raw > 0
-            case .drop:
-                var t = piece.to
-                t.translation.y += 0.015 * (1 - p * p)
-                piece.entity.transform = t
-                piece.entity.isEnabled = raw > 0
-            case .move:
-                let e = Ease.inOutSine(p)
-                piece.entity.transform = Transform(scale: .one, rotation: simd_slerp(piece.from.rotation, piece.to.rotation, e),
-                                                   translation: simd_mix(piece.from.translation, piece.to.translation, .init(repeating: e)))
-            case .shrink:
-                var t = piece.from
-                t.scale = .init(repeating: max(1 - TimingCurve.swiftUIEaseIn(p), 1e-4))
-                piece.entity.transform = t
-            case .none:
-                break
-            }
-        }
-        if done {
-            if motion == .shrink {
-                isFinished = true
-                entity.isEnabled = false
-            } else {
-                for piece in pieces {
-                    piece.entity.transform = piece.to
-                    piece.entity.isEnabled = true
-                }
-            }
-            motion = .none
-        }
-    }
-
-    func surfaceAbove(_ below: ToppingSurface) -> ToppingSurface { below }
-
-    private func pose(_ piece: Piece, on surface: ToppingSurface) -> Transform {
-        let s = surface.sample(x: piece.x, z: piece.z) ?? (surface.apex.y, [0, 1, 0])
-        let tilt = simd_quatf(from: [0, 1, 0], to: s.normal)
-        let rotation = tilt * simd_quatf(angle: piece.yaw, axis: [0, 1, 0])
-        return Transform(scale: .one, rotation: rotation, translation: [piece.x, s.height, piece.z] + s.normal * piece.piece.halfExtents.y)
     }
 }
