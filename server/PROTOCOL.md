@@ -3,11 +3,11 @@
 The booth backend is an HTTP API plus one websocket hub. Two kinds of client use it:
 
 - **kiosk**: the customer-facing iPad. It reports heartbeats, health, help requests, log lines and paid orders, and reads the sold-out map.
-- **staff**: an iPad running the same app in the staff role (for the toppings person), and the web dashboard. It reads alerts, kiosk health, the sold-out map and the order feed, acknowledges alerts, toggles sold-out flavors and moves orders through their statuses.
+- **staff**: the staff web pages (on the booth iPads, inside the app's staff role, and on laptops) and scripts holding `STAFF_TOKEN`. It reads alerts, kiosk health, the sold-out map, the open/closed flag and the order feed, acknowledges alerts, toggles sold-out flavors, closes and reopens the kiosk and moves orders through their statuses.
 
 It also owns the Square connection: the OAuth flow, token storage and refresh, and Square order creation for the kiosk.
 
-Base URL: `https://kiosk.jamboree.techclub.pw`. Every API path is under `/v1/`. A breaking change gets a new prefix (`/v2/`) and both are served until every client has moved. Three browser-facing paths live outside `/v1/`: `/r/<token>` (receipts), `/dashboard` (staff dashboard) and the OAuth callback page.
+Base URL: `https://kiosk.jamboree.techclub.pw`. Every API path is under `/v1/`. A breaking change gets a new prefix (`/v2/`) and both are served until every client has moved. Browser-facing paths outside `/v1/`: `/r/<token>` (receipts), `/staff` and `/staff/<role>` (staff pages, with `/dashboard/login`, `/dashboard/logout`, `/dashboard/renew`, and `/dashboard` redirecting to `/staff`) and the OAuth callback page.
 
 Everything below marked *(added)* was added to protocol 1 without breaking older clients: new fields are optional for senders and ignorable for readers, and clients ignore unknown `Change` kinds (they still advance `rev`).
 
@@ -15,7 +15,7 @@ The kiosk must work fully without the backend. Nothing in ordering or payment wa
 
 ## Auth
 
-Every route except `GET /v1/health`, `POST /v1/staff/session`, the OAuth callback and the browser pages (`/r/...`, `/dashboard`) needs, including the websocket:
+Every route except `GET /v1/health`, `POST /v1/staff/session`, the OAuth callback and the browser pages (`/r/...`, `/staff...`, `/dashboard...`) needs, including the websocket:
 
 | Header | Value |
 | --- | --- |
@@ -26,8 +26,8 @@ A missing or wrong token is `401`. A valid token used on a route its role can't 
 
 **Staff sessions** *(added)*. Staff can sign in with the staff PIN (`STAFF_PIN`, or the staff token itself) instead of holding `STAFF_TOKEN`:
 
-- `POST /v1/staff/session` (no auth) with `{ "pin": "..." }` returns `{ "token": "st1....", "expiresAt": <ms> }`. The token is a bearer token for the `staff` role, valid 72 hours, signed with a key derived from `STAFF_TOKEN` (rotating `STAFF_TOKEN` signs everyone out). The staff iPad keeps it in the Keychain. Wrong PIN is `401`; more than 10 attempts a minute from one IP is `429`.
-- The dashboard gets the same token as an `HttpOnly; Secure; SameSite=Strict` cookie named `booth_staff` from `POST /dashboard/login` (form field `pin`). The cookie is accepted on `/v1/` routes for the `staff` role only; any non-GET request authenticated by cookie must carry an `Origin` header equal to the server's origin. Without `X-Booth-Device`, a cookie client's device is `web-<session id>`.
+- `POST /v1/staff/session` (no auth) with `{ "pin": "..." }` returns `{ "token": "st1....", "expiresAt": <ms> }`. The token is a bearer token for the `staff` role, valid 72 hours, signed with a key derived from `STAFF_TOKEN` (rotating `STAFF_TOKEN` signs everyone out). The staff app trades `STAFF_TOKEN` for one and puts it in its web view's cookie store as `booth_staff`. Wrong PIN is `401`; more than 10 attempts a minute from one IP is `429`.
+- The staff pages get the same token as an `HttpOnly; Secure; SameSite=Strict` cookie named `booth_staff` from `POST /dashboard/login` (form fields `pin` and `next`). The cookie is accepted on `/v1/` routes for the `staff` role only; any non-GET request authenticated by cookie must carry an `Origin` header equal to the server's origin. Without `X-Booth-Device`, a cookie client's device is `web-<session id>`.
 
 ## Errors
 
@@ -66,6 +66,7 @@ The hub keeps one state document and a revision number `rev` that increases by e
 ```ts
 interface BoothState {
   rev: number;
+  kioskOpen: KioskOpen;           // (added) absent from older servers; treat as open
   flavors: { id: string; name: string; soldOut: boolean }[]; // order is display order
   kiosk: {
     connected: boolean;           // a kiosk websocket is open
@@ -78,6 +79,12 @@ interface BoothState {
   alerts: Alert[];                // open alerts, plus closed ones from the last 3 hours (newest first, at most 60)
   orders: OrderSummary[];         // (added) open orders, plus ones changed in the last 3 hours (newest paid first, at most 100)
   serverTime: number;
+}
+
+interface KioskOpen {             // (added)
+  open: boolean;                  // false: the kiosk's Begin Order is off; a customer mid-order can still finish
+  changedAt: number | null;       // server ms of the last change, null if never changed
+  changedBy: string | null;
 }
 
 interface OrderSummary {          // (added)
@@ -153,6 +160,7 @@ Server to client:
 { "kind": "alert", "alert": Alert }                                                          // insert or replace by id
 { "kind": "kiosk", "kiosk": KioskState }                                                     // the whole kiosk object
 { "kind": "order", "order": OrderSummary }                                                   // (added) insert or replace by id
+{ "kind": "kioskOpen", "kioskOpen": KioskOpen }                                              // (added) the whole flag
 ```
 
 Client rules, which make every client converge on the hub's state:
@@ -160,7 +168,7 @@ Client rules, which make every client converge on the hub's state:
 1. On `snapshot`, replace local state and set `rev` from it.
 2. On `patch`: ignore it if `rev` is at or below the local rev (stale or duplicate). Apply it if it is exactly local rev + 1. If it is further ahead, a patch was missed: send `{"type":"sync"}` and wait for the snapshot.
 3. On `pong`, if its `rev` is ahead of the local rev, send `sync`.
-4. Persist what the app needs while offline (the kiosk keeps the sold-out map), and keep using it until a snapshot arrives.
+4. Persist what the app needs while offline (the kiosk keeps the sold-out map and the open/closed flag), and keep using it until a snapshot arrives.
 
 Client to server:
 
@@ -215,13 +223,14 @@ Each item is `ok`, `duplicate` (already processed; same `alertId`), `stale` (an 
 { "id": "...", "type": "ack", "alertId": "...", "by": "Maya" }
 { "id": "...", "type": "setSoldOut", "flavor": "chocolate", "soldOut": true, "by": "Maya" }
 { "id": "...", "type": "setOrderStatus", "orderId": "<checkout id>", "status": "ready", "by": "Maya" }   // (added)
+{ "id": "...", "type": "setKioskOpen", "open": false, "by": "Maya" }                                  // (added)
 ```
 
 Response `200`: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "rejected", "error"?: {...} }], "rev": 43 }`. The same actions can be sent one at a time over the websocket (`{"type":"action"}`), answered with `result`.
 
-Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut` and `setOrderStatus` are last-writer-wins in the order the hub receives them; setting the status an order already has is `ok` and changes nothing. `setOrderStatus` for an order not in the feed is `rejected` with `not_found`.
+Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut`, `setOrderStatus` and `setKioskOpen` are last-writer-wins in the order the hub receives them; setting the value something already has is `ok` and changes nothing (no patch). The kiosk is open until staff close it. `setOrderStatus` for an order not in the feed is `rejected` with `not_found`.
 
-Clients that queue offline should keep only the newest unsent `setSoldOut`/`setOrderStatus` per flavor or order, and not send over the websocket while an HTTP batch is in flight, so an older change can't land after a newer one. The staff iPad does both and keeps unsent actions on disk for up to 10 minutes.
+Clients that queue offline should keep only the newest unsent `setSoldOut`/`setOrderStatus`/`setKioskOpen` per flavor, order or flag, and not send over the websocket while an HTTP batch is in flight, so an older change can't land after a newer one. The staff pages do both (see [Staff pages](#staff-pages-get-staffrole-added)).
 
 ## Logs: `POST /v1/logs` (kiosk)
 
@@ -266,7 +275,7 @@ The server holds the Square application secret and does the code flow. One Squar
 | Route | Auth | |
 | --- | --- | --- |
 | `POST /v1/square/oauth/start` | staff | `{ "url": "<Square authorize URL>", "environment", "expiresAt", "redirectUrl" }`. Open `url` in a browser within 10 minutes. |
-| `GET /v1/square/oauth/start` | staff (cookie or bearer) | The same, as a `302` to Square. For a dashboard button. |
+| `GET /v1/square/oauth/start` | staff (cookie or bearer) | The same, as a `302` to Square, for opening in a signed-in browser. |
 | `GET /v1/square/oauth/callback` | none (the `state` is the credential) | Square redirects here. Each `state` works once and expires after 10 minutes. Exchanges the code, picks the location (`SQUARE_LOCATION_ID` if set, else the first active location that takes cards), stores the tokens and shows a page saying what happened. |
 | `GET /v1/square/status[?verify=1]` | staff | Configuration, active source, location, token expiry, last refresh and its error, `stale` (no refresh for 8 days). `verify=1` also calls Square to check the token. |
 | `POST /v1/square/refresh` | staff | Refreshes now. `{ "status": "refreshed" \| "skipped" \| "failed", ... }`, `502` on failure. |
@@ -315,11 +324,13 @@ Defaults to the last 24 hours. Counts real orders only: simulated ones are only 
   "last15Min": { "orders": 4, "totalCents": 3800 } }
 ```
 
-## Dashboard: `GET /dashboard` *(added)*
+## Staff pages: `GET /staff/<role>` *(added)*
 
-A single self-contained page (inline CSS, script and lucide SVG icons, no external requests, a per-request CSP nonce) for the organizer laptop. Without a session it shows the PIN form (`POST /dashboard/login`, then a `303` back with the session cookie); `POST /dashboard/logout` clears it. Dashboard pages send `Referrer-Policy: same-origin` so the browser sends the real `Origin` on the form post (with `no-referrer` Chrome sends `Origin: null` and the same-origin check refuses it).
+Self-contained pages (inline CSS, script and lucide SVG icons, no external requests, a per-request CSP nonce that also allows `media-src blob:` for the alert chime). The roles are listed in `src/staff-roles.ts`: `scooper` and `toppings` (iPads, interactive) and `organizer` and `board` (laptop displays, read-only). `GET /staff` lists them; `GET /dashboard` is a `303` to `/staff`; an unknown role is `404`. Without a session every page shows the PIN form, which posts `pin` and `next` (the page to return to, only `/staff` or `/staff/<role>`) to `POST /dashboard/login` and gets a `303` back with the session cookie; `POST /dashboard/logout` clears it. `POST /dashboard/renew` (cookie, same origin) answers `204`, with a fresh 72-hour cookie once the current one has under 48 hours left; pages call it every 30 minutes so an unattended display stays signed in. Pages send `Referrer-Policy: same-origin` so the browser sends the real `Origin` on the form post (with `no-referrer` Chrome sends `Origin: null` and the same-origin check refuses it).
 
-Signed in, the page opens `GET /v1/ws` with the cookie and follows the client rules above (replace on `snapshot`, apply a patch only at rev + 1, `sync` on a gap or a `pong` ahead, ping every 10 s, reconnect after 25 s of silence with 1 s to 30 s backoff, and again when the tab becomes visible or the network returns). It shows the order feed (real orders only), sold-out toggles and open alerts with acknowledge (sent as `POST /v1/actions` with `by: "Dashboard"`), and kiosk health, and refetches `GET /v1/stats?since=<local midnight>` after each order patch and every 30 s for the tiles and bars. A `401` or `403` from the API reloads the page, which shows the PIN form.
+Signed in, a page opens `GET /v1/ws` with the cookie and follows the client rules above (replace on `snapshot`, apply a patch only at rev + 1, `sync` on a gap or a `pong` ahead, ping every 10 s, reconnect after 25 s of silence with 1 s to 30 s backoff, and again when the tab becomes visible or the network returns). Actions go through `POST /v1/actions` with `X-Booth-Device: web-<random>`, generated once per browser and kept in `localStorage`, and `by` set to the page title (`Scooper iPad` in the app, `Scooper page` in a browser). Each action is first written to a `localStorage` queue with its id, sent oldest first in batches (never more than one batch in flight), and removed only on `ok`, `duplicate` or `rejected`; network errors, `429` and `5xx` keep it and retry with backoff. An unsent `setSoldOut`, `setOrderStatus` or `setKioskOpen` is replaced by a newer one for the same flavor, order or flag, and items unsent for an hour are dropped with a notice. Because the device id is stable, a batch that reached the hub before the connection dropped is answered `duplicate` on resend. The organizer page refetches `GET /v1/stats?since=<local midnight>` after each order patch and every 30 s. A `401` from the API reloads the page, which shows the PIN form.
+
+The staff app's web view identifies itself with `BoothStaffApp/1` in its user agent; pages then hide sign-out and the page switcher and play the alert chime without the tap a browser needs.
 
 ## Other routes
 
