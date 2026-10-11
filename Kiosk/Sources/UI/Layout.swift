@@ -7,7 +7,7 @@ enum Layout {
     static let midX: CGFloat = 516
 
     static let backButtonCenter = CGPoint(x: 104, y: 112)
-    static let stepIndicatorY: CGFloat = 112
+    static let stepIndicatorY: CGFloat = 106
     static let titleY: CGFloat = 190
     static let subtitleY: CGFloat = 246
 
@@ -70,6 +70,8 @@ enum Layout {
     static let summaryMiniBox = CGSize(width: 190, height: 150)
     static let trayPitch: CGFloat = 118
     static let trayCenterY: CGFloat = 1285
-    static let viewOrderRect = CGRect(x: 684, y: 1238, width: 220, height: 94)
-    static let resetCenter = CGPoint(x: 966, y: 1285)
+    /// View Order and reset line up with the tray tiles' top and bottom edges and share their corner radius.
+    static let viewOrderRect = CGRect(x: 680, y: 1232, width: 206, height: 106)
+    static let resetRect = CGRect(x: 902, y: 1232, width: 106, height: 106)
+    static let trayTileRadius: CGFloat = 26
 }

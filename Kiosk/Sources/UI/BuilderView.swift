@@ -194,27 +194,24 @@ struct BuilderForeground: View {
 
     private var header: some View {
         ZStack {
-            if app.step != .vessel {
-                GlassBackButton { app.goBack() }
-                    .position(Layout.backButtonCenter)
-                    .transition(.opacity.animation(.easeInOut(duration: 0.22)))
-            }
-
             GlassStepSelector(steps: BuilderStep.allCases,
-                              selection: Binding(get: { app.step }, set: { _ in }),
+                              selection: app.step,
                               title: { $0.title },
                               isEnabled: { app.canJump(to: $0) },
+                              isComplete: isStepComplete,
                               onSelect: { app.jumpToStep($0) },
-                              onBlockedTap: { _ in showScoopHint() },
-                              width: 420)
+                              onBlockedTap: { _ in showScoopHint() })
                 .position(x: Layout.midX, y: Layout.stepIndicatorY)
 
             if scoopHint {
                 Text("Add a scoop first")
-                    .font(Theme.sans(15, .medium))
+                    .font(Theme.serif(18, .regular))
                     .foregroundStyle(Theme.inkSecondary)
-                    .position(x: Layout.midX + 140, y: Layout.stepIndicatorY + 42)
-                    .transition(.opacity.combined(with: .offset(y: -4)))
+                    .fixedSize()
+                    .frame(width: 180, alignment: .leading)
+                    .position(x: Layout.midX + 1.5 * GlassStepSelector<BuilderStep>.segmentWidth + 6 + 18 + 90,
+                              y: Layout.stepIndicatorY)
+                    .transition(.opacity.combined(with: .offset(x: -6)))
             }
 
             Text(title)
@@ -231,6 +228,10 @@ struct BuilderForeground: View {
         .onChange(of: app.current.scoopCount > 0) { _, hasScoop in
             if hasScoop { withAnimation(.easeIn(duration: 0.2)) { scoopHint = false } }
         }
+    }
+
+    private func isStepComplete(_ step: BuilderStep) -> Bool {
+        step.rawValue < app.step.rawValue || (step == .flavors && app.current.scoopCount > 0)
     }
 
     private var title: String {
@@ -336,12 +337,16 @@ struct BuilderForeground: View {
 
     private var primaryButton: some View {
         Button { app.isEditing ? app.finishEditing(then: .newItem) : app.goForward() } label: {
-            HStack(spacing: 12) {
-                Text(primaryTitle)
-                LucideIcon(name: app.isEditing ? "check" : (app.step == .toppings ? "plus" : "arrow-right"), size: 26)
+            // A fixed-width ZStack so the old and new labels crossfade in place instead of the glass resizing.
+            ZStack {
+                HStack(spacing: 12) {
+                    Text(primaryTitle)
+                    LucideIcon(name: app.isEditing ? "check" : (app.step == .toppings ? "plus" : "arrow-right"), size: 26)
+                }
+                .id(primaryTitle)
+                .transition(.opacity.animation(.easeInOut(duration: 0.22)))
             }
-            .frame(minWidth: Layout.primaryButtonSize.width - 100)
-            .contentTransition(.opacity)
+            .frame(width: Layout.primaryButtonSize.width - 64)
         }
         .buttonStyle(.glassCTA(height: Layout.primaryButtonSize.height))
         .disabled((!app.canContinue && !app.isEditing) || app.itemInFlight)
@@ -359,9 +364,9 @@ struct BuilderForeground: View {
     private var tray: some View {
         ZStack {
             if app.items.isEmpty {
-                Text("Your order")
-                    .font(Theme.serif(20, .regular))
-                    .foregroundStyle(Theme.inkSecondary.opacity(0.7))
+                Text("Added items appear here")
+                    .font(Theme.serif(18, .regular))
+                    .foregroundStyle(Theme.inkSecondary)
                     .position(x: Layout.trayItemsRect.midX, y: Layout.trayCenterY)
                     .transition(.opacity)
             }
@@ -397,9 +402,10 @@ struct BuilderForeground: View {
                 .disabled(!app.canViewOrder)
                 .position(x: Layout.viewOrderRect.midX, y: Layout.viewOrderRect.midY)
 
-            GlassIconButton(icon: "rotate-ccw") { app.requestStartOver() }
+            GlassIconButton(icon: "rotate-ccw", size: Layout.resetRect.height, width: Layout.resetRect.width, iconSize: 30,
+                            shape: .roundedRectangle(radius: Layout.trayTileRadius)) { app.requestStartOver() }
                 .accessibilityLabel("Start over")
-                .position(Layout.resetCenter)
+                .position(x: Layout.resetRect.midX, y: Layout.resetRect.midY)
         }
         .animation(.easeInOut(duration: 0.3), value: app.items.isEmpty)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: app.editingID)
@@ -411,7 +417,7 @@ struct BuilderForeground: View {
         return Button { app.startNewItem() } label: {
             VStack(spacing: 4) {
                 LucideIcon(name: "plus", size: 28)
-                Text("New item").font(Theme.sans(15, .semibold))
+                Text("New item").font(Theme.serif(17, .medium))
             }
             .foregroundStyle(Theme.ink.opacity(enabled ? 0.85 : 0.35))
             .frame(width: slotSize.width, height: slotSize.height)

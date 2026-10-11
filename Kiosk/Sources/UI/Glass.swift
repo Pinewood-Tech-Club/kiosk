@@ -58,6 +58,7 @@ struct KioskGlassButtonStyle: PrimitiveButtonStyle {
 
     /// Padding that `.glass` / `.glassProminent` put above and below the label at `.large`.
     static let verticalInset: CGFloat = 7
+    static let horizontalInset: CGFloat = 18
 }
 
 extension PrimitiveButtonStyle where Self == KioskGlassButtonStyle {
@@ -94,7 +95,10 @@ struct GlassIconButton: View {
     let icon: String
     var prominent = false
     var size: CGFloat = 64
+    /// Only for non-circular shapes; a circle is always `size` wide.
+    var width: CGFloat?
     var iconSize: CGFloat = 26
+    var shape: ButtonBorderShape = .circle
     var morph: GlassMorph?
     let action: () -> Void
 
@@ -102,9 +106,10 @@ struct GlassIconButton: View {
         let button = Button(action: action) {
             LucideIcon(name: icon, size: iconSize)
                 .foregroundStyle(prominent ? Color.white : Theme.ink)
-                .frame(width: size - 2 * KioskGlassButtonStyle.verticalInset, height: size - 2 * KioskGlassButtonStyle.verticalInset)
+                .frame(width: width.map { $0 - 2 * KioskGlassButtonStyle.horizontalInset } ?? size - 2 * KioskGlassButtonStyle.verticalInset,
+                       height: size - 2 * KioskGlassButtonStyle.verticalInset)
         }
-        .buttonBorderShape(.circle)
+        .buttonBorderShape(shape)
         .controlSize(.large)
         .glassMorph(morph)
 
@@ -119,6 +124,7 @@ struct GlassIconButton: View {
 struct GlassViewOrderButton: View {
     let totalCents: Int
     var size = Layout.viewOrderRect.size
+    var cornerRadius = Layout.trayTileRadius
     let action: () -> Void
 
     var body: some View {
@@ -134,110 +140,111 @@ struct GlassViewOrderButton: View {
                 }
             }
             .foregroundStyle(.white)
-            .frame(width: size.width - 36, height: size.height - 2 * KioskGlassButtonStyle.verticalInset)
+            .frame(width: size.width - 2 * KioskGlassButtonStyle.horizontalInset, height: size.height - 2 * KioskGlassButtonStyle.verticalInset)
             .animation(.snappy, value: totalCents)
         }
         .buttonStyle(.glassProminent)
-        .buttonBorderShape(.capsule)
+        .buttonBorderShape(.roundedRectangle(radius: cornerRadius))
         .controlSize(.large)
         .tint(Theme.ink)
     }
 }
 
-/// The builder's step navigation: a native `UISegmentedControl` (which draws its own Liquid Glass), used
-/// directly because SwiftUI's segmented Picker can block a segment but can't show it as disabled.
-/// Tapping a disabled segment calls `onBlockedTap` so the screen can explain why.
+/// The builder's step navigation, drawn as a progress bar: completed steps carry a check, the current one
+/// sits on an ink capsule, and steps that can't be reached yet are faded. Tapping a reachable step jumps to
+/// it; tapping a faded one calls `onBlockedTap` so the screen can explain why.
 struct GlassStepSelector<Step: Hashable>: View {
     let steps: [Step]
-    @Binding var selection: Step
+    let selection: Step
     let title: (Step) -> String
     var isEnabled: (Step) -> Bool = { _ in true }
+    var isComplete: (Step) -> Bool = { _ in false }
     var onSelect: (Step) -> Void = { _ in }
     var onBlockedTap: (Step) -> Void = { _ in }
-    var width: CGFloat = 480
+    var segmentWidth: CGFloat = Self.segmentWidth
+    var height: CGFloat = 68
+
+    static var segmentWidth: CGFloat { 192 }
+    private let inset: CGFloat = 6
+    @Namespace private var indicator
 
     var body: some View {
-        SegmentedSteps(titles: steps.map(title),
-                       selected: steps.firstIndex(of: selection) ?? 0,
-                       enabled: steps.map(isEnabled),
-                       onSelect: { index in
-                           let step = steps[index]
-                           guard step != selection else { return }
-                           selection = step
-                           onSelect(step)
-                       })
-            .frame(width: width, height: 52)
-            .overlay {
-                // Disabled segments swallow touches in UIKit; this catches them for the hint.
-                HStack(spacing: 0) {
-                    ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .allowsHitTesting(!isEnabled(step))
-                            .onTapGesture { onBlockedTap(step) }
-                    }
+        HStack(spacing: 0) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                segment(number: index + 1, step: step)
+            }
+        }
+        .padding(inset)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: selection)
+    }
+
+    private func segment(number: Int, step: Step) -> some View {
+        let selected = step == selection
+        let enabled = isEnabled(step)
+        return Button {
+            if !enabled {
+                onBlockedTap(step)
+            } else if !selected {
+                onSelect(step)
+            }
+        } label: {
+            HStack(spacing: 10) {
+                StepMarker(number: number, selected: selected, complete: isComplete(step) && !selected)
+                Text(title(step))
+                    .font(Theme.serif(22, selected ? .semibold : .medium))
+            }
+            .foregroundStyle(selected ? Color.white : Theme.ink)
+            .opacity(enabled || selected ? 1 : 0.32)
+            .frame(width: segmentWidth, height: height - 2 * inset)
+            .background {
+                if selected {
+                    Capsule()
+                        .fill(Theme.ink)
+                        .matchedGeometryEffect(id: "indicator", in: indicator)
                 }
             }
-            .onAppear(perform: SegmentedAppearance.apply)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(StepPressStyle())
+        .animation(.easeInOut(duration: 0.25), value: enabled)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityHint(enabled ? "" : "Not available yet")
     }
 }
 
-private struct SegmentedSteps: UIViewRepresentable {
-    let titles: [String]
-    let selected: Int
-    let enabled: [Bool]
-    let onSelect: (Int) -> Void
+private struct StepMarker: View {
+    let number: Int
+    let selected: Bool
+    let complete: Bool
 
-    func makeUIView(context: Context) -> UISegmentedControl {
-        let control = UISegmentedControl(items: titles)
-        control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
-        control.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        return control
-    }
-
-    func updateUIView(_ control: UISegmentedControl, context: Context) {
-        context.coordinator.onSelect = onSelect
-        control.selectedSegmentIndex = selected
-        for (index, isEnabled) in enabled.enumerated() where control.isEnabledForSegment(at: index) != isEnabled {
-            UIView.transition(with: control, duration: 0.25, options: .transitionCrossDissolve) {
-                control.setEnabled(isEnabled, forSegmentAt: index)
+    var body: some View {
+        ZStack {
+            if complete {
+                Circle().fill(Theme.ink)
+                LucideIcon(name: "check", size: 16).foregroundStyle(.white)
+            } else if selected {
+                Circle().fill(.white)
+                numeral.foregroundStyle(Theme.ink)
+            } else {
+                Circle().strokeBorder(Theme.ink.opacity(0.55), lineWidth: 1.5)
+                numeral
             }
         }
+        .frame(width: 28, height: 28)
+        .animation(.easeInOut(duration: 0.25), value: complete)
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(onSelect: onSelect) }
-
-    final class Coordinator: NSObject {
-        var onSelect: (Int) -> Void
-        init(onSelect: @escaping (Int) -> Void) { self.onSelect = onSelect }
-
-        @MainActor @objc func changed(_ control: UISegmentedControl) {
-            onSelect(control.selectedSegmentIndex)
-        }
+    private var numeral: some View {
+        Text("\(number)").font(Theme.sans(15, .semibold)).monospacedDigit()
     }
 }
 
-@MainActor
-private enum SegmentedAppearance {
-    private static var applied = false
-
-    static func apply() {
-        guard !applied else { return }
-        applied = true
-        let control = UISegmentedControl.appearance()
-        control.selectedSegmentTintColor = UIColor(Theme.ink)
-        control.setTitleTextAttributes([
-            .font: UIFont.systemFont(ofSize: 18, weight: .medium),
-            .foregroundColor: UIColor(Theme.ink.opacity(0.78)),
-        ], for: .normal)
-        control.setTitleTextAttributes([
-            .font: UIFont.systemFont(ofSize: 18, weight: .semibold),
-            .foregroundColor: UIColor.white,
-        ], for: .selected)
-        control.setTitleTextAttributes([
-            .font: UIFont.systemFont(ofSize: 18, weight: .medium),
-            .foregroundColor: UIColor(Theme.ink.opacity(0.28)),
-        ], for: .disabled)
+private struct StepPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
