@@ -259,7 +259,7 @@ final class Stage {
             if vessel == .cup {
                 let toppings = ToppingStack(rig: rig)
                 toppings.light = { [unowned self] in applyLighting($0) }
-                toppings.setScoops(1, surface: scoopSurface(.cup, count: 1), animated: false, now: now)
+                toppings.setScoops(1, surface: FlatSurface(height: assets.vesselTop(.cup), radius: 0.02), animated: false, now: now)
                 toppings.setToppings(Topping.allCases, animated: false, now: now)
             }
         }

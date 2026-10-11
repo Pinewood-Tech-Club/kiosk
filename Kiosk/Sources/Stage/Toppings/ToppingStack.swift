@@ -53,7 +53,7 @@ final class ToppingStack {
     var light: (Entity) -> Void = { _ in }
     private(set) var toppings: [Topping] = []
     private(set) var itemSeed: UInt64 = 0
-    private(set) var base: ScoopSurface?
+    private(set) var base: (any ToppingSurface)?
     private(set) var scoopCount = 0
     private var baseVersion = 0
     private var placed: [Placed] = []
@@ -101,7 +101,7 @@ final class ToppingStack {
         itemSeed = other.itemSeed
     }
 
-    func setScoops(_ count: Int, surface: ScoopSurface?, animated: Bool, now: Double) {
+    func setScoops(_ count: Int, surface: (any ToppingSurface)?, animated: Bool, now: Double) {
         pendingCount = nil
         guard count != scoopCount || (surface == nil) != (base == nil) else { return }
         let grew = count > scoopCount
@@ -277,8 +277,8 @@ struct ShellProfile {
         guard d < 1 else { return 0 }
         switch style {
         case .whip:
-            let body = 0.017 * pow(1 - d * d, 0.6)
-            let peak = 0.011 * pow(max(0, 1 - d / 0.38), 2)
+            let body = min(radius * 0.75, 0.017) * pow(1 - d * d, 0.6)
+            let peak = min(radius * 0.45, 0.011) * pow(max(0, 1 - d / 0.38), 2)
             return (body + peak) * (1 + 0.1 * d * sin(7 * angle + 14 * d + phase))
         case .drizzle:
             return 0.0018 * (1 - pow(d, 6))

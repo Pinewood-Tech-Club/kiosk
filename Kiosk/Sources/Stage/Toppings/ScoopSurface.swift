@@ -11,8 +11,10 @@ struct ScoopSurface: ToppingSurface, Sendable {
     }
 
     static let cell: Float = 0.0006
-    /// Toppings only cover the part of the top that faces up at least this much.
-    static let minimumUpness: Float = 0.3
+    /// Toppings only cover the part of the top no steeper than this (about 72°), measured over a couple of
+    /// millimeters so the scoops' small surface lumps don't count.
+    static let maximumSlope: Float = 3.1
+    static let slopeBaseline = 4
 
     let originX: Float
     let originZ: Float
@@ -120,34 +122,72 @@ struct ScoopSurface: ToppingSurface, Sendable {
             }
         }
 
-        var apex = SIMD3<Float>(0, -.infinity, 0)
-        for r in 0..<rows {
-            for c in 0..<columns where heights[r * columns + c] > apex.y {
-                apex = [originX + (Float(c) + 0.5) * cell, heights[r * columns + c], originZ + (Float(r) + 0.5) * cell]
+        normals = blurred(normals, heights: heights, columns: columns, rows: rows)
+        var highest: Float = -.infinity
+        for h in heights where h > highest { highest = h }
+        let field = ScoopSurface(originX: originX, originZ: originZ, columns: columns, rows: rows,
+                                 heights: heights, normals: normals, apex: .zero, radius: 0)
+        // A stack's top scoop often leans, so its highest point sits near one edge of the cap. Center the
+        // covered disc on the high point that leaves the widest cap around it instead.
+        var best: (score: Float, center: SIMD3<Float>, radius: Float) = (-.infinity, .zero, 0)
+        for r in stride(from: 0, to: rows, by: 3) {
+            for c in stride(from: 0, to: columns, by: 3) {
+                let h = heights[r * columns + c]
+                guard h.isFinite, h >= highest - 0.008 else { continue }
+                let center = SIMD3<Float>(originX + (Float(c) + 0.5) * cell, h, originZ + (Float(r) + 0.5) * cell)
+                let radius = field.coverRadius(around: center, directions: 16)
+                let score = radius - 0.8 * (highest - h)
+                if score > best.score { best = (score, center, radius) }
             }
         }
-        var surface = ScoopSurface(originX: originX, originZ: originZ, columns: columns, rows: rows,
-                                   heights: heights, normals: normals, apex: apex, radius: 0)
-        surface = ScoopSurface(originX: originX, originZ: originZ, columns: columns, rows: rows,
-                               heights: heights, normals: normals, apex: apex, radius: surface.coverRadius())
-        return surface
+        let radius = field.coverRadius(around: best.center, directions: 48)
+        return ScoopSurface(originX: originX, originZ: originZ, columns: columns, rows: rows,
+                            heights: heights, normals: normals, apex: best.center, radius: radius)
     }
 
-    /// Distance from the apex's axis to the nearest point, in any direction, where the top stops facing up or
+    /// Normals averaged over neighboring cells, so pieces lie on the scoop's shape rather than on its lumps.
+    nonisolated private static func blurred(_ normals: [SIMD3<Float>], heights: [Float], columns: Int, rows: Int) -> [SIMD3<Float>] {
+        let reach = 2
+        var horizontal = normals
+        for r in 0..<rows {
+            for c in 0..<columns where heights[r * columns + c].isFinite {
+                var sum = SIMD3<Float>.zero
+                for k in max(0, c - reach)...min(columns - 1, c + reach) where heights[r * columns + k].isFinite {
+                    sum += normals[r * columns + k]
+                }
+                horizontal[r * columns + c] = sum
+            }
+        }
+        var out = normals
+        for r in 0..<rows {
+            for c in 0..<columns where heights[r * columns + c].isFinite {
+                var sum = SIMD3<Float>.zero
+                for k in max(0, r - reach)...min(rows - 1, r + reach) where heights[k * columns + c].isFinite {
+                    sum += horizontal[k * columns + c]
+                }
+                out[r * columns + c] = simd_length(sum) > 1e-6 ? simd_normalize(sum) : [0, 1, 0]
+            }
+        }
+        return out
+    }
+
+    /// Distance from `center`'s axis to the nearest point, in any direction, where the top gets too steep or
     /// drops off the edge of the top scoop.
-    private func coverRadius() -> Float {
+    private func coverRadius(around center: SIMD3<Float>, directions: Int) -> Float {
         let step = Self.cell * 0.75
         var radius = Float.greatestFiniteMagnitude
-        for k in 0..<48 {
-            let angle = Float(k) / 48 * 2 * .pi
+        for k in 0..<directions {
+            let angle = Float(k) / Float(directions) * 2 * .pi
             let direction = SIMD2<Float>(cos(angle), sin(angle))
             var r: Float = 0
-            var previous = apex.y
-            while r < 0.08 {
+            var trail: [Float] = [center.y]
+            while r < 0.08, r < radius {
                 let next = r + step
-                guard let s = sample(x: apex.x + direction.x * next, z: apex.z + direction.y * next),
-                      s.normal.y >= Self.minimumUpness, previous - s.height < step * 4 else { break }
-                previous = s.height
+                guard let s = sample(x: center.x + direction.x * next, z: center.z + direction.y * next) else { break }
+                let back = min(trail.count, Self.slopeBaseline)
+                let drop = trail[trail.count - back] - s.height
+                guard drop < Self.maximumSlope * Float(back) * step else { break }
+                trail.append(s.height)
                 r = next
             }
             radius = min(radius, r)
