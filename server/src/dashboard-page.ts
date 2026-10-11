@@ -78,7 +78,8 @@ button.pill.attn{background:var(--accent);color:#fff;border-color:transparent}
 .urow .ut{flex:1;color:var(--text);min-width:0}
 .urow .when{color:var(--dim);font-size:.9rem;margin-left:.3rem;white-space:nowrap}
 .urow .btn,.uhead .btn{min-height:2.75rem;padding:.4rem .9rem;font-size:.95rem}
-.urow.more{color:var(--dim);justify-content:center;min-height:2.5rem}
+.urow.more-n{color:var(--dim);justify-content:center;min-height:2.5rem}
+.updates.more{border-left-color:var(--bad)}.updates.more .urow{color:var(--bad)}
 .tabs{display:flex;gap:.5rem;background:var(--panel2);padding:.3rem;border-radius:1rem;width:max-content;max-width:100%}
 .tabs button{min-height:2.9rem;padding:.45rem 1.3rem;border:0;border-radius:.75rem;background:none;font-weight:700;display:inline-flex;gap:.5rem;align-items:center;color:var(--dim)}
 .tabs button[aria-selected=true]{background:var(--panel);color:var(--text);box-shadow:var(--shadow)}
@@ -651,20 +652,25 @@ function pendingTag(key){
 
 function alertIcon(a){return a.kind==="help"?"bellRing":a.kind==="soldout"?"ban":a.kind==="offline"?"wifiOff":"alert";}
 
+function compactList(cls,title,list,ackLabel,max){
+  var ids=list.map(function(a){return a.id;}).join(",");
+  return '<div class="updates '+cls+'"><div class="uhead"><span>'+ico(cls==="more"?"alert":"bell")+" "+title+" ("+list.length+')</span>'+(list.length>1?'<button class="btn quiet" type="button" data-ackids="'+esc(ids)+'">'+ico("checkCheck")+" "+ackLabel+"</button>":"")+"</div>"+list.slice(0,max).map(function(a){
+    return '<div class="urow">'+ico(alertIcon(a))+'<span class="ut"><b>'+esc(a.title)+(a.count>1?" (x"+a.count+")":"")+'</b> <span class="when">'+agoSpan(a.updatedAt)+'</span></span><button class="btn quiet" type="button" data-ack="'+esc(a.id)+'">'+ico("check")+" OK</button></div>";
+  }).join("")+(list.length>max?'<div class="urow more-n">and '+(list.length-max)+" more</div>":"")+"</div>";
+}
+
 function renderAlerts(){
   var open=state.alerts.filter(function(a){return a.ackedAt==null&&a.resolvedAt==null&&!alertAcked(a);});
   var rank={urgent:0,warning:1};
   var main=open.filter(function(a){return a.severity!=="info";}).sort(function(a,b){return rank[a.severity]-rank[b.severity]||b.updatedAt-a.updatedAt;});
   var info=open.filter(function(a){return a.severity==="info";}).sort(function(a,b){return b.updatedAt-a.updatedAt;});
-  var html=main.map(function(a){
+  var shown=main.slice(0,2),rest=main.slice(2);
+  var html=shown.map(function(a){
     var urgent=a.severity==="urgent";
     return '<div class="alert '+esc(a.severity)+'" role="alert"><span class="ic">'+ico(alertIcon(a))+'</span><div class="body"><div class="title">'+esc(a.title)+(a.count>1?" (x"+a.count+")":"")+'<span class="when">'+agoSpan(a.updatedAt)+'</span></div>'+(a.detail?'<div class="detail">'+esc(a.detail)+'</div>':"")+'</div><button class="btn '+(urgent?"urgent":"quiet")+'" type="button" data-ack="'+esc(a.id)+'">'+ico("check")+(urgent?" Acknowledge":" OK")+"</button></div>";
   }).join("");
-  if(info.length){
-    html+='<div class="updates"><div class="uhead"><span>'+ico("bell")+" Updates ("+info.length+')</span>'+(info.length>1?'<button class="btn quiet" type="button" data-ackall="info">'+ico("checkCheck")+" Clear all</button>":"")+"</div>"+info.slice(0,4).map(function(a){
-      return '<div class="urow">'+ico(alertIcon(a))+'<span class="ut"><b>'+esc(a.title)+'</b> <span class="when">'+agoSpan(a.updatedAt)+'</span></span><button class="btn quiet" type="button" data-ack="'+esc(a.id)+'">'+ico("check")+" OK</button></div>";
-    }).join("")+(info.length>4?'<div class="urow more">and '+(info.length-4)+" more</div>":"")+"</div>";
-  }
+  if(rest.length)html+=compactList("more","More alerts",rest,"Acknowledge all",5);
+  if(info.length)html+=compactList("info","Updates",info,"Clear all",3);
   $("alerts").innerHTML=html;
 }
 
@@ -781,7 +787,7 @@ document.addEventListener("click",function(e){
   var el=e.target.closest&&e.target.closest("button");
   if(!el)return;
   if(el.dataset.ack){enqueue({type:"ack",alertId:el.dataset.ack});}
-  else if(el.dataset.ackall&&state){state.alerts.filter(function(a){return a.severity==="info"&&a.ackedAt==null&&a.resolvedAt==null&&!alertAcked(a);}).forEach(function(a){enqueue({type:"ack",alertId:a.id});});}
+  else if(el.dataset.ackids){el.dataset.ackids.split(",").forEach(function(id){if(id)enqueue({type:"ack",alertId:id});});}
   else if(el.dataset.flavor){
     var f=state&&state.flavors.filter(function(x){return x.id===el.dataset.flavor;})[0];
     if(f)enqueue({type:"setSoldOut",flavor:f.id,soldOut:!flavorOut(f)});
