@@ -47,6 +47,7 @@
 		8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */; };
 		90AAEE7345EA5E45D4B405EF /* BoothHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 275115659D156690770E9F4D /* BoothHealth.swift */; };
 		9202055A9FECFAEDCE95CD2D /* BuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A313CBED428256A71A858FEA /* BuilderView.swift */; };
+		94E1859C196513DCA67FD99A /* GummyBears-CC-BY-4.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3E7BD938DB6C7D3B7D320A5E /* GummyBears-CC-BY-4.0.txt */; };
 		9BA8BBFF27C6B6D87613C68E /* AssetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3EB41C1A0D41F89C6D8FE8A /* AssetLibrary.swift */; };
 		9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309806DC452BB62BEE356569 /* DebugBar.swift */; };
 		9FB4EB59530BF0754BDBC1F3 /* SquareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D96DB54BCDC2006C377D8F /* SquareService.swift */; };
@@ -62,6 +63,7 @@
 		C0FFE25ACFD95D63EC7D4169 /* Order.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1105750A779779A5507FAF2 /* Order.swift */; };
 		C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */; };
 		C659717E6746E0A1AD7B7C6E /* NotoSerif-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */; };
+		CD5E3ED59D3759FB531081DF /* CandyKinds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4649965D4D60FFAD3C4019DC /* CandyKinds.swift */; };
 		CFA9251FBFBDD52ED6806157 /* 3D in Resources */ = {isa = PBXBuildFile; fileRef = 41288991151D7382A2F4C89D /* 3D */; };
 		D3AB8EFD24B6A0A8DC388F0D /* NotoSerif-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */; };
 		DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */; };
@@ -70,10 +72,12 @@
 		E1955450EF5B555A8D4549DA /* ScatterPhysics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6EB437FE04FC84CEA440D1E /* ScatterPhysics.swift */; };
 		E21404B759B7FBEE10853958 /* ToppingStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5406E8E764595F07AE47CDAC /* ToppingStack.swift */; };
 		E4F831145DF772EE0B60DCBF /* BoothConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C430771D6BEE6DF3E2F669E /* BoothConnection.swift */; };
+		E6F75105196B73C5CB554BE7 /* CandyMeshes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */; };
 		EEE905EC1942EFD25A5F0730 /* PlaceholderScatterKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */; };
 		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
 		F33FD48A4B7F07D6B639671D /* StageVessels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B353824019534A970B3D1DE6 /* StageVessels.swift */; };
 		F346DF14280B5329EFF72A73 /* Animation.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB286FAB60CDB38CF35280B /* Animation.swift */; };
+		F56CD22CC4696A80F6A249F7 /* CandyLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FFB3F97C8AD2CD4A5D00780 /* CandyLab.swift */; };
 		F86ED738CAD06D788946D97B /* StageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80DA186C645E6612A99CD769 /* StageView.swift */; };
 		FD0A874C890E38BDA7E2144C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64CD3F775C84109C65BEB08B /* AppModel.swift */; };
 		FE0C1C733FBF872A34848749 /* ToppingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48740B6EF1BC55783B05082A /* ToppingLayer.swift */; };
@@ -107,9 +111,11 @@
 		37DFD4680D9AC7197C5C0B25 /* Receipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Receipt.swift; sourceTree = "<group>"; };
 		3A427B0BBC2F44DCB35CDA2F /* StageToppings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageToppings.swift; sourceTree = "<group>"; };
 		3A5C513CA4EED620DB0C9835 /* ScoopSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopSurface.swift; sourceTree = "<group>"; };
+		3E7BD938DB6C7D3B7D320A5E /* GummyBears-CC-BY-4.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "GummyBears-CC-BY-4.0.txt"; sourceTree = "<group>"; };
 		3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Regular.ttf"; sourceTree = "<group>"; };
 		41288991151D7382A2F4C89D /* 3D */ = {isa = PBXFileReference; lastKnownFileType = folder; name = 3D; path = Kiosk/Resources/3D; sourceTree = SOURCE_ROOT; };
 		425B72639F56A451EDADC970 /* Layout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Layout.swift; sourceTree = "<group>"; };
+		4649965D4D60FFAD3C4019DC /* CandyKinds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandyKinds.swift; sourceTree = "<group>"; };
 		48740B6EF1BC55783B05082A /* ToppingLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingLayer.swift; sourceTree = "<group>"; };
 		48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothProtocol.swift; sourceTree = "<group>"; };
 		4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageScoops.swift; sourceTree = "<group>"; };
@@ -123,6 +129,7 @@
 		5701FD802D3A088526716CC8 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmationView.swift; sourceTree = "<group>"; };
 		5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "NotoSerif-OFL.txt"; sourceTree = "<group>"; };
+		5FFB3F97C8AD2CD4A5D00780 /* CandyLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandyLab.swift; sourceTree = "<group>"; };
 		60A6A3D2C8370D7698E2E811 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		6309D5E2BEA9F305D01718A3 /* Lucide-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Lucide-LICENSE.txt"; sourceTree = "<group>"; };
 		64CD3F775C84109C65BEB08B /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -135,6 +142,7 @@
 		94D96DB54BCDC2006C377D8F /* SquareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareService.swift; sourceTree = "<group>"; };
 		955D9B0FEA00CB8CCA27E91D /* Stage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage.swift; sourceTree = "<group>"; };
 		96A26E074420B8AC97F15E75 /* FrameStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStats.swift; sourceTree = "<group>"; };
+		984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandyMeshes.swift; sourceTree = "<group>"; };
 		989E4F9F6FFDC723DDD4BEA7 /* LogShipper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogShipper.swift; sourceTree = "<group>"; };
 		98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopMesh.swift; sourceTree = "<group>"; };
 		A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Bold.ttf"; sourceTree = "<group>"; };
@@ -324,6 +332,9 @@
 		933EFE036EC4FB9DBB0AC00F /* Toppings */ = {
 			isa = PBXGroup;
 			children = (
+				4649965D4D60FFAD3C4019DC /* CandyKinds.swift */,
+				5FFB3F97C8AD2CD4A5D00780 /* CandyLab.swift */,
+				984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */,
 				C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */,
 				149F2B0E24E64D43367C334D /* ScatterLab.swift */,
 				D65867471778683C1CB36618 /* ScatterLayer.swift */,
@@ -351,6 +362,7 @@
 		A6233471908EE83B074D0C11 /* Licenses */ = {
 			isa = PBXGroup;
 			children = (
+				3E7BD938DB6C7D3B7D320A5E /* GummyBears-CC-BY-4.0.txt */,
 				6309D5E2BEA9F305D01718A3 /* Lucide-LICENSE.txt */,
 				5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */,
 			);
@@ -478,6 +490,7 @@
 			files = (
 				CFA9251FBFBDD52ED6806157 /* 3D in Resources */,
 				5E0527E4240E6371F48181A6 /* Assets.xcassets in Resources */,
+				94E1859C196513DCA67FD99A /* GummyBears-CC-BY-4.0.txt in Resources */,
 				A193DDDF8212752C4341DAC5 /* Lucide-LICENSE.txt in Resources */,
 				38B1CA4705AFB81ABDBA21E7 /* NotoSerif-Bold.ttf in Resources */,
 				2F1D9CFC58D885C3AD6E9BEA /* NotoSerif-Medium.ttf in Resources */,
@@ -538,6 +551,9 @@
 				7335163B03B0F6F959250B9A /* BoothOutbox.swift in Sources */,
 				1D208167E95C76C2B5B5A490 /* BoothProtocol.swift in Sources */,
 				9202055A9FECFAEDCE95CD2D /* BuilderView.swift in Sources */,
+				CD5E3ED59D3759FB531081DF /* CandyKinds.swift in Sources */,
+				F56CD22CC4696A80F6A249F7 /* CandyLab.swift in Sources */,
+				E6F75105196B73C5CB554BE7 /* CandyMeshes.swift in Sources */,
 				6AD8D94397D99092AF46F1B7 /* Config.swift in Sources */,
 				8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */,
 				74456A6B3CED1B853F498EDE /* ContactSolver.swift in Sources */,

@@ -24,6 +24,16 @@ struct PlaceholderScatterKind: ScatterKind {
         }
     }
 
+    func makeIconPile(rng: inout ToppingRandom) -> Entity {
+        let pieces = makePieces(rng: &rng).prefix(shape == .sprinkle ? 30 : 4)
+        let largest = pieces.map { max($0.halfExtents.x, $0.halfExtents.z) }.max() ?? 0.004
+        return IconPile.compose(pieces.enumerated().map { index, piece in
+            let angle = Float(index) * 2.39996
+            let r = largest * 1.6 * sqrt(Float(index) / Float(pieces.count))
+            return (piece.mesh, piece.materials, simd_quatf(angle: angle, axis: [0, 1, 0]), [cos(angle) * r, 0, sin(angle) * r])
+        })
+    }
+
     private struct Resources {
         let mesh: MeshResource
         let materials: [any RealityKit.Material]

@@ -1,0 +1,11 @@
+Gummy bear 3D model (Kiosk/Resources/3D/GummyBear.usdz)
+
+This work is based on "Gummy Bears" (https://sketchfab.com/3d-models/gummy-bears-aa09d5b1ffc54fba91e691f25afdf183)
+by Styro (https://sketchfab.com/Styro_) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/).
+
+Changes: one of the four bears was remeshed, smoothed, rounded and reshaped (domed belly, head and snout), scaled to
+20 mm, decimated and converted to USDZ without its materials. See Assets3D/pipeline/gummy_bear.py.
+
+License summary: Creative Commons Attribution 4.0 International. You are free to share and adapt the material for any
+purpose, even commercially, as long as you give appropriate credit, provide a link to the license, and indicate if
+changes were made. Full text: https://creativecommons.org/licenses/by/4.0/legalcode
