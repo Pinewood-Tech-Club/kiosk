@@ -43,3 +43,17 @@ struct ToppingRandom: RandomNumberGenerator {
         return z ^ (z >> 31)
     }
 }
+
+struct ScatterPiece {
+    let mesh: MeshResource
+    let materials: [any RealityKit.Material]
+    /// Half extents of the local bounding box; lying flat, the piece rests on its local -Y face.
+    let halfExtents: SIMD3<Float>
+}
+
+/// A kind of scattered topping (gummy bears, M&M's, sprinkles): how many land and what each one looks like.
+@MainActor
+protocol ScatterKind {
+    var count: Int { get }
+    func makePieces(rng: inout ToppingRandom) -> [ScatterPiece]
+}
