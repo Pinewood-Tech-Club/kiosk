@@ -25,7 +25,6 @@ final class ScatterLayer: ToppingLayer {
         return resting
     }
     private(set) var isFinished = false
-    var isAnimating: Bool { animating }
     /// Where the topping's card icon is, in the layer's parent space; read every frame. When set,
     /// animated pieces are tossed from it and removed pieces fly back into it.
     var launchPoint: (() -> SIMD3<Float>)?

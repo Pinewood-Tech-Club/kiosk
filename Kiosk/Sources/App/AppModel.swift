@@ -629,7 +629,6 @@ final class AppModel {
                 screen = .builder
                 builderVisible = true
                 stage.restore(current: current, items: items, step: step)
-                if let lab = UserDefaults.standard.string(forKey: "kioskToppingLab") { stage.showCandyLab(lab) }
             case "summary":
                 screen = .builder
                 builderVisible = true
