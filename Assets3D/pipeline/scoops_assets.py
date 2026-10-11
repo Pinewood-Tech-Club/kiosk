@@ -185,7 +185,7 @@ def push_smooth(o, below, iters=6):
         d[a_] = d[b_] = 0.5*(d[a_] + d[b_])
     o.data.vertices.foreach_set("co", (P0 + d).ravel()); o.data.update()
 
-def clamp_to(o, radius_at, z_top, z_floor=None, inset=0.0006):
+def clamp_to(o, radius_at, z_top, z_floor=None, inset=0.0006, above=None):
     mw = o.matrix_world; inv = mw.inverted()
     for v in o.data.vertices:
         w = mw @ v.co
@@ -197,6 +197,11 @@ def clamp_to(o, radius_at, z_top, z_floor=None, inset=0.0006):
             dx, dy = w.x - cx_, w.y - cy_
             rho = math.hypot(dx, dy)
             lim = max(R - inset, 0.0)
+            if rho > lim and rho > 1e-9:
+                k = lim/rho; w.x = cx_ + dx*k; w.y = cy_ + dy*k
+        elif above is not None:
+            dx, dy = w.x - cx_, w.y - cy_
+            rho = math.hypot(dx, dy); lim = above(w.z)
             if rho > lim and rho > 1e-9:
                 k = lim/rho; w.x = cx_ + dx*k; w.y = cy_ + dy*k
         v.co = inv @ w
@@ -373,6 +378,7 @@ def add_scoop(kind, loc, rotz, seed, tilt=(0,0)):
     bpy.context.view_layer.update(); return o
 
 CUP_FLOOR = 6.4*mm
+RIM_TUCK = float(os.environ.get('RIM_TUCK', '0.30'))
 CUP_ZB = float(os.environ.get('CUP_H', '46')) - 1.3
 def cup_inner(zl, th=0.0): return (36.0 + 4.9*min(zl/mm, CUP_ZB)/CUP_ZB - 0.45)*mm
 
@@ -390,6 +396,8 @@ def place(container, kinds, x, seeds=None, solo_lift=None):
         base = CUP_FLOOR + lift*0.9 + 3.0*mm
         centers = [Vector((0, 0, base1)), Vector((0.45*r, 0.30*r, base + 1.12*r)), Vector((-0.22*r, -0.20*r, base + 1.85*r))]
         fn = cup_inner; ztop = (CUP_ZB - 0.2)*mm; zfl = CUP_FLOOR
+        def above_fn(zw):
+            return cup_inner(ztop) - 0.0010 - RIM_TUCK*(zw - ztop)
     else:
         V = np.empty(len(o.data.vertices)*3); o.data.vertices.foreach_get("co", V); V = V.reshape(-1,3)
         rc = V[V[:,2].argmin(), :2]
@@ -430,8 +438,12 @@ def place(container, kinds, x, seeds=None, solo_lift=None):
         if container == "cup" and i == 0: so.scale = (s1, s1, sz1); bpy.context.view_layer.update()
         if prev is not None: drape_over(so, prev, 0.80*r)
         if prev is not None: push_smooth(so, prev)
-        clamp_to(so, fn, ztop, zfl)
+        clamp_to(so, fn, ztop, zfl, above=(above_fn if container == 'cup' else None))
         if prev is not None: push_out(so, prev, passes=8)
+        if container == "cup":
+            clamp_to(so, fn, ztop, zfl, above=above_fn)
+            if prev is not None: push_out(so, prev, passes=8)
+            clamp_to(so, fn, ztop, zfl, above=above_fn)
         prev = so; made.append(so)
     return made
 
