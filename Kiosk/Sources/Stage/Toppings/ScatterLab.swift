@@ -27,6 +27,7 @@ final class ScatterLab {
     let freeze: Double?
     let yaw: Float
     let pitch: Float?
+    let card: SIMD3<Float>?
     let base: HeightfieldSurface
     let whip: WhipDome
     let whipEntity: ModelEntity
@@ -43,6 +44,7 @@ final class ScatterLab {
         start = stage.now
         freeze = defaults.object(forKey: "kioskLabFreeze") != nil ? defaults.double(forKey: "kioskLabFreeze") : nil
         yaw = defaults.object(forKey: "kioskLabYaw") != nil ? Float(defaults.double(forKey: "kioskLabYaw")) : 0.5
+        card = defaults.bool(forKey: "kioskLabLaunch") ? stage.world(CGPoint(x: 800, y: 1080)) : nil
         pitch = defaults.object(forKey: "kioskLabPitch") != nil ? Float(defaults.double(forKey: "kioskLabPitch")) : nil
         base = HeightfieldSurface(rig: rig, assets: assets)
         whip = WhipDome(base: base)
@@ -71,6 +73,10 @@ final class ScatterLab {
     private func kind(_ shape: PlaceholderScatterKind.Shape) -> ScatterLayer {
         let layer = ScatterLayer(kind: PlaceholderScatterKind(shape: shape))
         layer.occupied = layers.flatMap(\.footprints)
+        if let card {
+            let body = rig.body
+            layer.launchPoint = { body.convert(position: card, from: nil) }
+        }
         layers.append(layer)
         rig.body.addChild(layer.entity)
         return layer
@@ -103,7 +109,8 @@ final class ScatterLab {
         case "up", "down", "remove":
             let surface: ToppingSurface = scene == "down" ? whip.full : base
             for (index, shape) in [PlaceholderScatterKind.Shape.gummy, .lentil, .sprinkle].enumerated() {
-                kind(shape).apply(onto: surface, seed: UInt64(21 + index), animated: false, now: now)
+                let layer = kind(shape)
+                timed("static apply \(shape)", stage) { layer.apply(onto: surface, seed: UInt64(21 + index), animated: false, now: now) }
             }
             if scene == "remove" {
                 steps = [
@@ -174,9 +181,9 @@ final class ScatterLab {
         if let freeze, t >= freeze, stage.timeScale > 0 {
             for layer in layers {
                 stage.log("ScatterLab: rest " + layer.footprints.map { f in
-                    let r = simd_distance(f.center, SIMD2(base.apex.x, base.apex.z)) / base.radius
-                    let s = base.sample(x: f.center.x, z: f.center.y)
-                    return String(format: "r%.2f n%.2f above%.1fmm", r, s?.normal.y ?? -1, (f.top - (s?.height ?? 0)) * 1000)
+                    let r = simd_distance(SIMD2(f.position.x, f.position.z), SIMD2(base.apex.x, base.apex.z)) / base.radius
+                    let s = base.sample(x: f.position.x, z: f.position.z)
+                    return String(format: "r%.2f n%.2f y-h %.1fmm", r, s?.normal.y ?? -1, (f.position.y - (s?.height ?? 0)) * 1000)
                 }.joined(separator: " | "))
             }
             stage.timeScale = 0
@@ -201,6 +208,17 @@ struct HeightfieldSurface: ToppingSurface {
     @MainActor
     init(rig: ItemRig, assets: AssetLibrary) {
         var points: [SIMD3<Float>] = []
+        if let vessel = assets.vesselSurface(rig.vessel) {
+            let top = assets.vesselTop(rig.vessel)
+            var rim: [SIMD3<Float>] = []
+            var t = 0
+            while t + 2 < vessel.triangles.count {
+                let a = vessel.triangles[t], b = vessel.triangles[t + 1], c = vessel.triangles[t + 2]
+                if max(a.y, max(b.y, c.y)) > top - 0.04 { rim += [a, b, c] }
+                t += 3
+            }
+            points += ContactSolver.densify(points: [], triangles: rim, spacing: 0.0008)
+        }
         var topBounds = (min: SIMD3<Float>(repeating: .infinity), max: SIMD3<Float>(repeating: -.infinity))
         for (index, actor) in rig.scoops.enumerated() {
             let matrix = actor.model.transformMatrix(relativeTo: rig.body)
@@ -219,7 +237,7 @@ struct HeightfieldSurface: ToppingSurface {
             lo = simd_min(lo, [p.x, p.z])
             hi = simd_max(hi, [p.x, p.z])
         }
-        let n = 80
+        let n = 120
         size = n
         cell = max(hi.x - lo.x, hi.y - lo.y) / Float(n - 1)
         origin = lo
