@@ -38,9 +38,7 @@ struct LaunchOptions {
         }
         if let toppings = defaults.string(forKey: "kioskToppings") {
             var item = options.current ?? IceCreamItem()
-            item.toppings = Topping.stacked(toppings.split(separator: ",").compactMap {
-                Topping(rawValue: $0.trimmingCharacters(in: .whitespaces))
-            })
+            item.toppings = parseToppings(toppings)
             options.current = item
             if options.screen == nil { options.screen = "builder" }
         }
@@ -59,14 +57,19 @@ struct LaunchOptions {
         return options
     }
 
-    /// `cone:vanilla,chocolate` or `cup` (no scoops).
+    /// `cone:vanilla,chocolate`, `cup` (no scoops), or with toppings `cup:vanilla:whip,gummies`.
     static func parseItem(_ text: String) -> IceCreamItem? {
-        let parts = text.split(separator: ":", maxSplits: 1).map(String.init)
+        let parts = text.split(separator: ":", maxSplits: 2).map(String.init)
         guard let first = parts.first, let vessel = Vessel(rawValue: first.trimmingCharacters(in: .whitespaces)) else { return nil }
         let flavors = parts.count > 1
             ? parts[1].split(separator: ",").compactMap { Flavor(rawValue: $0.trimmingCharacters(in: .whitespaces)) }
             : []
-        return IceCreamItem(vessel: vessel, flavors: Array(flavors.prefix(Pricing.maxScoopsPerItem)))
+        let toppings = parts.count > 2 ? parseToppings(parts[2]) : []
+        return IceCreamItem(vessel: vessel, flavors: Array(flavors.prefix(Pricing.maxScoopsPerItem)), toppings: toppings)
+    }
+
+    static func parseToppings(_ text: String) -> [Topping] {
+        Topping.stacked(text.split(separator: ",").compactMap { Topping(rawValue: $0.trimmingCharacters(in: .whitespaces)) })
     }
 }
 
