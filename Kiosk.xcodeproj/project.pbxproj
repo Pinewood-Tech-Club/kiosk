@@ -58,6 +58,7 @@
 		DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */; };
 		DF96ED4630E78827B560EDCB /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A6A3D2C8370D7698E2E811 /* Glass.swift */; };
 		E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */; };
+		E1955450EF5B555A8D4549DA /* ScatterPhysics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6EB437FE04FC84CEA440D1E /* ScatterPhysics.swift */; };
 		E4F831145DF772EE0B60DCBF /* BoothConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C430771D6BEE6DF3E2F669E /* BoothConnection.swift */; };
 		EEE905EC1942EFD25A5F0730 /* PlaceholderScatterKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */; };
 		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
@@ -128,6 +129,7 @@
 		C1105750A779779A5507FAF2 /* Order.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Order.swift; sourceTree = "<group>"; };
 		C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothOutbox.swift; sourceTree = "<group>"; };
 		C47A1B344994FAF846FD449E /* StageConsistency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageConsistency.swift; sourceTree = "<group>"; };
+		C6EB437FE04FC84CEA440D1E /* ScatterPhysics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScatterPhysics.swift; sourceTree = "<group>"; };
 		CBB1DFC96A2B464467CC2110 /* StageActors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageActors.swift; sourceTree = "<group>"; };
 		CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-SemiBold.ttf"; sourceTree = "<group>"; };
 		CF19FBBFF9063473EF2C011F /* loop.mp4 */ = {isa = PBXFileReference; path = loop.mp4; sourceTree = "<group>"; };
@@ -303,6 +305,7 @@
 				C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */,
 				149F2B0E24E64D43367C334D /* ScatterLab.swift */,
 				D65867471778683C1CB36618 /* ScatterLayer.swift */,
+				C6EB437FE04FC84CEA440D1E /* ScatterPhysics.swift */,
 				48740B6EF1BC55783B05082A /* ToppingLayer.swift */,
 			);
 			path = Toppings;
@@ -525,6 +528,7 @@
 				0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */,
 				03822A063466F1A5E65DCD19 /* ScatterLab.swift in Sources */,
 				1673ECA689F29B1FA803C815 /* ScatterLayer.swift in Sources */,
+				E1955450EF5B555A8D4549DA /* ScatterPhysics.swift in Sources */,
 				C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */,
 				E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */,
 				B9749DDDBF8E0072C6AAB590 /* SquareCatalog.swift in Sources */,
