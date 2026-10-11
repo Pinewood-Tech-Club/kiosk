@@ -177,12 +177,12 @@ extension Stage {
     }
 
     /// Shrinks a rig away with a quarter turn, then removes it.
-    func dismiss(_ rig: ItemRig, duration: Double = 0.3) {
+    func dismiss(_ rig: ItemRig, duration: Double = 0.3, curve: TimingCurve = .swiftUIEaseIn) {
         rig.cancelMotions()
         let startYaw = rig.pose.yaw
         let startMultiplier = rig.scaleMultiplier
         rig.motion = animate(duration: duration) { p in
-            let e = TimingCurve.swiftUIEaseIn(p)
+            let e = curve(p)
             rig.scaleMultiplier = max(0.0001, startMultiplier * (1 - e))
             rig.pose.yaw = startYaw + 1.6 * e
             rig.apply()

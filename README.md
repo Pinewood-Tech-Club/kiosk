@@ -56,7 +56,8 @@ Pass in the scheme or with `xcrun simctl launch <udid> com.adamxu.kiosk -kioskSc
 | `-kioskCurrent "cone:vanilla,chocolate"` | Item being customized. |
 | `-kioskItems "cup:cookies;cone:vanilla"` | Items already in the tray. |
 | `-kioskName Alex` | Prefill the name. |
-| `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `remove-middle`, `edit`, `edit-done`, `edit-new`, `edit-switch`, `edit-empty`, `fresh`, `summary`, `press-hold`, `demo`. |
+| `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `remove-middle`, `edit`, `edit-done`, `edit-new`, `edit-switch`, `edit-empty`, `fresh`, `summary`, `press-hold`, `swap-continue`, `vessel-spam`, `demo`. |
+| `-kioskScript stress\|stress-tray` | Rapid random taps (cup/cone, flavors, minus, steps; `stress-tray` adds New item, tray edits, deletes and the order sheet), then a check that the settled 3D scene matches the order. Results go to the log as `Stress:` lines. `-kioskSeed N` and `-kioskStressRounds N` make a run repeatable. |
 | `-kioskAutoplay YES` | Same as `-kioskScript demo`: the whole flow through a simulated payment. |
 | `-kioskSlowmo 0.25` | Slow motion. |
 | `-kioskDebug3D YES` | 3D debug overlay and frame-stat logging. |

@@ -303,6 +303,14 @@ struct ScriptRunner {
                 await wait(dwells[(round + 3) % dwells.count])
                 log("name round \(round)")
             }
+        case "swap-continue":
+            await wait(0.6)
+            await select(.cone)
+            await wait(0.45)
+            await select(.cup)
+            await wait(0.3)
+            app.goForward()
+            await wait(2.5)
         case "vessel-spam":
             for gap in [0.5, 0.3, 0.6, 0.2, 0.45, 0.25, 0.7, 0.15] {
                 await select(app.current.vessel == .cup ? .cone : .cup)

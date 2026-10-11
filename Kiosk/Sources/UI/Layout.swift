@@ -20,7 +20,7 @@ enum Layout {
     static let cardSize = CGSize(width: 296, height: 232)
     static let cardCornerRadius: CGFloat = 34
     /// Card icons sit in the card's upper part, clear of the label beneath them.
-    static let iconOffsetY: CGFloat = -42
+    static let iconOffsetY: CGFloat = -38
 
     static func vesselCardCenter(_ vessel: Vessel) -> CGPoint {
         CGPoint(x: midX + (vessel == .cup ? -166 : 166), y: cardsCenterY)
@@ -38,7 +38,7 @@ enum Layout {
 
     static func flavorIconCenter(_ flavor: Flavor) -> CGPoint {
         let card = flavorCardCenter(flavor)
-        return CGPoint(x: card.x, y: card.y + iconOffsetY - 4)
+        return CGPoint(x: card.x, y: card.y + iconOffsetY - 8)
     }
 
     static let captionY: CGFloat = 1106

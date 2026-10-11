@@ -267,7 +267,7 @@ final class Stage {
     var activeAnimationCount: Int { tweens.count }
     var morphingCount: Int { morphing.count }
 
-    static func maxHeroScale(_ vessel: Vessel) -> Float { vessel == .cup ? 3.6 : 2.9 }
+    static func maxHeroScale(_ vessel: Vessel) -> Float { vessel == .cup ? 3.8 : 2.9 }
     static func iconScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.5 : 1.02 }
     static let flavorIconScale: Float = 1.82
 

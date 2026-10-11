@@ -131,7 +131,7 @@ extension Stage {
             guard let rig = heroes[vessel] else { continue }
             heroes[vessel] = nil
             setVesselIconAppear(vessel, to: 1, duration: 0)
-            dismiss(rig, duration: 0.22)
+            dismiss(rig, duration: 0.24, curve: .swiftUIEaseOut)
         }
     }
 }
