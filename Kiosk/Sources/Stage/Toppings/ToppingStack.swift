@@ -217,7 +217,6 @@ enum ToppingFactory {
         PlaceholderScatterKind(topping: topping)
     }
 
-    /// The card icon's model and the parts that jiggle.
     static func iconModel(_ topping: Topping) -> (model: Entity, jiggling: [Entity]) {
         switch topping {
         case .whip:
@@ -503,7 +502,7 @@ final class PlaceholderShellLayer: ToppingLayer {
     }
 }
 
-/// Stand-in for the candy agent's piece kinds: boxes, discs and rods in candy colors.
+/// Stand-in pieces until the real scatter kinds land: boxes, discs and rods in candy colors.
 struct PlaceholderScatterKind: ScatterKind {
     let topping: Topping
 

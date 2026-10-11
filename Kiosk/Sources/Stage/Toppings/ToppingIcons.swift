@@ -68,7 +68,6 @@ final class ToppingCardIcon {
         }
     }
 
-    /// Scale of the icon from its tap reactions (y, xz).
     func update(now: Double) {
         clock = now
         guard holder.isEnabled else { return }
@@ -115,7 +114,6 @@ final class ToppingCardIcon {
         return 1 + (c + 1) * u * u * u + c * u * u
     }
 
-    /// A small mound of real pieces.
     static func pile(_ kind: any ScatterKind, topping: Topping) -> (root: Entity, pieces: [Entity]) {
         var random = ToppingRandom(seed: 0x5EED_0000 &+ UInt64(topping.stackRank))
         let made = kind.makePieces(rng: &random)
@@ -167,7 +165,6 @@ extension Stage {
         }
     }
 
-    /// World position and scale of a topping icon in its card, press included.
     func toppingIconPlacement(_ topping: Topping) -> (position: SIMD3<Float>, scale: Float) {
         let frame = toppingIconFrame(topping)
         let center = CGPoint(x: frame.midX, y: frame.midY)

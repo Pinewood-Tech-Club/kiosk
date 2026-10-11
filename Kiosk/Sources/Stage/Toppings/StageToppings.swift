@@ -115,7 +115,6 @@ extension Stage {
         }
     }
 
-    /// Extra height the hero's toppings add above its scoops, for framing.
     func toppingHeadroom(_ rig: ItemRig) -> Float {
         guard let top = rig.toppings?.top, let scoops = scoopSurface(rig.vessel, count: rig.scoops.count) else { return 0 }
         return max(0, top - scoops.apex.y)
