@@ -2,12 +2,18 @@ import RealityKit
 import simd
 
 /// Where a scattered piece rests, projected onto the item's xz plane in body space: a capsule from
-/// `center - axis * halfLength` to `center + axis * halfLength`, `radius` wide.
+/// `center - axis * halfLength` to `center + axis * halfLength`, `radius` wide, whose highest point is at `top`.
 struct ScatterFootprint {
     var center: SIMD2<Float>
     var axis: SIMD2<Float>
     var halfLength: Float
     var radius: Float
+    var top: Float = 0
+
+    func contains(_ point: SIMD2<Float>) -> Bool {
+        let along = simd_clamp(simd_dot(point - center, axis), -halfLength, halfLength)
+        return simd_distance_squared(point, center + axis * along) < radius * radius
+    }
 }
 
 /// Pieces of one `ScatterKind` dropped onto the surface beneath by hand.
@@ -18,7 +24,7 @@ struct ScatterFootprint {
 ///     mms.occupied = gummies.footprints
 ///     sprinkles.occupied = gummies.footprints + mms.footprints
 ///
-/// New pieces then land clear of those. `footprints` always describes where this layer's pieces rest
+/// New pieces then land clear of those, or on top of them where the crown is too crowded. `footprints` always describes where this layer's pieces rest
 /// or are heading, so after a resurface feed the layers in the same order again.
 @MainActor
 final class ScatterLayer: ToppingLayer {
@@ -52,7 +58,13 @@ final class ScatterLayer: ToppingLayer {
         let meshCenter: SIMD3<Float>
         /// Rest offset from the apex axis as a fraction of the surface radius, so it survives a resurface.
         var canonical = SIMD2<Float>.zero
-        let local: simd_quatf
+        let yaw: Float
+        let tilt: Float
+        let tiltAxis: SIMD3<Float>
+
+        func local(tiltScale: Float = 1) -> simd_quatf {
+            simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: tilt * tiltScale, axis: tiltAxis)
+        }
         let slider: Bool
         let slideFrom: Float
         let delay: Double
@@ -79,7 +91,9 @@ final class ScatterLayer: ToppingLayer {
     private var animating = false
     private var surfaceRadius: Float = 0.03
 
-    static let maxReach: Float = 0.93
+    static let maxReach: Float = 0.97
+    /// Cosine of the steepest slope a piece stays on.
+    static let steepest: Float = 0.45
     static let slideDuration = 0.24
     static let popGrow = 0.08
     static let popShrink = 0.13
@@ -111,18 +125,19 @@ final class ScatterLayer: ToppingLayer {
         for spec in specs {
             let half = spec.halfExtents
             let reach = max(half.x, half.z) / surfaceRadius
-            let slider = Float.random(in: 0...1, using: &rng) < 0.18
+            let slider = Float.random(in: 0...1, using: &rng) < 0.2
             var best = SIMD2<Float>.zero
             var bestScore = -Float.infinity
-            for _ in 0..<5 {
+            for _ in 0..<3 {
                 let angle = Float.random(in: 0..<(2 * .pi), using: &rng)
                 let u = Float.random(in: 0...1, using: &rng)
-                let fraction = slider ? 0.74 + 0.16 * u : 0.72 * pow(u, 0.6)
+                let fraction = slider ? 0.78 + 0.18 * u : 0.8 * pow(u, 0.6)
                 let candidate = Self.unit2(angle) * fraction
                 var score = Float.infinity
                 for (index, other) in placed.enumerated() {
                     score = min(score, simd_distance(candidate, other) - placedRadius[index] - reach)
                 }
+                score -= 0.2 * fraction
                 if score > bestScore {
                     bestScore = score
                     best = candidate
@@ -133,12 +148,12 @@ final class ScatterLayer: ToppingLayer {
 
             let yaw = Float.random(in: 0..<(2 * .pi), using: &rng)
             let mode = Float.random(in: 0...1, using: &rng)
-            let tilt: Float = mode < 0.55 ? Float.random(in: 0...0.17, using: &rng)
+            let rawTilt: Float = mode < 0.55 ? Float.random(in: 0...0.17, using: &rng)
                 : mode < 0.85 ? Float.random(in: 0.26...0.7, using: &rng)
                 : Float.random(in: 0.95...1.45, using: &rng)
             let tiltAxis = Self.unit2(Float.random(in: 0..<(2 * .pi), using: &rng))
-            let local = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: tilt, axis: [tiltAxis.x, 0, tiltAxis.y])
             let small = max(half.x, max(half.y, half.z)) < 0.005
+            let tilt = small ? rawTilt : min(rawTilt, 0.35)
             let along = (simd_dot(best, sweep) + 1) / 2
             let delay = Double(along) * spread + Double.random(in: 0...0.1, using: &rng)
             let fall = Double.random(in: 0.22...0.3, using: &rng)
@@ -156,7 +171,8 @@ final class ScatterLayer: ToppingLayer {
 
             let model = ModelEntity(mesh: spec.mesh, materials: spec.materials)
             entity.addChild(model)
-            var piece = Piece(model: model, half: half, meshCenter: spec.mesh.bounds.center, local: local,
+            var piece = Piece(model: model, half: half, meshCenter: spec.mesh.bounds.center,
+                              yaw: yaw, tilt: tilt, tiltAxis: [tiltAxis.x, 0, tiltAxis.y],
                               slider: slider, slideFrom: slideFrom, delay: delay, fall: fall,
                               post: Double.random(in: 0.24...0.32, using: &rng), dropHeight: dropHeight,
                               drift: drift, spinAxis: spinAxis, spinAngle: spinAngle,
@@ -169,10 +185,10 @@ final class ScatterLayer: ToppingLayer {
         let apexXZ = Self.xz(surface.apex)
         var xzs = pieces.map { apexXZ + $0.canonical * surfaceRadius }
         relax(&xzs, on: surface, passes: 8)
+        settleAll(&xzs, on: surface)
         for index in pieces.indices {
             pieces[index].canonical = (xzs[index] - apexXZ) / surfaceRadius
         }
-        settleAll(xzs, on: surface)
 
         for index in pieces.indices {
             if animated {
@@ -195,7 +211,7 @@ final class ScatterLayer: ToppingLayer {
         let apexXZ = Self.xz(surface.apex)
         var xzs = pieces.map { apexXZ + $0.canonical * surfaceRadius }
         relax(&xzs, on: surface, passes: 4)
-        settleAll(xzs, on: surface)
+        settleAll(&xzs, on: surface)
         for index in pieces.indices {
             var piece = pieces[index]
             switch piece.motion {
@@ -382,56 +398,96 @@ final class ScatterLayer: ToppingLayer {
 
     // MARK: Placement
 
-    private func settleAll(_ xzs: [SIMD2<Float>], on surface: ToppingSurface) {
+    /// Settles pieces in order, each on the surface and the pieces before it. One that would land on
+    /// top of another first looks a little around the crown for a spot where it can lie on the surface.
+    private func settleAll(_ xzs: inout [SIMD2<Float>], on surface: ToppingSurface) {
         footprints.removeAll(keepingCapacity: true)
         let apexXZ = Self.xz(surface.apex)
+        var below = occupied
         for index in pieces.indices {
             var piece = pieces[index]
-            piece.rest = settle(xzs[index], piece: piece, on: surface)
-            footprints.append(Self.footprint(xzs[index], rotation: piece.rest.rotation, half: piece.half))
+            var (rest, footprint) = settle(xzs[index], piece: piece, on: surface, over: below)
+            let thinnest = min(piece.half.x, min(piece.half.y, piece.half.z))
+            var stacked = rest.position.y - settle(xzs[index], piece: piece, on: surface, over: []).0.position.y
+            var attempt = 1
+            while stacked > 0.3 * thinnest, attempt <= 10 {
+                let ring = Float((attempt + 1) / 2)
+                let turn = simd_quatf(angle: (attempt % 2 == 0 ? -0.32 : 0.32) * ring, axis: [0, 1, 0])
+                let offset = turn.act(SIMD3(xzs[index].x - apexXZ.x, 0, xzs[index].y - apexXZ.y)) * (1 + 0.05 * ring)
+                let candidate = clampToSurface(apexXZ + SIMD2(offset.x, offset.z), on: surface)
+                let tried = settle(candidate, piece: piece, on: surface, over: below)
+                let lift = tried.0.position.y - settle(candidate, piece: piece, on: surface, over: []).0.position.y
+                if lift < stacked {
+                    stacked = lift
+                    (rest, footprint) = tried
+                    xzs[index] = candidate
+                }
+                attempt += 1
+            }
+            piece.rest = rest
+            footprints.append(footprint)
             if piece.slider {
                 let start = apexXZ + (xzs[index] - apexXZ) * piece.slideFrom
                 piece.path = (0...4).map { step in
                     let t = Float(step) / 4
-                    return settle(simd_mix(start, xzs[index], SIMD2(repeating: t)), piece: piece, on: surface)
+                    return settle(simd_mix(start, xzs[index], SIMD2(repeating: t)), piece: piece, on: surface, over: below).0
                 }
                 piece.path[4] = piece.rest
             } else {
                 piece.path = []
             }
+            below.append(footprint)
             pieces[index] = piece
         }
     }
 
     /// Lies the piece along the surface's slope under its footprint and lifts it until no part of its
-    /// rounded box is below the surface, less a slight nestle so it reads as resting rather than hovering.
-    private func settle(_ xz: SIMD2<Float>, piece: Piece, on surface: ToppingSurface) -> Pose {
+    /// rounded box is below the surface or inside a piece already there, less a slight nestle so it
+    /// reads as resting rather than hovering. A tipped piece that could only clear the slope by
+    /// hanging in the air under its middle is tipped less until it rests.
+    private func settle(_ xz: SIMD2<Float>, piece: Piece, on surface: ToppingSurface,
+                        over pieces: [ScatterFootprint]) -> (Pose, ScatterFootprint) {
         let center = surface.sample(x: xz.x, z: xz.y) ?? (surface.apex.y, SIMD3<Float>(0, 1, 0))
         let span = max(max(piece.half.x, piece.half.z) * 0.6, 0.001)
-        let normal = Self.fittedNormal(xz, span: span, surface: surface) ?? center.normal
-        let rotation = simd_quatf(from: [0, 1, 0], to: simd_normalize(normal)) * piece.local
-        var height = center.height + piece.half.y
-        var found = false
-        for direction in Self.support {
-            let offset = rotation.act(direction * piece.half)
-            guard let below = surface.sample(x: xz.x + offset.x, z: xz.y + offset.z) else { continue }
-            let needed = below.height - offset.y
-            height = found ? max(height, needed) : needed
-            found = true
+        let align = simd_quatf(from: [0, 1, 0], to: simd_normalize(Self.fittedNormal(xz, span: span, surface: surface) ?? center.normal))
+        let thinnest = min(piece.half.x, min(piece.half.y, piece.half.z))
+        let nestle = 0.08 * thinnest
+        let reachable = pieces.filter { simd_distance($0.center, xz) < $0.halfLength + $0.radius + simd_length(piece.half) }
+        var result: (Pose, ScatterFootprint)?
+        for tiltScale: Float in [1, 0.5, 0.2, 0] {
+            let rotation = align * piece.local(tiltScale: tiltScale)
+            var footprint = Self.footprint(xz, rotation: rotation, half: piece.half)
+            var height = center.height + piece.half.y
+            var found = false
+            var reach: Float = 0, depth: Float = 0
+            var floorUnder = center.height
+            for other in reachable where other.contains(xz) { floorUnder = max(floorUnder, other.top) }
+            for direction in Self.support {
+                let offset = rotation.act(direction * piece.half)
+                reach = max(reach, offset.y)
+                depth = max(depth, -offset.y)
+                let point = SIMD2(xz.x + offset.x, xz.y + offset.z)
+                guard var floor = surface.sample(x: point.x, z: point.y)?.height else { continue }
+                for other in reachable where other.contains(point) { floor = max(floor, other.top) }
+                let needed = floor - offset.y
+                height = found ? max(height, needed) : needed
+                found = true
+            }
+            footprint.top = height - nestle + reach * 0.92
+            result = (Pose(position: [xz.x, height - nestle, xz.y], rotation: rotation), footprint)
+            let hang = height - depth - floorUnder
+            if hang < 0.3 * thinnest + 0.0004 { break }
         }
-        let nestle = 0.08 * min(piece.half.x, min(piece.half.y, piece.half.z))
-        return Pose(position: [xz.x, height - nestle, xz.y], rotation: rotation)
+        return result!
     }
 
     private func relax(_ xzs: inout [SIMD2<Float>], on surface: ToppingSurface, passes: Int) {
-        let apexXZ = Self.xz(surface.apex)
-        let limit = surfaceRadius * Self.maxReach
         var shapes = [ScatterFootprint](repeating: ScatterFootprint(center: .zero, axis: [1, 0], halfLength: 0, radius: 0),
                                         count: xzs.count)
         for _ in 0..<passes {
             for index in xzs.indices {
                 let normal = surface.sample(x: xzs[index].x, z: xzs[index].y)?.normal ?? [0, 1, 0]
-                let rotation = simd_quatf(from: [0, 1, 0], to: simd_normalize(normal)) * pieces[index].local
+                let rotation = simd_quatf(from: [0, 1, 0], to: simd_normalize(normal)) * pieces[index].local()
                 shapes[index] = Self.footprint(xzs[index], rotation: rotation, half: pieces[index].half)
             }
             for i in xzs.indices {
@@ -451,17 +507,24 @@ final class ScatterLayer: ToppingLayer {
                 }
             }
             for index in xzs.indices {
-                var offset = xzs[index] - apexXZ
-                let length = simd_length(offset)
-                if length > limit { offset *= limit / length }
-                var tries = 0
-                while surface.sample(x: apexXZ.x + offset.x, z: apexXZ.y + offset.y) == nil, tries < 12 {
-                    offset *= 0.9
-                    tries += 1
-                }
-                xzs[index] = apexXZ + offset
+                xzs[index] = clampToSurface(xzs[index], on: surface)
             }
         }
+    }
+
+    /// Pulls a spot in toward the apex until it's within reach and not too steep to rest on.
+    private func clampToSurface(_ xz: SIMD2<Float>, on surface: ToppingSurface) -> SIMD2<Float> {
+        let apexXZ = Self.xz(surface.apex)
+        let limit = surfaceRadius * Self.maxReach
+        var offset = xz - apexXZ
+        let length = simd_length(offset)
+        if length > limit { offset *= limit / length }
+        var tries = 0
+        while tries < 16, (surface.sample(x: apexXZ.x + offset.x, z: apexXZ.y + offset.y)?.normal.y ?? 0) < Self.steepest {
+            offset *= 0.93
+            tries += 1
+        }
+        return apexXZ + offset
     }
 
     private static func footprint(_ xz: SIMD2<Float>, rotation: simd_quatf, half: SIMD3<Float>) -> ScatterFootprint {
