@@ -81,10 +81,20 @@ final class ToppingLab {
         let started = CACurrentMediaTime()
         layer.update(now: now)
         let cost = CACurrentMediaTime() - started
-        if cost > 0.0005 { costs.append(cost) }
+        if cost > 0.0003 {
+            costs.append(cost)
+            let surfaceStarted = CACurrentMediaTime()
+            _ = layer.surfaceAbove(surface)
+            surfaceCosts.append(CACurrentMediaTime() - surfaceStarted)
+        }
         if costs.count == 60 {
-            let sorted = costs.sorted()
-            print(String(format: "WhipLab update cost: median %.2f ms, max %.2f ms", sorted[30] * 1000, sorted[59] * 1000))
+            let sorted = costs.sorted(), surfaceSorted = surfaceCosts.sorted()
+            surfaceCosts.removeAll()
+            let line = String(format: "WhipLab update cost: median %.2f ms, max %.2f ms; surfaceAbove median %.2f ms, max %.2f ms\n",
+                              sorted[30] * 1000, sorted[59] * 1000, surfaceSorted[30] * 1000, surfaceSorted[59] * 1000)
+            let path = NSTemporaryDirectory() + "whipcost.txt"
+            let previous = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+            try? (previous + line).write(toFile: path, atomically: true, encoding: .utf8)
             costs.removeAll()
         }
         if !probes.isEmpty { updateProbes() }
@@ -101,6 +111,7 @@ final class ToppingLab {
     }
 
     private var costs: [Double] = []
+    private var surfaceCosts: [Double] = []
 
     private func updateProbes() {
         let above = layer.surfaceAbove(surface)
