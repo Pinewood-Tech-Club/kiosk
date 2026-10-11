@@ -151,6 +151,10 @@ private struct UrgentFrame: View {
 private struct AlertsSection: View {
     let staff: StaffLink
     let alerts: [BoothAlert]
+    @State private var expanded = false
+
+    private static let collapsedCount = 3
+    private static let prominentCount = 2
 
     private var shown: [BoothAlert] {
         alerts.filter(\.isOpen).sorted { lhs, rhs in
@@ -170,8 +174,12 @@ private struct AlertsSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let shown = shown
+        let visible = expanded ? shown : Array(shown.prefix(Self.collapsedCount))
+        VStack(alignment: .leading, spacing: 12) {
             SectionTitle(title: "Alerts", detail: shown.isEmpty ? nil : "\(shown.count) open")
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("alerts-title")
             if shown.isEmpty {
                 HStack(spacing: 16) {
                     LucideIcon(name: "circle-check", size: 34)
@@ -183,66 +191,75 @@ private struct AlertsSection: View {
                 }
                 .padding(.horizontal, 28)
                 .frame(height: 96)
-                .background(card)
+                .background(StaffCard())
             } else {
-                ForEach(shown) { alert in
-                    AlertRow(staff: staff, alert: alert)
+                ForEach(Array(visible.enumerated()), id: \.element.id) { index, alert in
+                    AlertRow(staff: staff, alert: alert,
+                             prominent: index < Self.prominentCount && alert.severity != "info" && !staff.isAcknowledged(alert))
+                }
+                if shown.count > Self.collapsedCount {
+                    Button { expanded.toggle() } label: {
+                        HStack(spacing: 10) {
+                            Text(expanded ? "Show fewer" : "Show \(shown.count - Self.collapsedCount) more")
+                            LucideIcon(name: "chevron-down", size: 22)
+                                .rotationEffect(.degrees(expanded ? 180 : 0))
+                        }
+                    }
+                    .buttonStyle(.glassSecondary(height: 64, fontSize: 22))
                 }
             }
         }
-        .animation(.snappy, value: shown.map(\.id))
-    }
-
-    private var card: some View {
-        RoundedRectangle(cornerRadius: StaffStyle.cardRadius, style: .continuous)
-            .fill(Theme.surface)
-            .strokeBorder(Theme.hairline, lineWidth: 1)
+        .animation(.snappy, value: visible.map(\.id))
     }
 }
 
 private struct AlertRow: View {
     let staff: StaffLink
     let alert: BoothAlert
+    let prominent: Bool
 
     private var acknowledged: Bool { staff.isAcknowledged(alert) }
     private var urgent: Bool { alert.severity == "urgent" && !acknowledged }
     private var warning: Bool { alert.severity == "warning" && !acknowledged }
-    private var compact: Bool { alert.severity == "info" || acknowledged }
     private var foreground: Color { urgent ? Theme.onText : Theme.text }
 
     var body: some View {
         HStack(alignment: .center, spacing: 20) {
-            LucideIcon(name: icon, size: compact ? 28 : 40)
+            LucideIcon(name: icon, size: prominent ? 40 : 28)
                 .foregroundStyle(urgent ? Theme.onText : warning ? StaffStyle.warning : Theme.textSecondary)
-            VStack(alignment: .leading, spacing: 6) {
+                .frame(width: 40)
+            VStack(alignment: .leading, spacing: prominent ? 6 : 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text(alert.title)
-                        .font(Theme.serif(compact ? 24 : 34, urgent ? .bold : .semibold))
+                        .font(Theme.serif(prominent ? 34 : 24, urgent ? .bold : .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     if alert.count > 1 {
                         Text("×\(alert.count)")
-                            .font(Theme.sans(compact ? 18 : 22, .bold))
+                            .font(Theme.sans(prominent ? 22 : 18, .bold))
                             .monospacedDigit()
                     }
                 }
                 .foregroundStyle(foreground)
                 HStack(spacing: 8) {
-                    if !alert.detail.isEmpty, !compact {
-                        Text(alert.detail).lineLimit(2)
+                    Ago(date: staff.localDate(alert.updatedAt))
+                        .layoutPriority(1)
+                    if !alert.detail.isEmpty {
                         Text("·")
+                        Text(alert.detail).lineLimit(1)
                     }
-                    Ago(date: staff.localDate(alert.createdAt))
                 }
-                .font(Theme.sans(compact ? 16 : 20, .medium))
+                .font(Theme.sans(prominent ? 20 : 16, .medium))
                 .foregroundStyle(urgent ? Theme.onText.opacity(0.75) : Theme.textSecondary)
             }
             Spacer(minLength: 12)
             trailing
         }
         .padding(.horizontal, 28)
-        .padding(.vertical, compact ? 16 : 24)
-        .frame(minHeight: compact ? 84 : 128)
+        .padding(.vertical, prominent ? 22 : 10)
+        .frame(minHeight: prominent ? 128 : 80)
         .background {
-            let shape = RoundedRectangle(cornerRadius: StaffStyle.cardRadius, style: .continuous)
+            let shape = RoundedRectangle(cornerRadius: prominent ? StaffStyle.cardRadius : 24, style: .continuous)
             shape
                 .fill(urgent ? Theme.accent : Theme.surface)
                 .strokeBorder(warning ? StaffStyle.warning : Theme.hairline, lineWidth: warning ? 3 : 1)
@@ -260,10 +277,7 @@ private struct AlertRow: View {
                     .font(Theme.serif(20, .medium))
             }
             .foregroundStyle(Theme.textSecondary)
-        } else if compact {
-            Button { staff.acknowledge(alert) } label: { Text("Dismiss") }
-                .buttonStyle(.glassSecondary(height: 60, fontSize: 22))
-        } else {
+        } else if prominent {
             Button { staff.acknowledge(alert) } label: {
                 HStack(spacing: 10) {
                     LucideIcon(name: "check", size: 28)
@@ -271,6 +285,17 @@ private struct AlertRow: View {
                 }
             }
             .buttonStyle(.glassCTA(height: 84, fontSize: 28))
+        } else if urgent {
+            Button { staff.acknowledge(alert) } label: {
+                HStack(spacing: 8) {
+                    LucideIcon(name: "check", size: 22)
+                    Text("Got it")
+                }
+            }
+            .buttonStyle(.glassCTA(height: 64, fontSize: 22))
+        } else {
+            Button { staff.acknowledge(alert) } label: { Text("Dismiss") }
+                .buttonStyle(.glassSecondary(height: 64, fontSize: 22))
         }
     }
 
@@ -331,8 +356,9 @@ private struct KioskCard: View {
                         StatusRow(icon: "circle-alert", label: "Catalog", value: "Problem", tint: StaffStyle.warning)
                     }
                 }
+                .opacity(kiosk.online ? 1 : 0.45)
                 if let healthAt = kiosk.healthAt {
-                    Ago(prefix: "Health reported", date: staff.localDate(healthAt))
+                    Ago(prefix: kiosk.online ? "Health reported" : "Last report, may be out of date:", date: staff.localDate(healthAt))
                         .font(Theme.sans(15, .medium))
                         .foregroundStyle(Theme.textSecondary)
                 }

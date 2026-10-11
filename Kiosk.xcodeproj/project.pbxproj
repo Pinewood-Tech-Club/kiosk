@@ -37,6 +37,7 @@
 		80F62615D532B17AB4C91758 /* loop.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = CF19FBBFF9063473EF2C011F /* loop.mp4 */; };
 		8446E36717CEF4B196007F30 /* StageConsistency.swift in Sources */ = {isa = PBXBuildFile; fileRef = C47A1B344994FAF846FD449E /* StageConsistency.swift */; };
 		880C83B3A8CE577FE59144C5 /* BoothAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0709C534BE54B5155CA2586D /* BoothAPI.swift */; };
+		889FBA9E995438D871E6B1AB /* StaffUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = F0CE12E28F22640FFC1536E0 /* StaffUITests.m */; };
 		8B24A43AA6790978F58BC0BF /* BoothConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0881B5135769503EB56D68 /* BoothConfig.swift */; };
 		8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */; };
 		90AAEE7345EA5E45D4B405EF /* BoothHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 275115659D156690770E9F4D /* BoothHealth.swift */; };
@@ -144,6 +145,7 @@
 		EF36BF94972C41A51D71D966 /* KioskApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KioskApp.swift; sourceTree = "<group>"; };
 		EF77AD1D7C8D64414EA6DB92 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		EFA7ED72E4DEADA3ABEC34BA /* StaffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffView.swift; sourceTree = "<group>"; };
+		F0CE12E28F22640FFC1536E0 /* StaffUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = StaffUITests.m; sourceTree = "<group>"; };
 		F3EB41C1A0D41F89C6D8FE8A /* AssetLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetLibrary.swift; sourceTree = "<group>"; };
 		F84857165E0E1562299FB634 /* Kiosk.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Kiosk.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -182,6 +184,7 @@
 			isa = PBXGroup;
 			children = (
 				D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */,
+				F0CE12E28F22640FFC1536E0 /* StaffUITests.m */,
 			);
 			path = KioskUITests;
 			sourceTree = "<group>";
@@ -493,6 +496,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */,
+				889FBA9E995438D871E6B1AB /* StaffUITests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
