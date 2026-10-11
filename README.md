@@ -28,7 +28,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
    - Tray: a pinned *New item* slot, live 3D minis (drag to scroll), *View Order* with the live total, and start-over (with confirmation). Tapping a mini lifts it back out to edit. Leaving an edit keeps the changes: *Done*, *New item*, tapping another mini or *View Order* return the item to its slot. The minus badge on its empty slot removes it (after a confirmation); an item edited down to no scoops asks to be removed. *New item* outside an edit adds the item being built to the order and starts a fresh cup.
 4. **Your order**: *View Order* grows the tray's glass into a sheet over the builder; each item's 3D model rides up from its tray slot into its row, with edit (pencil) and remove (trash) buttons. Below are the total and *Check Out*. *Keep ordering*, or pulling the sheet down, folds it back into the tray with the items riding back into their slots, revealing a fresh builder that was set up while the sheet covered it.
 5. **Name**: the name becomes the Square order's ticket name and pickup recipient.
-6. **Payment**: creates a Square order from the catalog (one line per scoop, priced by its position in the whole order, plus one line per waffle cone; taxes auto-applied by Square), then `startPayment` for Square's total. On failure the customer returns to their order and an alert explains what went wrong; a cancel just returns them to it.
+6. **Payment**: creates a Square order from the catalog (one line per scoop, priced by its position in the whole order, plus one line per waffle cone; taxes auto-applied by Square), then `startPayment` for Square's total. On failure the customer returns to their order and an alert explains in plain words what happened and what to do (copy lives in `PaymentProblem.swift`; the technical error goes to the log); a cancel just returns them to it. Declines, low gift card balances and card read errors are shown by Square's own payment screen, which lets the buyer retry or cancel.
 7. **Confirmation**: an itemized receipt of what Square charged, a prompt to photograph it, and *New Order*. Returns to the attract screen after 10 s without a touch.
 
 Pricing: scoops are priced by their position in the whole order: the first is $4, the second $3, and every one after that $2 (so 1 → $4, 2 → $7, 3 → $9). Waffle cones are $1.50 each.
@@ -38,6 +38,7 @@ Pricing: scoops are priced by their position in the whole order: the first is $4
 Top of the screen: Square environment, authorization, readers, *Mock Reader* (sandbox), *Readers* settings, *Log*, and a *Debug* menu:
 
 - *Simulate payment success*: skips Square and shows a test receipt (on by default in the simulator).
+- *Simulate error*: makes the next payment fail in a chosen way (declined, timeout, offline, no reader, screen shared, not authorized, and so on), or shows the attract screen's not-ready notice, so staff can see and demo each message. A red *Forcing* badge shows while one is set.
 - *Animation speed*: 0.5×, 0.25×, 0.1× slow motion for the 3D timeline.
 - *Show 3D debug info*: frame-time stats (p50/p99/max frame time, CPU time of the per-frame update), alignment markers for the icons, and frame stats and hitches written to the log every 5 s.
 - *Change role*, *Hide debug bar*. Triple-tap the top-left corner to bring the bar back.
@@ -56,13 +57,14 @@ Pass in the scheme or with `xcrun simctl launch <udid> com.adamxu.kiosk -kioskSc
 | `-kioskCurrent "cone:vanilla,chocolate"` | Item being customized. |
 | `-kioskItems "cup:cookies;cone:vanilla"` | Items already in the tray. |
 | `-kioskName Alex` | Prefill the name. |
-| `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `remove-middle`, `edit`, `edit-scroll`, `edit-done`, `edit-new`, `edit-switch`, `edit-empty`, `fresh`, `summary`, `pull-down`, `press-hold`, `swap-continue`, `vessel-spam`, `demo`. |
+| `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `remove-middle`, `vessel-new`, `edit`, `edit-scroll`, `edit-done`, `edit-new`, `edit-switch`, `edit-empty`, `fresh`, `summary`, `pay`, `pull-down`, `press-hold`, `swap-continue`, `vessel-spam`, `demo`. |
 | `-kioskScript stress\|stress-tray` | Rapid random taps (cup/cone, flavors, minus, steps; `stress-tray` adds New item, tray edits, deletes and the order sheet), then a check that the settled 3D scene matches the order. Results go to the log as `Stress:` lines. `-kioskSeed N` and `-kioskStressRounds N` make a run repeatable. |
 | `-kioskAutoplay YES` | Same as `-kioskScript demo`: the whole flow through a simulated payment. |
 | `-kioskSlowmo 0.25` | Slow motion. |
 | `-kioskDebug3D YES` | 3D debug overlay and frame-stat logging. |
 | `-kioskSimulatePayment YES\|NO` | Override simulated payments. |
 | `-kioskHideDebugBar YES\|NO` | Override debug bar visibility. |
+| `-kioskForceError <name>` | Same as *Simulate error*: `declined`, `timeout`, `offline`, `paymentOffline`, `notConfigured`, `notAuthorized`, `noReader`, `readerFailedToStart`, `screenShared`, `notFullScreen`, `unsupportedMode`, `locationPermission`, `orderRejected`, `alreadyInProgress`, `paidWithoutOrder`, `canceled`, `assets`. Pair with `-kioskScreen name -kioskScript pay` to fail a payment hands-free. |
 | `-kioskNoSquare YES` | Don't start Square at all (no permission prompts; useful for screenshots). |
 
 Example: `xcrun simctl launch booted com.adamxu.kiosk -kioskCurrent cup -kioskStep flavors -kioskScript scoops -kioskSlowmo 0.25`

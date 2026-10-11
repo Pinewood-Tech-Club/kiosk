@@ -242,7 +242,7 @@ final class SquareService: NSObject {
         }
         guard isAuthorized else {
             authorize()
-            return refuse(.needsStaff, because: Self.notAuthorizedReason + " (state: \(authorizationState))")
+            return refuse(.needsStaff, because: Self.notAuthorizedReason + " (state: \(Self.describe(authorizationState)))")
         }
         guard !readers.isEmpty else {
             return refuse(.readerNotReady, because: Self.noReaderReason)
@@ -318,6 +318,15 @@ final class SquareService: NSObject {
             : "\(nsError.code)"
         record("Payment failed (\(code)): \(Self.describe(error))")
         return .failed(PaymentProblem(paymentError: error))
+    }
+
+    private static func describe(_ state: AuthorizationState) -> String {
+        switch state {
+        case .authorized: "authorized"
+        case .authorizing: "authorizing"
+        case .notAuthorized: "not authorized"
+        @unknown default: "unknown (\(state.rawValue))"
+        }
     }
 
     private static func describe(_ error: Error) -> String {
@@ -471,7 +480,7 @@ extension SquareService: PaymentManagerDelegate {
 
 extension SquareService: AuthorizationStateObserver {
     func authorizationStateDidChange(_ authorizationState: AuthorizationState) {
-        record("Authorization state: \(authorizationState)")
+        record("Authorization state: \(Self.describe(authorizationState))")
         self.authorizationState = authorizationState
     }
 }

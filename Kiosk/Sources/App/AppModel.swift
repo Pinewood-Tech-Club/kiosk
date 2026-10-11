@@ -71,7 +71,6 @@ final class AppModel {
     var receipt: Receipt?
     var customerName = ""
     private(set) var isPaying = false
-    private(set) var itemInFlight = false
 
     var debugBarHidden: Bool {
         didSet { UserDefaults.standard.set(debugBarHidden, forKey: "debugBarHidden") }
@@ -86,6 +85,7 @@ final class AppModel {
     var showsLog = false
 
     let square = SquareService()
+    let booth = BoothLink()
     @ObservationIgnored let stage = Stage()
     @ObservationIgnored let host = ViewControllerHost()
     @ObservationIgnored private var started = false
@@ -140,13 +140,14 @@ final class AppModel {
 
     /// The tray's New item slot: finishes the edit, or adds the item being built, then starts a fresh cup.
     var canStartNewItem: Bool {
-        mode == .customize && !itemInFlight && (isEditing || current.scoopCount > 0)
+        mode == .customize && (isEditing || current.scoopCount > 0)
     }
 
     func start() {
         guard !started else { return }
         started = true
         stage.log = { [weak self] in self?.square.record($0) }
+        booth.start(square: square, app: self)
         stage.onSheetCovered = { [weak self] in self?.resetBuilderUnderSheet() }
         if UserDefaults.standard.bool(forKey: "kioskNoSquare") {
             square.record("Square disabled by -kioskNoSquare")
@@ -198,7 +199,6 @@ final class AppModel {
 
     private func resetEverything() {
         transitionTask?.cancel()
-        itemInFlight = false
         builderResetPending = false
         items = []
         current = IceCreamItem()
@@ -240,7 +240,7 @@ final class AppModel {
 
     func addScoop(_ flavor: Flavor) {
         guard screen == .builder, mode == .customize, step == .flavors,
-              current.scoopCount < Pricing.maxScoopsPerItem else { return }
+              current.scoopCount < Pricing.maxScoopsPerItem, !booth.isSoldOut(flavor) else { return }
         current.flavors.append(flavor)
         stage.addScoop(flavor)
     }
@@ -257,12 +257,12 @@ final class AppModel {
     }
 
     func jumpToStep(_ target: BuilderStep) {
-        guard mode == .customize, !itemInFlight, target != step, canJump(to: target) else { return }
+        guard mode == .customize, target != step, canJump(to: target) else { return }
         setStep(target)
     }
 
     func goForward() {
-        guard canContinue, !itemInFlight else { return }
+        guard canContinue else { return }
         switch step {
         case .vessel: setStep(.flavors)
         case .flavors: setStep(.toppings)
@@ -284,7 +284,7 @@ final class AppModel {
     }
 
     func addToOrder() {
-        guard current.scoopCount > 0, !itemInFlight, !isEditing else { return }
+        guard current.scoopCount > 0, !isEditing else { return }
         let item = current
         items.append(item)
         stage.sendCurrentToTray(item)
@@ -327,27 +327,12 @@ final class AppModel {
         }
     }
 
+    /// Already on Vessel, the controls stay put and only the 3D hero changes; from a later step it's an
+    /// ordinary step change back to Vessel.
     private func startNextItem() {
         current = IceCreamItem()
-        holdControlsWhileItemsFly(for: 0.6) { [weak self] in
-            self?.setStep(.vessel)
-            self?.stage.presentNewItem(vessel: .cup, delay: 0.3)
-        }
-    }
-
-    /// Fades the step cards (and their 3D icons) out while an item flies between the center and the tray,
-    /// so it never passes beneath a card's label, then brings them back.
-    private func holdControlsWhileItemsFly(for seconds: Double, then finish: @escaping () -> Void) {
-        itemInFlight = true
-        stage.setControlsVisible(false, animated: true)
-        transitionTask?.cancel()
-        transitionTask = Task {
-            try? await Task.sleep(for: .seconds(seconds / max(slowMotion, 0.01)))
-            guard !Task.isCancelled else { return }
-            itemInFlight = false
-            finish()
-            stage.setControlsVisible(true, animated: true)
-        }
+        setStep(.vessel)
+        stage.presentNewItem(vessel: .cup, delay: 0.3)
     }
 
     /// Editing another item never throws work away: an edit in progress is saved, and an item being
@@ -370,23 +355,16 @@ final class AppModel {
     func edit(_ id: UUID) {
         guard let item = items.first(where: { $0.id == id }) else { return }
         transitionTask?.cancel()
-        itemInFlight = false
         if mode == .summary {
             resetBuilderUnderSheet()
             mode = .customize
             stage.settleSheet(open: false, velocity: nil)
         }
-        if step == .vessel {
-            stage.sendCurrentHeroHome()
-        } else {
-            stage.dismissCurrentHero()
-        }
+        stage.dismissCurrentHero()
         editingID = id
         current = item
-        step = .vessel
-        stage.setStep(.vessel, animated: false)
         stage.beginEditing(id)
-        holdControlsWhileItemsFly(for: 0.7) {}
+        setStep(.toppings)
     }
 
     func requestDelete(_ id: UUID) {
@@ -436,7 +414,6 @@ final class AppModel {
             return
         }
         transitionTask?.cancel()
-        itemInFlight = false
         stage.openSheet()
         if let editingID, current.scoopCount > 0, let index = items.firstIndex(where: { $0.id == editingID }) {
             items[index] = current
@@ -489,6 +466,7 @@ final class AppModel {
 
     func completeOrder() {
         guard !items.isEmpty else { return }
+        booth.checkReaderBeforePayment()
         notice = nil
         withAnimation(.easeInOut(duration: 0.4)) { screen = .name }
     }
@@ -509,6 +487,7 @@ final class AppModel {
         let name = customerName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !isPaying, !items.isEmpty else { return }
         isPaying = true
+        booth.checkReaderBeforePayment()
         let quote = orderQuote
         let number = nextOrderNumber()
         Task {
@@ -526,10 +505,12 @@ final class AppModel {
             isPaying = false
             switch result {
             case .succeeded(let receipt):
+                booth.orderPaid(receipt, quote: quote)
                 self.receipt = receipt
                 stage.enterReceipt()
                 withAnimation(.easeInOut(duration: 0.45)) { screen = .confirmation }
             case .failed(let problem):
+                booth.paymentFailed(problem)
                 notice = Notice(title: problem.title, details: problem.details)
                 backToSummary()
             case .canceled:
