@@ -90,6 +90,46 @@
     XCTAssertTrue([[self text:@"Live"] waitForExistenceWithTimeout:30], @"the PIN session should connect");
 }
 
+// Needs a reverse proxy to the booth at STAFF_PROXY_URL that goes down while the file STAFF_PROXY_DOWN_FLAG exists.
+- (void)testChangeMadeOfflineSurvivesRelaunchAndReachesTheHub {
+    NSDictionary *env = NSProcessInfo.processInfo.environment;
+    NSString *proxy = env[@"STAFF_PROXY_URL"], *flag = env[@"STAFF_PROXY_DOWN_FLAG"];
+    if (proxy.length == 0 || flag.length == 0) {
+        XCTSkip(@"Set TEST_RUNNER_STAFF_PROXY_URL and TEST_RUNNER_STAFF_PROXY_DOWN_FLAG to test going offline");
+    }
+    NSArray *arguments = @[@"-kioskRole", @"staff", @"-boothURL", proxy, @"-boothStaffToken", env[@"STAFF_TOKEN"]];
+    [self.app terminate];
+    self.app.launchArguments = arguments;
+    [self.app launch];
+    XCUIElement *available = [self button:@"Chocolate, available"];
+    XCUIElement *soldOut = [self button:@"Chocolate, sold out"];
+    XCTAssertTrue([available waitForExistenceWithTimeout:30], @"chocolate should start available");
+
+    [[NSFileManager defaultManager] createFileAtPath:flag contents:nil attributes:nil];
+    XCTAssertTrue([[self text:@"Offline, reconnecting"] waitForExistenceWithTimeout:40], @"losing the booth should show offline");
+    [available tap];
+    XCTAssertTrue([soldOut waitForExistenceWithTimeout:2], @"the toggle should flip while offline");
+    XCTAssertTrue([self text:@"Queued, sends when online"].exists);
+    XCTAssertTrue([self text:@"Your changes send when it's back"].exists);
+    [self snapshot:@"staff-offline-queued"];
+
+    [self.app terminate];
+    [[NSFileManager defaultManager] removeItemAtPath:flag error:nil];
+    [self pause:3];
+    [self.app launch];
+    XCTAssertTrue([[self text:@"Live"] waitForExistenceWithTimeout:30]);
+    [self pause:8];
+    XCTAssertFalse([self text:@"Sending"].exists, @"the queued change should have been answered");
+    XCTAssertFalse([self text:@"Queued, sends when online"].exists);
+    XCTAssertTrue(soldOut.exists, @"the queued change should reach the hub after a relaunch");
+    [self snapshot:@"staff-after-reconnect"];
+
+    [soldOut tap];
+    XCTAssertTrue([available waitForExistenceWithTimeout:2]);
+    [self pause:7];
+    XCTAssertTrue(available.exists);
+}
+
 - (NSInteger)openCount:(NSString *)label {
     NSRegularExpression *pattern = [NSRegularExpression regularExpressionWithPattern:@"(\\d+) open" options:0 error:nil];
     NSTextCheckingResult *match = [pattern firstMatchInString:label options:0 range:NSMakeRange(0, label.length)];
