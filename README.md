@@ -21,7 +21,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
 
 ## Flow
 
-1. **Role setup** (every launch, unless `KIOSK_ROLE` or `-kioskRole` picks one): *Start Kiosk* or *Staff*. Square and the kiosk's backend link start only when the kiosk role is chosen, so a staff iPad never reports itself as the kiosk; once the kiosk has started, switching this iPad to staff needs a relaunch. *Staff* opens a placeholder `StaffView` connected to the hub in the staff role.
+1. **Role setup** (every launch, unless `KIOSK_ROLE` or `-kioskRole` picks one): *Start Kiosk* or *Staff*. Square and the kiosk's backend link start only when the kiosk role is chosen, so a staff iPad never reports itself as the kiosk; once the kiosk has started, switching this iPad to staff needs a relaunch. *Staff* opens the [staff screen](#staff-ipad).
 2. **Attract**: looping `loop.mp4`. *Begin Order* appears once every 3D asset is preloaded; tapping anywhere starts an order.
 3. **Builder** (one RealityView behind the SwiftUI controls holds every 3D object):
    - *Vessel*: Cup (included) or Waffle Cone (+$1.50). Selecting flies the new vessel out of its icon while the old one spins back into its slot. Drag the item to orbit it; it eases back and resumes spinning.
@@ -82,6 +82,31 @@ Example: `xcrun simctl launch booted com.adamxu.kiosk -kioskCurrent cup -kioskSt
 ```sh
 xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
 ```
+
+`StaffUITests` drives the staff screen against a live booth and skips unless it's given one. It acknowledges an alert, round-trips a sold-out toggle, signs in with the PIN after a refused token, and (with a reverse proxy it can take down) makes a change offline, relaunches and checks the change reached the hub. It changes that booth's state, so point it at staging:
+
+```sh
+mitmdump --mode reverse:https://techclub-icecream-staging.adamxu.workers.dev --listen-port 8787   # optional, for the offline test
+TEST_RUNNER_STAFF_BOOTH_URL=techclub-icecream-staging.adamxu.workers.dev TEST_RUNNER_STAFF_TOKEN=$STAGING_STAFF_TOKEN \
+TEST_RUNNER_STAFF_PIN=$STAGING_STAFF_TOKEN TEST_RUNNER_STAFF_PROXY_URL=http://127.0.0.1:8787 \
+TEST_RUNNER_STAFF_PROXY_DOWN_FLAG=/tmp/staff-proxy/down \
+xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' \
+  -only-testing:KioskUITests/StaffUITests
+```
+
+The offline test creates the flag file to mean "proxy down"; something has to stop the proxy while it exists (a loop that kills and restarts `mitmdump`).
+
+## Staff iPad
+
+A second iPad running this app in the staff role (`KIOSK_ROLE = staff`, or *Staff* at role setup) is the toppings person's screen at the counter. It connects to the hub with `BOOTH_STAFF_TOKEN`, or with a 72-hour session from the staff PIN, which it asks for when it has no token or the hub refuses the one it has. It shows:
+
+- **Connection**: *Live*, *Connecting*, or *Offline, reconnecting* with the time of the last update, so stale data is never shown as current.
+- **Alerts**: open alerts, urgent first. Urgent ones are solid coral and the whole screen pulses a coral frame until each is acknowledged (*Got it*); info alerts are dismissed. The first two are full size, and three show before *Show more*.
+- **Kiosk**: online or offline and when it was last seen, which screen it's on, the reader's state and battery, the kiosk iPad's battery, and whether Square is signed in. When the kiosk is offline its last health report is dimmed and labeled as possibly out of date.
+- **Flavors**: one large toggle per flavor, available or sold out.
+- **Recent orders**: the last eight orders from the feed, with each item's vessel, flavors and toppings, and its status.
+
+Acknowledgements and sold-out toggles show at once and keep showing until the hub reflects them. Unsent ones are saved to disk, retried over the socket or `POST /v1/actions` until the hub answers (for up to 10 minutes, across relaunches), and keep their ids so retries are never applied twice. A newer change to the same flavor replaces an unsent older one, so a late retry can't undo it.
 
 ## Testing payments
 

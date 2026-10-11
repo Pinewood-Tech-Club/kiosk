@@ -15,10 +15,18 @@ final class BoothConnection {
         case waiting(retryAt: Date)
     }
 
-    private struct PendingAction {
+    private struct PendingAction: Codable {
         let action: BoothAction
         let createdAt: Date
         var lastAttempt: Date?
+
+        var supersedingKey: String? {
+            switch action.type {
+            case "setSoldOut": action.flavor.map { "flavor:\($0)" }
+            case "setOrderStatus": action.orderId.map { "order:\($0)" }
+            default: nil
+            }
+        }
     }
 
     private static let beatInterval: TimeInterval = 10
@@ -34,16 +42,21 @@ final class BoothConnection {
     private(set) var state: BoothState?
     private(set) var rev = 0
     private(set) var connectionState: ConnectionState = .idle
+    private(set) var refusedStatus: Int?
 
     @ObservationIgnored var screen: () -> String = { "" }
     @ObservationIgnored var onState: ((BoothState) -> Void)?
     @ObservationIgnored var onConnectionChange: ((ConnectionState) -> Void)?
+    @ObservationIgnored var onActionSettled: ((String, BoothResult?) -> Void)?
 
     @ObservationIgnored private let api: BoothAPI
     @ObservationIgnored private let role: Role
     @ObservationIgnored private let log: (String) -> Void
     @ObservationIgnored private let session = URLSession(configuration: .ephemeral)
+    @ObservationIgnored private let actionStore: URL?
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var stopped = false
+    @ObservationIgnored private var tickTask: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var socket: URLSessionWebSocketTask?
     @ObservationIgnored private var retryTask: Task<Void, Never>?
@@ -63,25 +76,38 @@ final class BoothConnection {
     @ObservationIgnored private var pendingActions: [PendingAction] = []
     @ObservationIgnored private var actionHTTPInFlight = false
 
-    init(api: BoothAPI, role: Role, log: @escaping (String) -> Void) {
+    init(api: BoothAPI, role: Role, actionStore: URL? = nil, log: @escaping (String) -> Void) {
         self.api = api
         self.role = role
+        self.actionStore = actionStore
         self.log = log
+        loadActions()
     }
 
+    var queuedActions: [BoothAction] { pendingActions.map(\.action) }
+
     func start() {
-        guard !started else { return }
+        guard !started, !stopped else { return }
         started = true
         isForeground = UIApplication.shared.applicationState != .background
         observeLifecycle()
         startPathMonitor()
-        Task { [weak self] in
+        tickTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 self?.tick()
             }
         }
         resume(resetBackoff: true)
+    }
+
+    func stop() {
+        guard !stopped else { return }
+        saveActions()
+        stopped = true
+        tickTask?.cancel()
+        pathMonitor?.cancel()
+        suspend()
     }
 
     @discardableResult
@@ -164,7 +190,7 @@ final class BoothConnection {
     }
 
     private func resume(resetBackoff: Bool) {
-        guard isForeground, pathSatisfied else { return }
+        guard !stopped, isForeground, pathSatisfied else { return }
         switch connectionState {
         case .connected, .connecting:
             return
@@ -245,6 +271,7 @@ final class BoothConnection {
         lastInbound = Date()
         failureLogged = false
         unauthorizedLogged = false
+        refusedStatus = nil
         needsSync = false
         setConnection(.connected)
         logTransition("Booth: connected")
@@ -265,6 +292,7 @@ final class BoothConnection {
         connectedAt = nil
 
         if slow {
+            refusedStatus = status
             if !unauthorizedLogged { log("Booth: server refused the connection (HTTP \(status ?? 0)); retrying slowly") }
             unauthorizedLogged = true
         } else if !failureLogged {
@@ -272,7 +300,7 @@ final class BoothConnection {
         }
         failureLogged = true
 
-        guard isForeground, pathSatisfied else {
+        guard !stopped, isForeground, pathSatisfied else {
             setConnection(.idle)
             return
         }
@@ -391,8 +419,15 @@ final class BoothConnection {
         onState?(current)
     }
 
+    /// A newer sold-out or order-status change replaces an unsent older one for the same flavor or order, so a
+    /// late retry of the older one can't overwrite it on the hub (last writer wins there).
     private func enqueue(_ action: BoothAction) -> String {
-        pendingActions.append(PendingAction(action: action, createdAt: Date(), lastAttempt: nil))
+        let pending = PendingAction(action: action, createdAt: Date(), lastAttempt: nil)
+        if let key = pending.supersedingKey {
+            pendingActions.removeAll { $0.supersedingKey == key }
+        }
+        pendingActions.append(pending)
+        saveActions()
         retryActions(Date())
         return action.id
     }
@@ -403,11 +438,35 @@ final class BoothConnection {
             log("Booth: server rejected an action: \(result.error?.message ?? "no reason")")
         }
         pendingActions.remove(at: index)
+        saveActions()
+        onActionSettled?(result.id, result)
+    }
+
+    private func loadActions() {
+        guard let actionStore, let data = try? Data(contentsOf: actionStore),
+              let stored = try? JSONDecoder().decode([PendingAction].self, from: data) else { return }
+        pendingActions = stored.map { PendingAction(action: $0.action, createdAt: $0.createdAt, lastAttempt: nil) }
+    }
+
+    private func saveActions() {
+        guard !stopped, let actionStore, let data = try? JSONEncoder().encode(pendingActions) else { return }
+        try? FileManager.default.createDirectory(at: actionStore.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: actionStore, options: .atomic)
     }
 
     private func retryActions(_ now: Date) {
-        pendingActions.removeAll { now.timeIntervalSince($0.createdAt) > Self.actionLifetime }
-        guard !pendingActions.isEmpty else { return }
+        let expired = pendingActions.filter { now.timeIntervalSince($0.createdAt) > Self.actionLifetime }
+        if !expired.isEmpty {
+            pendingActions.removeAll { now.timeIntervalSince($0.createdAt) > Self.actionLifetime }
+            saveActions()
+            for item in expired {
+                log("Booth: gave up on a \(item.action.type) action after \(Int(Self.actionLifetime / 60)) minutes")
+                onActionSettled?(item.action.id, nil)
+            }
+        }
+        // An HTTP batch still in flight may carry an older action; sending a newer one over the socket now could
+        // let the older one land last.
+        guard !pendingActions.isEmpty, !actionHTTPInFlight else { return }
         let due = pendingActions.indices.filter { index in
             pendingActions[index].lastAttempt.map { now.timeIntervalSince($0) >= Self.actionRetry } ?? true
         }
@@ -416,7 +475,7 @@ final class BoothConnection {
         let actions = due.map { pendingActions[$0].action }
         if connectionState == .connected {
             for action in actions { sendEncodable("action", key: "action", value: action) }
-        } else if !actionHTTPInFlight {
+        } else {
             actionHTTPInFlight = true
             Task { [weak self, api] in
                 let response: BoothBatchResponse? = try? await api.post("/v1/actions", ["actions": actions])
