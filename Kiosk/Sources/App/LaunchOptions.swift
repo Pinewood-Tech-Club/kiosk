@@ -158,6 +158,8 @@ struct ScriptRunner {
             await wait(1)
         case "clip-tour":
             await clipTour()
+        case "clip-interrupts":
+            await clipInterrupts()
         case "remove-middle":
             await wait(0.6)
             app.removeScoop(.chocolate)
@@ -415,7 +417,7 @@ struct ScriptRunner {
             log("unknown script \(script)")
         }
         if let check = app.stage.clipCheck {
-            for issue in check.takeIssues() { log(issue) }
+            for issue in check.takeIssues() { log(issue.text) }
             log(check.summary)
         }
         log("end \(script)")
@@ -445,6 +447,48 @@ struct ScriptRunner {
         app.endSheetDrag(translation: offset, predicted: offset - 20, velocity: -80 * app.slowMotion)
         await wait(2.0)
         log("released after climbing back: \(app.mode == .summary ? "open" : "closed"), progress \(app.stage.sheet.value)")
+    }
+
+    /// Motions cut short by the next tap: a scoop still flying in when the one beneath it is taken off, and vessel
+    /// swaps reversed before the scoops have landed. Starts on the vessel step with a cone holding vanilla.
+    private func clipInterrupts() async {
+        while app.stage.clipCheck == nil { try? await Task.sleep(for: .seconds(0.2)) }
+        func step(_ name: String) { log("clip-interrupts \(name): \(app.current.vessel.rawValue) \(app.current.flavors.map(\.rawValue).joined(separator: ","))") }
+        for vessel in [Vessel.cone, .cup] {
+            app.jumpToStep(.vessel)
+            await wait(0.5)
+            if app.current.vessel != vessel { await select(vessel); await wait(1.6) }
+            app.jumpToStep(.flavors)
+            await wait(0.7)
+            for (below, delay) in [(1, 0.1), (1, 0.25), (1, 0.4), (1, 0.55), (2, 0.1), (2, 0.3), (2, 0.5), (2, 0.7)] {
+                for flavor in [Flavor.vanilla, .cookies].prefix(below) where app.count(of: flavor) == 0 {
+                    await add(flavor)
+                    await wait(1.6)
+                }
+                step("reflow from mid-air after \(delay)")
+                await add(.chocolate)
+                await wait(delay)
+                app.removeScoop(.vanilla)
+                await wait(2.0)
+                app.removeScoop(.chocolate)
+                app.removeScoop(.cookies)
+                await wait(1.6)
+            }
+        }
+        for count in 1...3 {
+            app.jumpToStep(.flavors)
+            await wait(0.6)
+            while app.current.flavors.count < count { await add([Flavor.vanilla, .chocolate, .cookies][app.current.flavors.count]); await wait(1.6) }
+            app.jumpToStep(.vessel)
+            await wait(0.6)
+            for gap in [0.15, 0.3, 0.45] {
+                step("ping-pong \(gap)")
+                await select(app.current.vessel == .cup ? .cone : .cup)
+                await wait(gap)
+                await select(app.current.vessel == .cup ? .cone : .cup)
+                await wait(2.0)
+            }
+        }
     }
 
     /// Every way a scoop moves against a vessel: adds into each slot, transfers with 1-3 scoops both ways,
@@ -551,6 +595,7 @@ struct StressRunner {
         var rng = SplitMix(state: seed)
         log("seed \(seed), \(rounds) rounds, tray \(includeTray)")
         var failures = 0
+        var clipRounds = 0
         var actions = 0
         for round in 0..<rounds {
             let burst = 6 + Int(rng.next() % 30)
@@ -576,8 +621,15 @@ struct StressRunner {
                 failures += 1
                 log("round \(round) FAIL after [\(trace.joined(separator: " "))]: \(issues.joined(separator: "; "))")
             }
+            let clips = app.stage.clipCheck?.takeIssues() ?? []
+            if clips.contains(where: \.isVisible) {
+                clipRounds += 1
+                log("round \(round) CLIP after [\(trace.joined(separator: " "))]: \(clips.filter(\.isVisible).map(\.text).joined(separator: "; "))")
+            }
+            for graze in clips where !graze.isVisible { log("round \(round) graze under \(ClipCheck.visibleDepth * 1000) mm: \(graze.text)") }
         }
-        log("done: \(rounds - failures)/\(rounds) rounds consistent, \(actions) actions, seed \(seed)")
+        log("done: \(rounds - failures)/\(rounds) rounds consistent, \(clipRounds) with a scoop through a vessel, \(actions) actions, seed \(seed)")
+        if let check = app.stage.clipCheck { log(check.summary) }
     }
 
     private var state: String {
@@ -587,7 +639,6 @@ struct StressRunner {
 
     private func check(settled: Bool) -> [String] {
         var issues = settled ? [] : ["never settled (\(app.stage.activeAnimationCount) tweens, \(app.stage.morphingCount) morphing)"]
-        issues += app.stage.clipCheck?.takeIssues() ?? []
         issues += app.stage.consistencyIssues(current: app.mode == .summary ? nil : app.current, items: app.items,
                                               editingID: app.editingID, showsCards: app.mode == .customize)
         return issues

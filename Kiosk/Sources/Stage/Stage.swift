@@ -74,6 +74,8 @@ final class Stage {
     var pressSprings = [Spring1D](repeating: Spring1D(value: 0, response: Stage.pressResponse, dampingRatio: Stage.pressDamping), count: 5)
     var vesselIconTarget: [Vessel: Float] = [.cup: 0, .cone: 0]
     var heroes: [Vessel: ItemRig] = [:]
+    /// Vessels no longer anyone's hero that scoops may still be leaving.
+    var leavingRigs: [ItemRig] = []
     var scoops: [ScoopActor] = []
     /// Every scoop that hasn't been discarded, wherever it is.
     var liveScoops: [ObjectIdentifier: ScoopActor] = [:]
@@ -187,6 +189,7 @@ final class Stage {
                 log("Clip profile \(vessel.rawValue): \(profile.summary)")
             }
             log(check.baseline(placements: assets.placements) { [unowned self] vessel, key in finalPoseName(vessel, key: key) })
+            log("Cavity floors (mm): " + Vessel.allCases.map { "\($0.rawValue)=\(String(format: "%.1f", (assets.cavityFloor[$0] ?? 0) * 1000))" }.joined(separator: " "))
             clipCheck = check
         }
     }
@@ -400,27 +403,24 @@ final class Stage {
         return icon
     }
 
-    /// Screen y of the top of a ball waiting above each slot, which must stay below the header.
+    /// Screen y of the top of a new scoop at the highest point of its way in (crossing over the rim), at the hero's
+    /// arriving framing; it must stay below the header.
     func approachReport() -> String {
         guard let assets else { return "" }
         var parts: [String] = []
         for vessel in Vessel.allCases {
             let pivot = assets.vesselPivot(vessel)
             for slot in 1...3 {
-                let framing = heroFraming(vessel, count: slot)
-                let center = RigPose(position: framing.position, scale: framing.scale, pitch: Self.preferredPitch, yaw: 0)
+                let framing = heroFraming(vessel, count: slot, arriving: true)
                 let key = placementKey(index: slot - 1, count: slot, vessel: vessel)
-                let base = assets.placements.placement(vessel, key: key).translation.y + liftHeight(vessel, key: key) + Self.approachClearance
-                let top = base + 0.0438
-                let tilt = cos(center.pitch)
-                let y = center.position.y + (top - pivot.y) * center.scale * tilt
+                let top = assets.placements.placement(vessel, key: key).translation.y + approachCrest(vessel, key: key)
+                    + assets.scoopSet(slot).poseBounds("ball").max.y
+                let y = framing.position.y + (top - pivot.y) * framing.scale * cos(Self.preferredPitch)
                 let topY = Int(screen([0, y, 0]).y)
-                let speed = Self.pressStartSlope * (liftHeight(vessel, key: key) + Self.approachClearance) / Float(Self.pressDuration) * center.scale
-                let needed = Int(speed * 0.62 / (3 * Self.maxArrivalSlope) * 1000)
-                parts.append("\(vessel.rawValue)\(slot)=\(topY) (room \(topY - Int(Self.flightCeilingY)), wants \(needed))")
+                parts.append("\(vessel.rawValue)\(slot)=\(topY) (room \(topY - Int(Self.flightCeilingY)))")
             }
         }
-        return "Approach ball tops (screen y, header ends at \(Int(Self.flightCeilingY))): " + parts.joined(separator: " ")
+        return "Approach crest tops (screen y, header ends at \(Int(Self.flightCeilingY))): " + parts.joined(separator: " ")
     }
 
     struct DebugMarker: Identifiable {
@@ -484,6 +484,8 @@ final class Stage {
                     let round = set.data.positions("ball", stride: 8)
                     let placed = set.data.positions(set.resolve(finalPoseName(vessel, key: key)), stride: 8)
                     ball = zip(round, placed).map { slot.rotation.act($0 * (1 - w) + $1 * w) + slot.translation }
+                    let crest = slotLocal(vessel, key: key, height: approachCrest(vessel, key: key))
+                    ball += round.map { crest.rotation.act($0) + crest.translation }
                 }
                 var extents = ContentExtents(yMin: .infinity, yMax: -.infinity, xHalf: 0)
                 for yaw in yaws {

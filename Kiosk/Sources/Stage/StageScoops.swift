@@ -69,6 +69,80 @@ struct FlightPath {
     }
 }
 
+/// A flight that only meets a vessel from above its rim: it rises beside the vessel (going around it from a card
+/// beneath), crosses over the rim, then comes straight down the axis to the approach point. Everything after the rise
+/// is placed relative to the live approach point, so it follows the item while it spins and reframes; sizes are in
+/// the vessel's units and scale with it. Played backwards (from the column out to a point) it is the way out.
+struct ColumnFlight {
+    enum Lead {
+        /// Up beside the vessel to `lateral` off the axis on `side`, then over the rim.
+        case around(rise: SIMD3<Float>, side: SIMD3<Float>, lateral: Float)
+        /// Straight to the top of the column (the start is already above the rim or inside the opening), leaving
+        /// along `heading`.
+        case direct(heading: SIMD3<Float>)
+    }
+
+    var lead: Lead
+    /// Height above the approach point, along the axis, where the descent begins: the scoop clears the rim there.
+    var height: Float
+    /// How far above `height` the crossing bulges, so the scoop comes over the rim rather than sliding onto it.
+    var hump: Float
+    var riseEnd: Float = 0
+    var dropStart: Float = 0
+    /// Speed along the axis at the approach point, in world units per unit of progress.
+    var endSpeed: Float
+
+    init(lead: Lead, from p0: SIMD3<Float>, approach pa: SIMD3<Float>, up: SIMD3<Float>, scale: Float,
+         height: Float, hump: Float, endSpeed: Float) {
+        self.lead = lead
+        self.height = height
+        self.hump = hump
+        self.endSpeed = endSpeed
+        let top = pa + up * height * scale
+        let drop = height * scale
+        switch lead {
+        case .around(_, let side, let lateral):
+            let beside = top + side * lateral * scale
+            let rise = simd_length(beside - p0)
+            let over = lateral * scale * 1.1 + hump * scale
+            let total = rise + over + drop
+            riseEnd = rise / total
+            dropStart = (rise + over) / total
+        case .direct:
+            let over = simd_length(top - p0) + hump * scale
+            dropStart = over / (over + drop)
+        }
+    }
+
+    func position(_ u: Float, from p0: SIMD3<Float>, approach pa: SIMD3<Float>, up: SIMD3<Float>, scale: Float) -> SIMD3<Float> {
+        let top = pa + up * height * scale
+        let crest = top + up * hump * scale
+        if u < dropStart {
+            switch lead {
+            case .around(let rise, let side, let lateral):
+                let beside = top + side * lateral * scale
+                let inward = lateral * scale * 0.55
+                if u < riseEnd {
+                    let outward = inward * riseEnd / max(dropStart - riseEnd, 1e-4)
+                    return cubicBezier(p0, p0 + rise, beside + side * outward, beside, u / max(riseEnd, 1e-4))
+                }
+                return cubicBezier(beside, beside - side * inward, crest, top, (u - riseEnd) / max(dropStart - riseEnd, 1e-4))
+            case .direct(let heading):
+                return cubicBezier(p0, p0 + heading, crest, top, u / max(dropStart, 1e-4))
+            }
+        }
+        let span = max(1 - dropStart, 1e-4)
+        let t = (u - dropStart) / span
+        let segment = max(dropStart - riseEnd, 1e-4)
+        let lambda = height * scale
+        let m0 = -min(3 * hump * scale * span / segment, 3 * lambda)
+        let m1 = -min(endSpeed * span, 3 * lambda)
+        let t2 = t * t, t3 = t2 * t
+        let h = (2 * t3 - 3 * t2 + 1) * lambda + (t3 - 2 * t2 + t) * m0 + (t3 - t2) * m1
+        return pa + up * h
+    }
+}
+
 extension Stage {
     enum ScoopRoute {
         case fromIcon(side: Float)
@@ -84,7 +158,6 @@ extension Stage {
     /// Settling curve for the press; starts at 1.2× linear speed so the flight can hand over without a kink.
     static let pressCurve = TimingCurve(0.3, 0.36, 0.42, 1)
     static let pressStartSlope: Float = 1.2
-    static let maxArrivalSlope: Float = 2.2
     /// Screen y (points) below the builder title; a flying scoop's top must stay under it.
     static let flightCeilingY: CGFloat = 244
 
@@ -150,23 +223,138 @@ extension Stage {
         rig.scoops = actors
     }
 
-    /// Half-width of the vessel and its scoops on screen plus a ball's radius, so paths can go around it.
-    private func clearanceHalfWidth(_ rig: ItemRig) -> Float {
-        let scale = rig.pose.scale * rig.scaleMultiplier
-        let vesselRadius: Float = rig.vessel == .cup ? 0.0438 : 0.035
-        return (vesselRadius + 0.022) * scale + 0.015
+    static let rimMargin: Float = 0.002
+    static let restackHover: Float = 0.03
+    /// Even a slot above the rim is reached by coming over the top and down its axis, not from the side.
+    static let minimumCrossing: Float = 0.004
+
+    /// Height above a slot's origin, along its axis, at which the scoop's lowest point (in any pose it travels in)
+    /// clears the vessel's highest rim point. Below it a scoop may only move along the axis.
+    func rimClearHeight(_ vessel: Vessel, key: String) -> Float {
+        guard let assets else { return 0 }
+        let placement = assets.placements.placement(vessel, key: key)
+        let set = assets.scoopSet(key == "solo" ? 1 : Int(key) ?? 1)
+        var lowest: Float = 0
+        for pose in ["ball", finalPoseName(.cup, key: key), "cone"] {
+            let b = set.poseBounds(pose)
+            for corner in 0..<8 {
+                let p = SIMD3<Float>(corner & 1 == 0 ? b.min.x : b.max.x, corner & 2 == 0 ? b.min.y : b.max.y,
+                                     corner & 4 == 0 ? b.min.z : b.max.z)
+                lowest = min(lowest, placement.rotation.act(p).y)
+            }
+        }
+        let up = max(placement.rotation.act([0, 1, 0]).y, 0.5)
+        return max(0, (assets.vesselTop(vessel) + Self.rimMargin - placement.translation.y - lowest) / up)
     }
 
-    /// World height a ball's base must stay above to clear the vessel's rim and the scoops already placed.
-    private func clearTop(_ rig: ItemRig, excluding actor: ScoopActor) -> Float {
-        guard let assets else { return 0 }
-        var top = assets.vesselTop(rig.vessel)
-        for scoop in rig.scoops where scoop !== actor && scoop.mount === rig {
-            let bounds = assets.scoopSet(scoop.slot).poseBounds(scoop.staticPose)
-            top = max(top, scoop.root.transform.translation.y + bounds.max.y)
+    /// Distance from a slot's axis, in the vessel's units, at which a ball passes the vessel without touching it.
+    func besideDistance(_ vessel: Vessel, key: String) -> Float {
+        guard let assets else { return 0.1 }
+        let placement = assets.placements.placement(vessel, key: key)
+        let ball = assets.scoopSet(key == "solo" ? 1 : Int(key) ?? 1).poseBounds("ball")
+        let radius = max(-ball.min.x, ball.max.x, -ball.min.z, ball.max.z)
+        return assets.vesselHalfWidth(vessel) + radius + simd_length(SIMD2(placement.translation.x, placement.translation.z)) + 0.003
+    }
+
+    /// Where a scoop's base is in a vessel's frame, if it is down inside that vessel's opening.
+    func insidePoint(_ actor: ScoopActor, of rig: ItemRig) -> SIMD3<Float>? {
+        guard let assets, rig.root.parent != nil else { return nil }
+        let w = actor.root.transformMatrix(relativeTo: nil).columns.3
+        let l = simd_inverse(rig.body.transformMatrix(relativeTo: nil)) * w
+        let inside = l.y > 0 && l.y < assets.vesselTop(rig.vessel) + Self.rimMargin
+            && simd_length(SIMD2(l.x, l.z)) < assets.vesselRadius(rig.vessel, atHeight: l.y)
+        return inside ? SIMD3(l.x, l.y, l.z) : nil
+    }
+
+    /// Keeps a flying scoop off vessels where its own motion doesn't: over the opening of a vessel it is neither
+    /// entering nor leaving it stays above the rim, and beside any vessel it stays outside the wall. Only bites when
+    /// two motions cross (a swap, removal or add interrupting another); the planned paths keep clear on their own.
+    func avoidVessels(_ position: SIMD3<Float>, scale: Float, slot: Int, excluding: [ItemRig]) -> SIMD3<Float> {
+        guard let assets else { return position }
+        let set = assets.scoopSet(slot)
+        let ball = set.poseBounds("ball")
+        let lowest = min(0, ball.min.y, set.poseBounds("cup").min.y, set.poseBounds("cone").min.y)
+        let widest = set.poseBounds("icon")
+        var position = position
+        for rig in Array(heroes.values) + leavingRigs where rig.root.parent != nil && rig.rolled.isEnabled {
+            let body = rig.body.transformMatrix(relativeTo: nil)
+            let rigScale = simd_length(SIMD3(body.columns.0.x, body.columns.0.y, body.columns.0.z))
+            guard rigScale > 1e-3 else { continue }
+            let k = scale / rigScale
+            let l4 = simd_inverse(body) * SIMD4<Float>(position, 1)
+            var local = SIMD3(l4.x, l4.y, l4.z)
+            let radius = max(-ball.min.x, ball.max.x, -ball.min.z, ball.max.z) * k
+            let width = max(-widest.min.x, widest.max.x, -widest.min.z, widest.max.z, radius / k) * k
+            let rim = assets.vesselTop(rig.vessel)
+            let r = simd_length(SIMD2(local.x, local.z))
+            let bottom = local.y + lowest * k
+            let top = local.y + ball.max.y * k
+            guard top > 0, bottom < rim else { continue }
+            let center = local.y + radius
+            let wall = assets.vesselRadius(rig.vessel, atHeight: min(max(center, 0), rim))
+            let overOpening = r < wall * 0.8
+            if overOpening, excluding.contains(where: { $0 === rig }) { continue }
+            if overOpening, local.y > assets.cavityFloor[rig.vessel] ?? 0 {
+                let floor = rim + Self.rimMargin - lowest * k
+                guard local.y > floor - 2 * radius else { continue }
+                local.y = floor
+            } else {
+                let reach = wall + width + Self.rimMargin
+                guard r < reach else { continue }
+                let below = -ball.max.y * k - Self.rimMargin
+                if local.y < 0, local.y - below < reach - r {
+                    local.y = below
+                } else {
+                    let direction = r > 1e-5 ? SIMD2(local.x, local.z) / r : SIMD2<Float>(1, 0)
+                    local.x = direction.x * reach
+                    local.z = direction.y * reach
+                }
+            }
+            let w = body * SIMD4<Float>(local, 1)
+            position = SIMD3(w.x, w.y, w.z)
         }
-        let point = rig.body.transformMatrix(relativeTo: nil) * SIMD4<Float>(0, top, 0, 1)
-        return point.y + 0.006 * rig.pose.scale
+        return position
+    }
+
+    func holdsScoop(_ rig: ItemRig) -> Bool {
+        liveScoops.values.contains { insidePoint($0, of: rig) != nil }
+    }
+
+    /// The vessel a scoop is inside right now: the one it is attached to, or one it is still on its way out of.
+    func holder(of actor: ScoopActor, excluding rig: ItemRig? = nil) -> ItemRig? {
+        if let mount = actor.mount, mount !== rig, actor.root.parent === mount.body { return mount }
+        return (Array(heroes.values) + leavingRigs).first { $0 !== rig && insidePoint(actor, of: $0) != nil }
+    }
+
+    /// The first part of a column flight from below or beside the vessel: up beside it, or out to the side first
+    /// when starting right beneath it.
+    func aroundLead(from p0: SIMD3<Float>, approach pa: SIMD3<Float>, top: SIMD3<Float>, scale: Float, beside: Float,
+                    preferredSide: Float) -> ColumnFlight.Lead {
+        let dx = p0.x - pa.x
+        let under = abs(dx) < beside * scale * 0.6
+        let side: Float = under ? preferredSide : (dx < 0 ? -1 : 1)
+        let lateral = under ? beside : max(beside, min(abs(dx) / scale, beside * 1.2))
+        let q1 = under
+            ? SIMD3<Float>(pa.x + side * lateral * scale * 1.3, lerp(p0.y, top.y, 0.2), p0.z + 0.06)
+            : SIMD3<Float>(pa.x + side * max(abs(dx), lateral * scale), lerp(p0.y, top.y, 0.6), p0.z + 0.04)
+        return .around(rise: q1 - p0, side: [side, 0, 0], lateral: lateral)
+    }
+
+    func ballHeight(slot: Int) -> Float {
+        guard let assets else { return 0.045 }
+        let ball = assets.scoopSet(slot).poseBounds("ball")
+        return ball.max.y - ball.min.y
+    }
+
+    /// Height of the hump over the rim for a column flight that has to rise `height` (vessel units) above the approach point.
+    static func humpHeight(_ height: Float) -> Float { min(0.25 * height, 0.008) }
+
+    /// Highest point above a slot's origin that a new scoop's base reaches on its way in (where it crosses the rim),
+    /// for a stack whose scoops beneath have landed.
+    func approachCrest(_ vessel: Vessel, key: String) -> Float {
+        let approach = liftHeight(vessel, key: key) * (1 - Self.preSquish) + Self.approachClearance
+        let height = max(rimClearHeight(vessel, key: key) - approach, Self.minimumCrossing)
+        return approach + height + Self.humpHeight(height) * 4 / 9
     }
 
     func addScoop(_ flavor: Flavor) {
@@ -199,7 +387,11 @@ extension Stage {
         hero.scoops.removeAll { $0 === actor }
         actor.rig = nil
         let above = Array(scoops[index...])
-        returnToIcon(actor, delay: above.isEmpty ? 0 : 0.06, sideways: !above.isEmpty)
+        if let upper = above.first, exitBlocked(actor, under: upper, on: hero) {
+            shrinkAway(actor)
+        } else {
+            returnToIcon(actor, delay: above.isEmpty ? 0 : 0.06, sideways: !above.isEmpty)
+        }
         for (offset, upper) in above.enumerated() {
             restack(upper, on: hero, delay: Double(offset) * 0.05)
         }
@@ -209,11 +401,17 @@ extension Stage {
 
     /// Hands the scoops to the incoming vessel as one stack: it lifts a little while the old vessel drops
     /// away beneath it, reshapes for the new vessel in the air, and settles onto it as it rises into place.
+    /// A scoop still on its way in (in neither vessel yet) flies to its slot on the new one instead.
     func transferScoops(to rig: ItemRig, arrival: Double) {
         setOwner(scoops, rig)
         for actor in scoops {
             actor.isArriving = false
-            transfer(actor, to: rig, duration: arrival)
+            if actor.mount == nil, holder(of: actor, excluding: rig) == nil {
+                actor.cancelMotions()
+                flyToSlot(actor, rig: rig, route: .restack)
+            } else {
+                transfer(actor, to: rig, duration: arrival)
+            }
         }
     }
 
@@ -221,17 +419,22 @@ extension Stage {
         actor.cancelMotions()
         var start = Transform()
         var rise = SIMD3<Float>.zero
-        var origin: (rig: ItemRig, slot: Transform)?
+        var origin: (rig: ItemRig, slot: Transform, clear: Float)?
         var pose = ""
         var reslotDone = false
         let gap: Float = 0.004
         let landing: Float = 0.012
         actor.motion = animate(duration: duration, phase: .attachments, onStart: { [unowned self] in
             var up: SIMD3<Float> = [0, 1, 0]
-            if let mount = actor.mount, actor.root.parent === mount.body {
-                origin = (mount, slotLocal(mount.vessel, key: actor.placementKey, height: 0))
+            if let mount = actor.mount, mount !== rig, actor.root.parent === mount.body {
+                origin = (mount, slotLocal(mount.vessel, key: actor.placementKey, height: 0),
+                          rimClearHeight(mount.vessel, key: actor.placementKey))
                 let column = actor.root.transformMatrix(relativeTo: nil).columns.1
                 up = simd_normalize(SIMD3(column.x, column.y, column.z))
+            } else if let holder = holder(of: actor, excluding: rig), let local = insidePoint(actor, of: holder), let assets {
+                let ball = assets.scoopSet(actor.slot).poseBounds("ball")
+                origin = (holder, Transform(scale: .one, rotation: simd_quatf(ix: 0, iy: 0, iz: 0, r: 1), translation: local),
+                          assets.vesselTop(holder.vessel) + Self.rimMargin + 0.002 - local.y - min(ball.min.y, 0))
             }
             if actor.root.parent !== root { detachToWorld(actor) }
             actor.state = .flying
@@ -246,25 +449,36 @@ extension Stage {
             let goal = transferGoal(actor, on: rig, key: key, height: gap * Float(index) * sin(.pi * p), progress: p)
             let up = goal.rotation.act([0, 1, 0])
             let e = Self.transferCurve(p)
-            let position = cubicBezier(start.translation, start.translation + rise,
-                                       goal.translation + up * landing * goal.scale.x, goal.translation, e)
-            let scale = lerp(start.scale.x, goal.scale.x, TimingCurve.standard(p))
-            actor.root.transform = Transform(scale: .init(repeating: max(scale, 1e-5)),
-                                             rotation: simd_slerp(start.rotation, goal.rotation, e), translation: position)
+            let slot = slotLocal(rig.vessel, key: key, height: 0)
+            let clear = rimClearHeight(rig.vessel, key: key)
+            var position = cubicBezier(start.translation, start.translation + rise,
+                                       goal.translation + up * max(landing, clear + Self.rimMargin) * goal.scale.x, goal.translation, e)
+            if let origin, origin.rig.root.parent != nil {
+                position = funnel(position, rig: origin.rig, slot: origin.slot, clear: origin.clear)
+            }
+            position = funnel(position, rig: rig, slot: slot, clear: clear)
+            // Once it is coming down into the new vessel it has that vessel's live size and turn, so it fits the opening.
+            let new = opening(position, rig: rig, slot: slot)
+            let inside = (1 - Ease.clamp01((new.height - clear) / landing)) * new.over
+            let live = Transform(matrix: new.body * slot.matrix)
+            let scale = lerp(lerp(start.scale.x, goal.scale.x, TimingCurve.standard(p)), live.scale.x, inside)
+            let rotation = simd_slerp(simd_slerp(start.rotation, goal.rotation, e), live.rotation, inside)
+            position = avoidVessels(position, scale: scale, slot: actor.slot, excluding: [rig] + (origin.map { [$0.rig] } ?? []))
+            actor.root.transform = Transform(scale: .init(repeating: max(scale, 1e-5)), rotation: rotation, translation: position)
             if !reslotDone, actor.slot != index + 1, p >= 0.15 {
                 reslotDone = true
                 reslot(actor, to: index + 1)
                 beginMorph(actor, to: pose)
             }
-            // Reshapes only while clear of both vessels: no rounder than its height above the old slot allows, and
-            // fully in the new shape before it gets within `landing` of the new slot.
+            // Reshapes only while clear of the old rim. The cone's opening only fits the cone pose, so that is complete
+            // before it goes in; into the cup it reshapes in step with its descent, like the press, since a cup pose
+            // lowered whole would drag its collar past the cup's rolled rim.
             var w = Ease.inOutSine(Ease.segment(p, 0.15, 0.7))
-            if let origin, p < 0.5 {
-                w = min(w, Ease.clamp01(height(position, above: origin.slot, on: origin.rig) / landing))
+            if let origin, origin.rig.root.parent != nil {
+                let old = opening(position, rig: origin.rig, slot: origin.slot)
+                w = min(w, lerp(1, Ease.clamp01((old.height - origin.clear) / landing), old.over))
             }
-            if p > 0.5 {
-                w = max(w, 1 - Ease.clamp01(height(position, above: slotLocal(rig.vessel, key: key, height: 0), on: rig) / landing))
-            }
+            w = max(w, rig.vessel == .cone ? inside : max(0, 1 - max(new.height, 0) / max(clear, landing)) * new.over)
             setMorphWeight(actor, w)
         } completion: { [weak self] in
             guard let self else { return }
@@ -287,9 +501,35 @@ extension Stage {
 
     static let transferCurve = TimingCurve(0.45, 0, 0.25, 1)
 
-    private func height(_ position: SIMD3<Float>, above slot: Transform, on rig: ItemRig) -> Float {
-        let local = simd_inverse(rig.body.transformMatrix(relativeTo: nil)) * SIMD4<Float>(position, 1)
-        return simd_dot(SIMD3(local.x, local.y, local.z) - slot.translation, slot.rotation.act([0, 1, 0]))
+    /// A point's height above a slot along its axis, its offset from that axis, and how far it is over the vessel's
+    /// opening (1 within the rim, easing to 0 just outside it, and 0 for a vessel lying on its side far below).
+    /// Only a point over the opening is the funnel's to hold; one beside the vessel is the choreography's to keep clear.
+    func opening(_ position: SIMD3<Float>, rig: ItemRig, slot: Transform)
+        -> (height: Float, over: Float, lateral: SIMD3<Float>, body: simd_float4x4) {
+        let body = rig.body.transformMatrix(relativeTo: nil)
+        let l = simd_inverse(body) * SIMD4<Float>(position, 1)
+        let up = slot.rotation.act([0, 1, 0])
+        let offset = SIMD3(l.x, l.y, l.z) - slot.translation
+        let h = simd_dot(offset, up)
+        let lateral = offset - up * h
+        let rim = assets?.vesselHalfWidth(rig.vessel) ?? 0.044
+        let over = h < -rim ? 0 : 1 - Ease.inOutSine(Ease.segment(simd_length(lateral), rim * 0.8, rim * 1.2))
+        return (h, over, lateral, body)
+    }
+
+    /// Keeps a point that is down inside a vessel's opening on the slot's axis: below `clear` (the rim-clear height
+    /// above the slot) its offset from the axis is squeezed to nothing, and the squeeze relaxes smoothly above it.
+    /// A smooth squeeze rather than a clamp, so the path never kinks where it takes hold or lets go.
+    func funnel(_ position: SIMD3<Float>, rig: ItemRig, slot: Transform, clear: Float) -> SIMD3<Float> {
+        let (h, over, lateral, body) = opening(position, rig: rig, slot: slot)
+        let up = slot.rotation.act([0, 1, 0])
+        let d = simd_length(lateral)
+        let open = max(0, h - clear)
+        let allowed: Float = 0.0005 + open * open / 0.004
+        guard d > 1e-7, d > allowed * 0.02, over > 0 else { return position }
+        let squeezed = lerp(d, allowed * tanh(d / allowed), over)
+        let out = body * SIMD4<Float>(slot.translation + up * h + lateral * (squeezed / d), 1)
+        return SIMD3(out.x, out.y, out.z)
     }
 
     /// The slot on the rig where it will be when its flight ends, handing over to the live rig by the end so
@@ -309,7 +549,7 @@ extension Stage {
         actor.cancelMotions()
         if actor.mount != nil, actor.state != .flying {
             unpress(actor) { [unowned self] in
-                hover(actor, rise: 0.03, duration: 0.22) { [unowned self] in
+                hover(actor, rise: Self.restackHover, duration: 0.22) { [unowned self] in
                     flyToSlot(actor, rig: rig, route: .restack, delay: delay)
                 }
             }
@@ -366,11 +606,10 @@ extension Stage {
         }
     }
 
-    /// World-space flight to the point just above the slot, then the press. The path's last waypoint
-    /// tracks the (spinning, possibly flying) rig every frame.
+    /// Flight to the point just above the slot (a `ColumnFlight`, so it only ever enters over the rim), then the press.
+    /// The column end of the path tracks the (spinning, possibly flying) rig every frame.
     func flyToSlot(_ actor: ScoopActor, rig: ItemRig, route: ScoopRoute, delay: Double = 0) {
-        var path = FlightPath(points: [.zero, .one], startDirection: [0, 1, 0], endDirection: [0, -1, 0])
-        var arc: (c1: SIMD3<Float>, lift: Float, up: SIMD3<Float>)?
+        var column: ColumnFlight?
         var start = Transform()
         var timing = TimingCurve.standard
         var morphToBall = false
@@ -403,43 +642,36 @@ extension Stage {
             let rigScale = rig.pose.scale * rig.scaleMultiplier
             let pressSpeed = Self.pressStartSlope * (liftHeight(rig.vessel, key: liveKey(actor, on: rig)) + Self.approachClearance)
                 / Float(Self.pressDuration) * rigScale
-            switch route {
-            case .fromIcon(let side):
-                // One cubic arc. Every control point stays under the header ceiling, so the whole curve does
-                // (convex hull). The last control point sits on the slot's up axis, so the scoop arrives along
-                // the settle direction at the speed the press starts with.
-                let ceiling = world(CGPoint(x: 0, y: Self.flightCeilingY)).y - 0.0438 * rigScale
-                let room = max(0, (ceiling - pa.y) / max(up.y, 0.3))
-                let lift = min(max(pressSpeed * Float(duration) / (3 * Self.maxArrivalSlope), 0.012), room)
-                let endSlope = lift > 1e-4 ? min(pressSpeed * Float(duration) / (3 * lift), Self.maxArrivalSlope) : 0
-                let centerCard = abs(p0.x - pa.x) < clearanceHalfWidth(rig)
-                let c1x = centerCard ? pa.x + side * 0.24 : p0.x
-                let c1y = min(lerp(p0.y, pa.y + up.y * lift, 0.95), ceiling)
-                arc = (SIMD3<Float>(c1x, c1y, centerCard ? 0.1 : 0.04), lift, up)
-                timing = TimingCurve(0.42, 0, 0.6, 1 - 0.4 * endSlope)
-            case .restack:
-                let clear = clearTop(rig, excluding: actor)
-                let above = pa + up * max(0, (clear - pa.y) / max(up.y, 0.3))
-                var points = [p0]
-                if simd_length(above - pa) > 0.005 { points.append(above) }
-                points.append(pa)
-                path = FlightPath(points: points, startDirection: [0, 1, 0.1], endDirection: -up)
-                let endSlope = min(pressSpeed * Float(duration) / max(path.length, 0.01), 2)
-                timing = TimingCurve(0.42, 0, 0.6, 1 - 0.4 * endSlope)
+            let key = liveKey(actor, on: rig)
+            let height = max(rimClearHeight(rig.vessel, key: key) - approachHeight(actor, on: rig, squish: squish), Self.minimumCrossing)
+            let ceiling = world(CGPoint(x: 0, y: Self.flightCeilingY)).y - 0.0438 * rigScale
+            let room = (ceiling - pa.y) / max(up.y, 0.3) / rigScale - height
+            let hump = min(Self.humpHeight(height), max(room / 0.75, 0.002))
+            let top = pa + up * height * rigScale
+            let beside = besideDistance(rig.vessel, key: key)
+            let local = simd_inverse(rig.body.transformMatrix(relativeTo: nil)) * SIMD4<Float>(p0, 1)
+            let inOpening = local.y > 0 && simd_length(SIMD2(local.x, local.z)) < (assets?.vesselRadius(rig.vessel, atHeight: local.y) ?? 0.044)
+            let overRim = local.y >= (assets?.vesselTop(rig.vessel) ?? 0.05)
+            let lead: ColumnFlight.Lead
+            if case .fromIcon(let cardSide) = route {
+                lead = aroundLead(from: p0, approach: pa, top: top, scale: rigScale, beside: beside, preferredSide: cardSide)
+            } else if inOpening || overRim {
+                lead = .direct(heading: (top - p0) / 3)
+            } else {
+                lead = aroundLead(from: p0, approach: pa, top: top, scale: rigScale, beside: beside,
+                                  preferredSide: p0.x < pa.x ? -1 : 1)
             }
+            column = ColumnFlight(lead: lead, from: p0, approach: pa, up: up, scale: rigScale, height: height, hump: hump,
+                                  endSpeed: pressSpeed * Float(duration))
+            timing = TimingCurve(0.42, 0, 0.6, 0.6)
         }) { [unowned self] p in
             let goal = approachTransform(actor, on: rig, squish: squish)
             let e = timing(p)
-            let position: SIMD3<Float>
-            if let arc {
-                position = cubicBezier(start.translation, arc.c1, goal.translation + arc.up * arc.lift, goal.translation, e)
-            } else {
-                path.points[path.points.count - 1] = goal.translation
-                position = path.position(e)
-            }
+            let position = column?.position(e, from: start.translation, approach: goal.translation, up: goal.rotation.act([0, 1, 0]),
+                                            scale: rig.pose.scale * rig.scaleMultiplier) ?? goal.translation
             let s0 = (start.scale.x + start.scale.y + start.scale.z) / 3
             let s1 = (goal.scale.x + goal.scale.y + goal.scale.z) / 3
-            let scale: Float
+            var scale: Float
             if dip {
                 scale = p < 0.15
                     ? s0 * lerp(1, 0.9, Ease.inOutSine(p / 0.15))
@@ -447,10 +679,13 @@ extension Stage {
             } else {
                 scale = lerp(s0, s1, TimingCurve.standard(p))
             }
+            if let column {
+                scale = lerp(scale, s1, Ease.inOutSine(Ease.segment(e, column.dropStart - 0.1, column.dropStart)))
+            }
             let turn = simd_quatf(angle: spin * 2 * .pi * Ease.inOutCubic(p), axis: [0, 1, 0])
             actor.root.transform = Transform(scale: .init(repeating: max(scale, 1e-5)),
                                              rotation: simd_slerp(start.rotation, goal.rotation, e) * turn,
-                                             translation: position)
+                                             translation: avoidVessels(position, scale: scale, slot: actor.slot, excluding: [rig]))
             if morphToBall, !morphDone {
                 let w = Ease.inOutSine(Ease.segment(p, 0.04, 0.48))
                 setMorphWeight(actor, w)
@@ -585,10 +820,12 @@ extension Stage {
         var ballDone = false
         var toIcon = false
         var reslotDone = false
+        var outward: (flight: ColumnFlight, rig: ItemRig, body: simd_float4x4, local: SIMD3<Float>)?
         let duration = 0.78
-        let fromRig = actor.mount ?? heroes[selectedVessel]
+        var leaving: ItemRig?
         actor.motion = animate(delay: delay, duration: duration, phase: .attachments, onStart: { [unowned self] in
-            let up = actor.root.transformMatrix(relativeTo: nil).columns.1
+            let fromRig = holder(of: actor) ?? actor.mount ?? heroes[selectedVessel]
+            leaving = holder(of: actor)
             if actor.root.parent !== root { detachToWorld(actor) }
             actor.rig = nil
             actor.state = .flying
@@ -598,25 +835,31 @@ extension Stage {
             if toBall { beginMorph(actor, to: "ball") }
             let goal = flavorIconModelTransform(flavor).translation
             let p0 = start.translation
-            let halfWidth = fromRig.map { clearanceHalfWidth($0) } ?? 0.1
-            let sx = p0.x + side * max(halfWidth, abs(goal.x - p0.x))
-            let lift = simd_normalize(SIMD3<Float>(up.x, up.y, up.z))
-            let exit: SIMD3<Float> = sideways
-                ? [p0.x + side * halfWidth * 0.9, p0.y + 0.005, 0.08]
-                : [lerp(p0.x, sx, 0.5), p0.y + 0.06, 0.05]
-            path = FlightPath(points: [p0, exit, [sx, lerp(p0.y, goal.y, 0.5), 0.05], goal],
-                              startDirection: sideways ? SIMD3<Float>(side, 0.1, 0.3) : lift + SIMD3<Float>(side * 0.3, 0, 0),
-                              endDirection: [0, -1, -0.1])
+            // Not in or over a vessel (still on its way up from the card): straight back down.
+            path = FlightPath(points: [p0, goal], startDirection: goal - p0, endDirection: [0, -1, -0.1])
+            if let rig = fromRig, rig.root.parent != nil {
+                outward = columnExit(from: p0, slot: actor.slot, rig: rig, to: goal, side: side, sideways: sideways)
+            }
         }) { [unowned self] p in
             let goal = flavorIconModelTransform(flavor)
             path.points[path.points.count - 1] = goal.translation
             let e = TimingCurve.flight(p)
+            var position = path.position(e)
+            if let exit = outward {
+                let body = exit.rig.root.parent != nil ? exit.rig.body.transformMatrix(relativeTo: nil) : exit.body
+                let pa = body * SIMD4<Float>(exit.local, 1)
+                let up = simd_normalize(SIMD3(body.columns.1.x, body.columns.1.y, body.columns.1.z))
+                let scale = simd_length(SIMD3(body.columns.0.x, body.columns.0.y, body.columns.0.z))
+                position = exit.flight.position(1 - e, from: goal.translation, approach: SIMD3(pa.x, pa.y, pa.z), up: up, scale: scale)
+            }
             let s0 = (start.scale.x + start.scale.y + start.scale.z) / 3
             let s1 = (goal.scale.x + goal.scale.y + goal.scale.z) / 3
             let turn = simd_quatf(angle: -2 * .pi * Ease.inOutCubic(p), axis: [0, 1, 0])
-            actor.root.transform = Transform(scale: .init(repeating: lerp(s0, s1, TimingCurve.standard(p))),
+            let scale = lerp(s0, s1, TimingCurve.standard(p))
+            actor.root.transform = Transform(scale: .init(repeating: scale),
                                              rotation: simd_slerp(start.rotation, goal.rotation, e) * turn,
-                                             translation: path.position(e))
+                                             translation: avoidVessels(position, scale: scale, slot: actor.slot,
+                                                                       excluding: leaving.map { [$0] } ?? []))
             if toBall, !ballDone {
                 setMorphWeight(actor, Ease.inOutSine(Ease.segment(p, 0, 0.14)))
                 if p >= 0.15 {
@@ -642,6 +885,61 @@ extension Stage {
             flavorIcons[flavor]?.appear = 1
             updateIcons()
             discard(actor)
+        }
+    }
+
+    /// The way out for a scoop inside a vessel's opening below its rim: straight up the axis, over the rim, then down
+    /// beside the vessel to `goal`. Nil when the scoop is already clear of the rim.
+    private func columnExit(from p0: SIMD3<Float>, slot: Int, rig: ItemRig, to goal: SIMD3<Float>, side cardSide: Float,
+                            sideways: Bool) -> (flight: ColumnFlight, rig: ItemRig, body: simd_float4x4, local: SIMD3<Float>)? {
+        guard let assets else { return nil }
+        let body = rig.body.transformMatrix(relativeTo: nil)
+        let l = simd_inverse(body) * SIMD4<Float>(p0, 1)
+        let local = SIMD3(l.x, l.y, l.z)
+        let offset = simd_length(SIMD2(local.x, local.z))
+        let ball = assets.scoopSet(slot).poseBounds("ball")
+        let height = max(assets.vesselTop(rig.vessel) + Self.rimMargin + 0.002 - (local.y + min(ball.min.y, 0)), Self.minimumCrossing)
+        guard offset < assets.vesselHalfWidth(rig.vessel), local.y > 0 else { return nil }
+        let scale = simd_length(SIMD3(body.columns.0.x, body.columns.0.y, body.columns.0.z))
+        let up = simd_normalize(SIMD3(body.columns.1.x, body.columns.1.y, body.columns.1.z))
+        let radius = max(-ball.min.x, ball.max.x, -ball.min.z, ball.max.z)
+        let beside = assets.vesselHalfWidth(rig.vessel) + radius + offset + 0.003
+        let top = p0 + up * height * scale
+        let lead = aroundLead(from: goal, approach: p0, top: top, scale: scale, beside: beside, preferredSide: cardSide)
+        let hump = sideways ? min(Self.humpHeight(height), 0.003) : Self.humpHeight(height)
+        let flight = ColumnFlight(lead: lead, from: goal,
+                                  approach: p0, up: up, scale: scale, height: height, hump: hump, endSpeed: 0)
+        return (flight, rig, body, local)
+    }
+
+    /// Whether a scoop with others stacked on it can't get out of its vessel: rising clear of the rim would take it
+    /// into the scoop above, even once that one has lifted off to make room.
+    private func exitBlocked(_ actor: ScoopActor, under upper: ScoopActor, on rig: ItemRig) -> Bool {
+        guard let assets, actor.mount === rig, actor.state != .flying else { return false }
+        let clear = rimClearHeight(rig.vessel, key: actor.placementKey)
+        guard clear > max(actor.pressHeight, liftHeight(rig.vessel, key: actor.placementKey)) else { return false }
+        guard upper.mount === rig, upper.state != .flying else { return true }
+        let removedTop = assets.placements.placement(rig.vessel, key: actor.placementKey).translation.y + clear + ballHeight(slot: actor.slot)
+        let upperBase = assets.placements.placement(rig.vessel, key: upper.placementKey).translation.y
+            + liftHeight(rig.vessel, key: upper.placementKey) + Self.restackHover
+        return upperBase < removedTop
+    }
+
+    /// Takes a scoop that can't leave its vessel out of the scene where it sits; shrinking toward a point inside the
+    /// opening keeps every part of it inside the vessel.
+    private func shrinkAway(_ actor: ScoopActor) {
+        actor.cancelMotions()
+        actor.state = .leaving
+        actor.phase = "shrink"
+        let from = actor.root.transform
+        let bounds = assets?.scoopSet(actor.slot).poseBounds(actor.staticPose)
+        let center = bounds.map { ($0.min + $0.max) / 2 } ?? .zero
+        actor.motion = animate(duration: 0.3, phase: .attachments) { p in
+            let k = max(1 - TimingCurve.swiftUIEaseIn(p), 1e-4)
+            actor.root.transform = Transform(scale: from.scale * k, rotation: from.rotation,
+                                             translation: from.translation + from.rotation.act(center * (1 - k)))
+        } completion: { [weak self] in
+            self?.discard(actor)
         }
     }
 

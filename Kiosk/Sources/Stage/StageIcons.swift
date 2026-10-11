@@ -125,13 +125,26 @@ extension Stage {
         }
     }
 
-    /// A vessel on its way back to a card that is no longer shown shrinks away where it is instead.
+    /// A vessel on its way back to a card that is no longer shown shrinks away where it is instead, once the scoops
+    /// it is dropping away from are out of it (shrinking pulls its floor and walls in around them).
     private func dismissOutgoingVessels() {
         for vessel in Vessel.allCases where vessel != selectedVessel {
             guard let rig = heroes[vessel] else { continue }
             heroes[vessel] = nil
             setVesselIconAppear(vessel, to: 1, duration: 0)
+            dismissWhenEmpty(rig)
+        }
+    }
+
+    private func dismissWhenEmpty(_ rig: ItemRig) {
+        guard holdsScoop(rig) else {
             dismiss(rig, duration: 0.24, curve: .swiftUIEaseOut)
+            return
+        }
+        if !leavingRigs.contains(where: { $0 === rig }) { leavingRigs.append(rig) }
+        rig.dismissal = animate(duration: 1.0 / 60) { _ in } completion: { [weak self] in
+            rig.dismissal = nil
+            self?.dismissWhenEmpty(rig)
         }
     }
 }

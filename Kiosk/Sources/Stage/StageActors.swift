@@ -70,6 +70,8 @@ final class ItemRig {
     var framing: Framing?
     var framingTarget: Framing?
     var framingTween: Tween?
+    /// Waits for the scoops still inside it to leave before shrinking it away.
+    var dismissal: Tween?
     /// The pose the current flight ends on, so scoops can aim at where the rig will be rather than where it is.
     var flightGoal: (() -> RigPose)?
 
@@ -119,6 +121,8 @@ final class ItemRig {
         flightGoal = nil
         appearTween?.cancel()
         opacityTween?.cancel()
+        dismissal?.cancel()
+        dismissal = nil
     }
 }
 

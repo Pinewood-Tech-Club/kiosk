@@ -67,6 +67,8 @@ final class AssetLibrary {
     private(set) var environment: EnvironmentResource?
     private(set) var report: [String] = []
     private(set) var contactLift: [String: Float] = [:]
+    /// Height of the bottom of each vessel's opening (the cup's floor; below it the cone is solid waffle).
+    private(set) var cavityFloor: [Vessel: Float] = [:]
     private var vesselPoints: [Vessel: [SIMD3<Float>]] = [:]
     private var vesselGeometry: [Vessel: ContactSolver.VesselGeometry] = [:]
 
@@ -152,6 +154,7 @@ final class AssetLibrary {
             let geometry = Self.geometry(of: vessels[vessel]!)
             vesselPoints[vessel] = geometry.points
             vesselGeometry[vessel] = ContactSolver.VesselGeometry(points: geometry.points, triangles: geometry.triangles)
+            cavityFloor[vessel] = Self.floorHeight(geometry.triangles, top: vesselTop(vessel), radius: vesselHalfWidth(vessel))
         }
 
         if let url = url("placements.json"), let data = try? Data(contentsOf: url), let parsed = Placements.parse(data) {
@@ -229,6 +232,23 @@ final class AssetLibrary {
     }
 
     private func url(named name: String) -> URL? { url(name) }
+
+    /// Highest flat, near-axis surface in the vessel's lower half: the floor its opening ends on.
+    private static func floorHeight(_ triangles: [SIMD3<Float>], top: Float, radius: Float) -> Float {
+        var floor: Float = 0
+        var t = 0
+        while t + 2 < triangles.count {
+            let a = triangles[t], b = triangles[t + 1], c = triangles[t + 2]
+            t += 3
+            let cross = simd_cross(b - a, c - a)
+            let length = simd_length(cross)
+            let centroid = (a + b + c) / 3
+            guard length > 1e-12, abs(cross.y / length) > 0.7, centroid.y < top / 2,
+                  simd_length(SIMD2(centroid.x, centroid.z)) < 0.3 * radius else { continue }
+            floor = max(floor, centroid.y)
+        }
+        return floor
+    }
 
     private static func geometry(of entity: Entity) -> (points: [SIMD3<Float>], triangles: [SIMD3<Float>]) {
         var points: [SIMD3<Float>] = []

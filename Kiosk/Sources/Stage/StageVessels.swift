@@ -72,8 +72,11 @@ extension Stage {
     /// Interpolates every pose component from the rig's current pose to a live target, so the final
     /// frame equals the target exactly. `liveControl` re-aims the curve at the target every frame, for targets
     /// that travel far during the flight (a row on the rising order sheet).
+    /// `axisOut` / `axisIn` make the flight leave or arrive along the vessel's own axis for that distance (world
+    /// units), with its pose (pitch, roll, scale) only changing over `attitude`'s part of the flight, so a vessel can
+    /// drop out from under, or rise up into, scoops that sit inside its rim.
     func flyRig(_ rig: ItemRig, duration: Double, delay: Double = 0, minSpin: Float, dip: Bool, timing: TimingCurve,
-                liveControl: Bool = false,
+                liveControl: Bool = false, axisOut: Float = 0, axisIn: Float = 0, attitude: ClosedRange<Float> = 0...1,
                 control: @escaping (SIMD3<Float>, SIMD3<Float>) -> SIMD3<Float>,
                 target: @escaping () -> RigPose, completion: @escaping () -> Void) {
         rig.motion?.cancel()
@@ -96,17 +99,28 @@ extension Stage {
             let goal = target()
             let e = timing(p)
             if liveControl { controlPoint = control(start.position, goal.position) }
-            rig.pose.position = quadraticBezier(start.position, controlPoint, goal.position, e)
+            if axisOut > 0 || axisIn > 0 {
+                var c1 = start.position + (controlPoint - start.position) * (2 / 3)
+                var c2 = goal.position + (controlPoint - goal.position) * (2 / 3)
+                if axisOut > 0 { c1 = start.position - Self.axis(of: start) * axisOut }
+                if axisIn > 0 { c2 = goal.position - Self.axis(of: goal) * axisIn }
+                rig.pose.position = cubicBezier(start.position, c1, c2, goal.position, e)
+            } else {
+                rig.pose.position = quadraticBezier(start.position, controlPoint, goal.position, e)
+            }
+            let a = Ease.segment(e, attitude.lowerBound, attitude.upperBound)
             if dip {
                 let dipEnd: Float = 0.16
                 rig.pose.scale = p < dipEnd
                     ? start.scale * lerp(1, 0.93, Ease.inOutSine(p / dipEnd))
                     : lerp(start.scale * 0.93, goal.scale, TimingCurve.standard(Ease.segment(p, dipEnd, 1)))
+            } else if attitude != 0...1 {
+                rig.pose.scale = lerp(start.scale, goal.scale, Ease.inOutSine(a))
             } else {
                 rig.pose.scale = lerp(start.scale, goal.scale, TimingCurve.standard(p))
             }
-            rig.pose.pitch = lerp(start.pitch, goal.pitch, e)
-            rig.pose.roll = lerp(start.roll, goal.roll, e)
+            rig.pose.pitch = lerp(start.pitch, goal.pitch, attitude != 0...1 ? Ease.inOutSine(a) : e)
+            rig.pose.roll = lerp(start.roll, goal.roll, attitude != 0...1 ? Ease.inOutSine(a) : e)
             rig.pose.yaw = start.yaw + yawDelta * Ease.inOutCubic(p)
             rig.apply()
         } completion: {
@@ -114,6 +128,16 @@ extension Stage {
             rig.flightGoal = nil
             completion()
         }
+    }
+
+    /// The vessel's up axis in world space at `pose` (yaw doesn't change it).
+    static func axis(of pose: RigPose) -> SIMD3<Float> {
+        (simd_quatf(angle: pose.pitch, axis: [1, 0, 0]) * simd_quatf(angle: pose.roll, axis: [0, 0, 1])).act([0, 1, 0])
+    }
+
+    /// World distance a vessel has to travel along its axis before nothing it holds is below its rim.
+    func axialClearance(_ vessel: Vessel, count: Int, scale: Float) -> Float {
+        (0..<min(count, 3)).map { rimClearHeight(vessel, key: placementKey(index: $0, count: count, vessel: vessel)) }.max().map { $0 * scale } ?? 0
     }
 
     /// `underScoops` is the quicker flight used while scoops are handed over: it rises into place from below and
@@ -126,8 +150,9 @@ extension Stage {
         let fromIcon = abs(rig.pose.roll - iconRestPose(vessel).roll) < 0.01
             && abs(rig.pose.scale - Self.iconScale(vessel)) < Self.iconScale(vessel) * 0.1
         let side: Float = Layout.vesselIconCenter(vessel).x > Layout.midX ? 1 : -1
-        flyRig(rig, duration: duration, delay: delay, minSpin: fromIcon && !underScoops ? 2 * .pi : .pi, dip: fromIcon,
-               timing: .flight,
+        let axisIn = underScoops ? 1.6 * axialClearance(vessel, count: rig.scoops.count, scale: centerPose(rig, yaw: 0).scale) : 0
+        flyRig(rig, duration: duration, delay: delay, minSpin: fromIcon && !underScoops ? 2 * .pi : .pi,
+               dip: fromIcon && !underScoops, timing: .flight, axisIn: axisIn, attitude: underScoops ? 0...0.7 : 0...1,
                control: { p0, p1 in
                    underScoops
                        ? SIMD3<Float>(p1.x, lerp(p0.y, p1.y, 0.35), 0.28)
@@ -143,12 +168,16 @@ extension Stage {
     }
 
     /// Lands exactly on the icon's live pose (press included), then hands over to the icon in the same frame.
-    /// `fromUnderScoops` drops straight down first, out from under scoops that are being lifted off it.
-    func flyHeroHome(_ rig: ItemRig, duration: Double, delay: Double = 0, fromUnderScoops: Bool = false) {
+    /// `leavingScoops` (how many scoops are being lifted off it) makes it drop down its own axis first, out from
+    /// under them, and only then turn and shrink toward its card.
+    func flyHeroHome(_ rig: ItemRig, duration: Double, delay: Double = 0, leavingScoops: Int = 0) {
         let vessel = rig.vessel
+        let fromUnderScoops = leavingScoops > 0
         setVesselIconAppear(vessel, to: 0, duration: 0.2, delay: delay, curve: .swiftUIEaseIn)
         let side: Float = Layout.vesselIconCenter(vessel).x > Layout.midX ? 1 : -1
+        let axisOut = 1.6 * axialClearance(vessel, count: leavingScoops, scale: rig.pose.scale * rig.scaleMultiplier)
         flyRig(rig, duration: duration, delay: delay, minSpin: 1.5 * .pi, dip: false, timing: .flight,
+               axisOut: axisOut, attitude: fromUnderScoops ? 0.3...1 : 0...1,
                control: { p0, p1 in
                    fromUnderScoops
                        ? SIMD3<Float>(p0.x, lerp(p0.y, p1.y, 0.75), -0.4)
@@ -170,6 +199,7 @@ extension Stage {
     /// Removes a rig and the scoops that belong to it. Scoops merely attached to it on their way elsewhere are
     /// handed to the world so they keep flying.
     func discard(_ rig: ItemRig) {
+        leavingRigs.removeAll { $0 === rig }
         rig.cancelMotions()
         rig.framingTween?.cancel()
         rig.framingTween = nil
@@ -276,7 +306,7 @@ extension Stage {
         reframe(incoming, animated: !isNew)
         launch(incoming, isNew: isNew, duration: carrying ? duration - 0.06 : duration, underScoops: carrying)
         if let outgoing = heroes[old] {
-            flyHeroHome(outgoing, duration: carrying ? 0.75 : 1.0, fromUnderScoops: carrying)
+            flyHeroHome(outgoing, duration: carrying ? 0.75 : 1.0, leavingScoops: scoops.count)
         }
         if carrying { transferScoops(to: incoming, arrival: duration) }
     }

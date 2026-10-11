@@ -269,12 +269,22 @@ struct VesselProfile: Sendable {
 final class ClipCheck {
     static let vertexStride = 16
     static let tolerance: Float = 0.0005
+    /// Deeper than this (about 6 pt at the hero's scale) a clip fails a stress round; shallower ones are logged as grazes.
+    static let visibleDepth: Float = 0.0015
+
+    struct Issue {
+        let text: String
+        let depth: Float
+        var isVisible: Bool { depth > ClipCheck.visibleDepth }
+    }
 
     struct Measure {
         var cavity: Float = 0
         var outside: Float = 0
         var solid: Float = 0
         var belowRim: Float = 0
+        /// The scoop's base in the vessel's frame (distance from the axis, height) and its size relative to the vessel.
+        var base = SIMD3<Float>.zero
         var severity: Float { max(min(cavity, outside), solid) }
     }
 
@@ -291,12 +301,13 @@ final class ClipCheck {
     private let meshes: [ScoopMeshData]
     private var morphFrom: [ObjectIdentifier: [SIMD3<Float>]] = [:]
     private var open: [String: Episode] = [:]
-    private var unreported: [String] = []
+    private var unreported: [Issue] = []
     private(set) var frames = 0
     private(set) var pairs = 0
     private(set) var episodes = 0
     private var worst: Float = 0
     private var closestGraze: Float = 0
+    private var closestGrazeLabel = ""
     let log: (String) -> Void
 
     init(profiles: [Vessel: VesselProfile], meshes: [ScoopMeshData], log: @escaping (String) -> Void) {
@@ -388,9 +399,13 @@ final class ClipCheck {
                       c4.y + reach > profile.yMin else { continue }
                 if shape == nil { shape = currentShape(actor) }
                 pairs += 1
-                let result = Self.measure(shape!, m, profile)
+                var result = Self.measure(shape!, m, profile)
+                result.base = [simd_length(SIMD2(m.columns.3.x, m.columns.3.z)), m.columns.3.y, scale]
                 guard result.severity > Self.tolerance else {
-                    closestGraze = max(closestGraze, result.severity)
+                    if result.severity > closestGraze {
+                        closestGraze = result.severity
+                        closestGrazeLabel = "\(actor.flavor.rawValue) slot \(actor.slot) vs \(rig.vessel.rawValue) \(rig.label) during \(actor.phase)"
+                    }
                     continue
                 }
                 let key = "\(ObjectIdentifier(actor).hashValue)-\(ObjectIdentifier(rig.root).hashValue)"
@@ -413,24 +428,25 @@ final class ClipCheck {
     private func close(_ episode: Episode) {
         episodes += 1
         worst = max(worst, episode.worst.severity)
-        let line = String(format: "%@ during %@: %d frames, %.1f mm deep (inside %.1f, outside %.1f, in wall %.1f; reaches %.1f mm below the rim) at t=%.2f",
+        let line = String(format: "%@ during %@: %d frames, %.1f mm deep (inside %.1f, outside %.1f, in wall %.1f; reaches %.1f mm below the rim; base r %.1f y %.1f, size ×%.2f) at t=%.2f",
                           episode.label, episode.phases.joined(separator: "→"), episode.frames, episode.worst.severity * 1000,
                           episode.worst.cavity * 1000, episode.worst.outside * 1000, episode.worst.solid * 1000,
-                          episode.worst.belowRim * 1000, episode.started)
-        unreported.append(line)
+                          episode.worst.belowRim * 1000, episode.worst.base.x * 1000, episode.worst.base.y * 1000,
+                          episode.worst.base.z, episode.started)
+        unreported.append(Issue(text: "clip: " + line, depth: episode.worst.severity))
         log("Clip: " + line)
     }
 
     /// Violations finished since the last call (episodes still in progress are closed first).
-    func takeIssues() -> [String] {
+    func takeIssues() -> [Issue] {
         for episode in open.values { close(episode) }
         open.removeAll()
         defer { unreported.removeAll() }
-        return unreported.map { "clip: " + $0 }
+        return unreported
     }
 
     var summary: String {
-        String(format: "Clip check: %d frames, %d scoop-vessel tests, %d violations (worst %.1f mm), deepest sub-threshold contact %.2f mm",
-               frames, pairs, episodes, worst * 1000, closestGraze * 1000)
+        String(format: "Clip check: %d frames, %d scoop-vessel tests, %d violations (worst %.1f mm), deepest sub-threshold contact %.2f mm (%@)",
+               frames, pairs, episodes, worst * 1000, closestGraze * 1000, closestGrazeLabel)
     }
 }
