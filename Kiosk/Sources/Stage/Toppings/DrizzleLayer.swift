@@ -566,17 +566,17 @@ private extension DrizzleLayer {
         return (side, normal, simd_cross(normal, side))
     }
 
-    func cap(from ring: Ring, direction: Float, tipFirst: Bool) -> [Ring] {
-        var rings: [Ring] = []
-        for k in 1...Self.capRings {
+    /// Rounds a ribbon end; the start cap is emitted tip first so the tube stays one strip.
+    func emitCap(from ring: Ring, direction: Float) {
+        for step in 1...Self.capRings {
+            let k = direction < 0 ? Self.capRings + 1 - step : step
             let theta = Float(k) / Float(Self.capRings) * .pi / 2
             var r = ring
             r.center += ring.along * (direction * ring.a * 0.9 * sin(theta))
             r.scale = cos(theta)
             r.lean = k == Self.capRings ? direction * 1e4 : direction * tan(theta)
-            rings.append(r)
+            emit(r)
         }
-        return tipFirst ? rings.reversed() : rings
     }
 
     func build(now: Double) {
@@ -622,24 +622,31 @@ private extension DrizzleLayer {
                 headPoint = geometry.points[headIndex]
             }
 
-            var rings: [Ring] = []
-            rings.reserveCapacity(headIndex + 2 * Self.capRings + 2)
-            for i in 0...headIndex {
-                let ahead = i + 1 <= headIndex ? geometry.points[i + 1] : (headIndex + 1 < path.count ? geometry.points[i + 1] : geometry.points[i])
-                let behind = i > 0 ? geometry.points[i - 1] : geometry.points[i]
-                rings.append(sampleRing(i, tangent: ahead - behind))
+            func bodyRing(_ i: Int) -> Ring {
+                let ahead = geometry.points[min(i + 1, path.count - 1)]
+                let behind = geometry.points[max(i - 1, 0)]
+                return sampleRing(i, tangent: ahead - behind)
+            }
+            var last = bodyRing(0)
+            emitCap(from: last, direction: -1)
+            emit(last)
+            var count = 1
+            if headIndex > 0 {
+                for i in 1...headIndex {
+                    last = bodyRing(i)
+                    emit(last)
+                    count += 1
+                }
             }
             if headIndex + 1 < path.count, headFraction > 0.02 {
                 var head = sampleRing(headIndex + 1, tangent: geometry.points[headIndex + 1] - geometry.points[headIndex])
-                let previous = rings[rings.count - 1]
-                head.center = previous.center + (head.center - previous.center) * headFraction
-                rings.append(head)
+                head.center = last.center + (head.center - last.center) * headFraction
+                last = head
+                emit(last)
+                count += 1
             }
-            let ringsBody = rings
-            for ring in cap(from: ringsBody[0], direction: -1, tipFirst: true) { emit(ring) }
-            for ring in ringsBody { emit(ring) }
-            for ring in cap(from: ringsBody[ringsBody.count - 1], direction: 1, tipFirst: false) { emit(ring) }
-            stitch(rings: ringsBody.count + 2 * Self.capRings)
+            emitCap(from: last, direction: 1)
+            stitch(rings: count + 2 * Self.capRings)
         }
 
         for (d, drip) in drips.enumerated() where d < geometry.drips.count {
