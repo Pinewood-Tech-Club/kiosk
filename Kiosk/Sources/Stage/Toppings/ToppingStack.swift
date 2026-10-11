@@ -195,7 +195,7 @@ final class ToppingStack {
                 let baseChanged = existing.baseVersion != baseVersion
                 let scatteredChanged = existing.scatteredBeneath != scatteredBeneath
                 if baseChanged || existing.beneath != beneath || scatteredChanged {
-                    scatter?.occupied = scattered.flatMap(\.footprints)
+                    scatter?.beneath = scattered
                     let duration = animated
                         ? max(changeDuration, baseChanged ? baseDuration : 0, scatteredChanged ? scatterChangeDuration : 0) : 0
                     layer.resurface(to: surface, duration: duration, now: now)
@@ -203,7 +203,7 @@ final class ToppingStack {
             } else {
                 layer = ToppingFactory.layer(topping, candy: candy)
                 scatter = layer as? ScatterLayer
-                scatter?.occupied = scattered.flatMap(\.footprints)
+                scatter?.beneath = scattered
                 scatter?.crowd = crowd
                 let tap = animated ? launch?(topping) : nil
                 if let tap {

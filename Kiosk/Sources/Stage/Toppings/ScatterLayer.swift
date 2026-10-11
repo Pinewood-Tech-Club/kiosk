@@ -5,28 +5,25 @@ import simd
 /// Pieces of one `ScatterKind` tossed onto the surface beneath and settled by a small rigid-body
 /// simulation, so they land, slide and come to rest the way real candy would.
 ///
-/// Several scatter layers share one item. Before `apply` and `resurface`, set `occupied` to the
-/// `footprints` of the scatter layers before this one, in stack order:
+/// Several scatter layers share one item. Before `apply` and `resurface`, set `beneath` to the
+/// scatter layers before this one, in stack order:
 ///
-///     mms.occupied = gummies.footprints
-///     sprinkles.occupied = gummies.footprints + mms.footprints
+///     mms.beneath = [gummies]
+///     sprinkles.beneath = [gummies, mms]
 ///
-/// New pieces then collide with those as well as with the surface. `footprints` always describes
-/// where this layer's pieces rest or are heading, so after a resurface feed the layers in the same
-/// order again. When an earlier scatter layer is removed, give the later ones their new `occupied`
-/// and `resurface` them onto the same surface, so pieces that were resting on the removed ones drop.
+/// New pieces then collide with theirs as well as with the surface, once those have settled: a layer
+/// waits for the ones beneath it rather than forcing them to finish in one frame. When an earlier
+/// scatter layer is removed, give the later ones their new `beneath` and `resurface` them onto the
+/// same surface, so pieces that were resting on the removed ones drop.
 @MainActor
 final class ScatterLayer: ToppingLayer {
     let kind: ScatterKind
     let entity = Entity()
-    var occupied: [ScatterFootprint] = []
+    var beneath: [ScatterLayer] = []
     /// How many scattered toppings share the item; each gets its part of the room on the ice cream.
     var crowd = 1
-    var footprints: [ScatterFootprint] {
-        finishSettling()
-        return resting
-    }
     private(set) var isFinished = false
+    var isSettling: Bool { pending != nil || resurfacing != nil }
     /// Where the topping's card icon is, in the layer's parent space; read every frame. When set,
     /// animated pieces are tossed from it and removed pieces fly back into it.
     var launchPoint: (() -> SIMD3<Float>)?
@@ -82,7 +79,7 @@ final class ScatterLayer: ToppingLayer {
         let settle: ScatterSettle
         let order: [Int]
         var next: Int
-        var settled: [ScatterFootprint]
+        var settled: [ScatterFootprint]?
         var restingAfter: [ScatterFootprint?]
         let duration: Double
         let start: Double
@@ -91,8 +88,9 @@ final class ScatterLayer: ToppingLayer {
     private var pieces: [Piece] = []
     private var tosses: [Toss] = []
     private var resting: [ScatterFootprint] = []
-    /// Everything the next piece can land on: `occupied` and this layer's pieces settled so far.
+    /// Everything the next piece can land on: the pieces beneath and this layer's pieces settled so far.
     private var bodies: [ScatterFootprint] = []
+    private var bodiesReady = false
     private var pending: Pending?
     private var resurfacing: Resurfacing?
     private var animating = false
@@ -149,7 +147,7 @@ final class ScatterLayer: ToppingLayer {
             var piece = Piece(model: model, shape: ScatterShape(half: spec.halfExtents), meshCenter: spec.mesh.bounds.center,
                               delay: Double(pinch) * 0.24 + Double.random(in: 0...0.12, using: &rng),
                               flight: Double.random(in: 0.42...0.6, using: &rng),
-                              arcHeight: radius * Float.random(in: 1.0...2.2, using: &rng),
+                              arcHeight: radius * Float.random(in: 0.5...1.0, using: &rng),
                               hand: Self.randomUnit(&rng) * radius * Float.random(in: 0...0.5, using: &rng),
                               lean: Float.random(in: 0.15...0.55, using: &rng),
                               tumbleAxis: Self.randomUnit(&rng), tumble: Float.random(in: 2...5, using: &rng) * .pi,
@@ -157,7 +155,8 @@ final class ScatterLayer: ToppingLayer {
             if animated { piece.motion = .arrive(start: now) }
             pieces.append(piece)
         }
-        bodies = occupied
+        bodies = []
+        bodiesReady = false
         pending = pieces.isEmpty ? nil : Pending(surface: surface, settle: ScatterSettle(surface: surface, floor: surface.floor),
                                                  next: 0, start: now)
         if animated {
@@ -211,13 +210,28 @@ final class ScatterLayer: ToppingLayer {
 
     /// Simulates every piece not yet settled. Animated applies settle each piece just before it's tossed.
     func finishSettling() {
-        while pending != nil { settleNext(now: nil) }
-        while resurfacing != nil { resurfaceNext() }
+        while pending != nil { settleNext(now: nil, force: true) }
+        while resurfacing != nil { resurfaceNext(force: true) }
     }
 
-    /// A piece settled after its planned toss time is tossed `now` instead.
-    private func settleNext(now: Double?) {
-        guard let job = pending else { return }
+    /// The pieces of the layers beneath once they're at rest; nil while they're still settling, unless forced.
+    private func restingBeneath(force: Bool) -> [ScatterFootprint]? {
+        if beneath.contains(where: \.isSettling) {
+            guard force else { return nil }
+            for layer in beneath { layer.finishSettling() }
+        }
+        return beneath.flatMap(\.resting)
+    }
+
+    /// A piece settled after its planned toss time is tossed `now` instead. False while waiting for the layers beneath.
+    @discardableResult
+    private func settleNext(now: Double?, force: Bool) -> Bool {
+        guard let job = pending else { return false }
+        if !bodiesReady {
+            guard let below = restingBeneath(force: force) else { return false }
+            bodies = below
+            bodiesReady = true
+        }
         let index = job.next
         let surface = job.surface
         var piece = pieces[index]
@@ -281,6 +295,7 @@ final class ScatterLayer: ToppingLayer {
         if let now { piece.delay = max(piece.delay, now - job.start) }
         pieces[index] = piece
         pending = index + 1 < pieces.count ? Pending(surface: surface, settle: job.settle, next: index + 1, start: job.start) : nil
+        return true
     }
 
     func resurface(to surface: ToppingSurface, duration: Double, now: Double) {
@@ -288,7 +303,7 @@ final class ScatterLayer: ToppingLayer {
         guard !pieces.isEmpty else { return }
         let order = pieces.indices.sorted { pieces[$0].rest.position.y < pieces[$1].rest.position.y }
         resurfacing = Resurfacing(surface: surface, settle: ScatterSettle(surface: surface, floor: surface.floor), order: order,
-                                  next: 0, settled: occupied, restingAfter: Array(repeating: nil, count: pieces.count),
+                                  next: 0, settled: nil, restingAfter: Array(repeating: nil, count: pieces.count),
                                   duration: duration, start: now)
         if duration <= 0 {
             finishSettling()
@@ -298,8 +313,13 @@ final class ScatterLayer: ToppingLayer {
     }
 
     /// Settles the next piece of a resurface; the lowest go first, so the ones above land on them.
-    private func resurfaceNext() {
-        guard var job = resurfacing else { return }
+    @discardableResult
+    private func resurfaceNext(force: Bool) -> Bool {
+        guard var job = resurfacing else { return false }
+        if job.settled == nil {
+            guard let below = restingBeneath(force: force) else { return false }
+            job.settled = below
+        }
         let index = job.order[job.next]
         job.next += 1
         var piece = pieces[index]
@@ -317,7 +337,7 @@ final class ScatterLayer: ToppingLayer {
                     start.position.y += lift + 0.0004
                     rising = true
                 }
-                let result = job.settle.run(piece.shape, from: start, velocity: .zero, spin: .zero, among: job.settled)
+                let result = job.settle.run(piece.shape, from: start, velocity: .zero, spin: .zero, among: job.settled ?? [])
                 outcome = result
                 if !result.fell || attempt == 3 { break }
                 let xz = apexXZ + (SIMD2(start.position.x, start.position.z) - apexXZ) * 0.6
@@ -331,7 +351,7 @@ final class ScatterLayer: ToppingLayer {
                 piece.track = [start]
             }
             let footprint = ScatterFootprint(shape: piece.shape, position: piece.rest.position, rotation: piece.rest.rotation)
-            job.settled.append(footprint)
+            job.settled?.append(footprint)
             job.restingAfter[index] = footprint
             let duration = job.duration
             if duration <= 0 {
@@ -352,6 +372,7 @@ final class ScatterLayer: ToppingLayer {
             resting = job.restingAfter.compactMap { $0 }
             resurfacing = nil
         }
+        return true
     }
 
     func remove(now: Double) {
@@ -372,15 +393,11 @@ final class ScatterLayer: ToppingLayer {
         guard animating else { return }
         if pending != nil {
             let started = CACurrentMediaTime()
-            repeat {
-                settleNext(now: now)
-            } while pending != nil && CACurrentMediaTime() - started < Self.settleBudget
+            while pending != nil, CACurrentMediaTime() - started < Self.settleBudget, settleNext(now: now, force: false) {}
         }
         if resurfacing != nil {
             let started = CACurrentMediaTime()
-            repeat {
-                resurfaceNext()
-            } while resurfacing != nil && CACurrentMediaTime() - started < Self.settleBudget
+            while resurfacing != nil, CACurrentMediaTime() - started < Self.settleBudget, resurfaceNext(force: false) {}
         }
         var active = resurfacing != nil
         var leaving = false

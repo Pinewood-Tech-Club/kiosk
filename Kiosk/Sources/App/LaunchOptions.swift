@@ -253,6 +253,18 @@ struct ScriptRunner {
             await clipInterrupts()
         case "toppings-tour":
             await toppingsTour()
+        case "toppings-candy":
+            await openToppings()
+            for topping in [Topping.gummies, .mms, .sprinkles] {
+                await toggle(topping)
+                await wait(2.0)
+            }
+            await toggle(.mms)
+            await wait(2.5)
+            app.addToOrder()
+            await wait(3.0)
+            app.viewOrder()
+            await wait(4.0)
         case "remove-middle":
             await wait(0.6)
             app.removeScoop(.chocolate)
