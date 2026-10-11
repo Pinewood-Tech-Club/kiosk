@@ -72,6 +72,24 @@
     XCTAssertEqual([self openCount:title.label], before - 1, @"the hub should close the acknowledged alert");
 }
 
+- (void)testRefusedTokenAsksForPinAndSignsIn {
+    NSString *pin = NSProcessInfo.processInfo.environment[@"STAFF_PIN"];
+    if (pin.length == 0) {
+        XCTSkip(@"Set TEST_RUNNER_STAFF_PIN to test PIN sign-in");
+    }
+    [self.app terminate];
+    self.app.launchArguments = @[@"-kioskRole", @"staff", @"-boothURL", NSProcessInfo.processInfo.environment[@"STAFF_BOOTH_URL"],
+                                 @"-boothStaffToken", @"not-a-staff-token"];
+    [self.app launch];
+    XCTAssertTrue([[self text:@"Sign in again"] waitForExistenceWithTimeout:30], @"a refused token should ask for the PIN");
+    [self snapshot:@"staff-sign-in"];
+    XCUIElement *field = self.app.secureTextFields.firstMatch;
+    [field tap];
+    [field typeText:pin];
+    [[self.app.buttons elementMatchingPredicate:[NSPredicate predicateWithFormat:@"label BEGINSWITH 'Sign in'"]] tap];
+    XCTAssertTrue([[self text:@"Live"] waitForExistenceWithTimeout:30], @"the PIN session should connect");
+}
+
 - (NSInteger)openCount:(NSString *)label {
     NSRegularExpression *pattern = [NSRegularExpression regularExpressionWithPattern:@"(\\d+) open" options:0 error:nil];
     NSTextCheckingResult *match = [pattern firstMatchInString:label options:0 range:NSMakeRange(0, label.length)];

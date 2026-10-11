@@ -105,7 +105,8 @@ private struct ConnectionPill: View {
     }
 
     private var title: String {
-        switch staff.connectionState {
+        if staff.connection?.refusedStatus == 401 { return "Signed out" }
+        return switch staff.connectionState {
         case .connected: "Live"
         case .connecting where !hasBeenLive: "Connecting"
         default: hasBeenLive ? "Offline, reconnecting" : "Can't reach the booth"
@@ -113,7 +114,8 @@ private struct ConnectionPill: View {
     }
 
     private var icon: String {
-        switch staff.connectionState {
+        if staff.connection?.refusedStatus == 401 { return "lock-keyhole" }
+        return switch staff.connectionState {
         case .connected: "wifi"
         case .connecting where !hasBeenLive: "clock"
         default: "wifi-off"

@@ -95,7 +95,7 @@ final class StaffLink {
         let session: Session = try await BoothAPI(config: config, deviceID: Self.deviceID).post("/v1/staff/session", ["pin": pin])
         Keychain.set(Data(session.token.utf8), for: BoothConfig.staffSessionAccount)
         log("Staff: signed in until \(Date(timeIntervalSince1970: session.expiresAt / 1000).formatted(date: .abbreviated, time: .shortened))")
-        connect()
+        connect(preferSession: true)
     }
 
     func toggleSoldOut(_ flavor: BoothFlavorState) {
@@ -115,8 +115,8 @@ final class StaffLink {
         rejection = nil
     }
 
-    private func connect() {
-        guard let config = BoothConfig.staff() else {
+    private func connect(preferSession: Bool = false) {
+        guard let config = BoothConfig.staff(preferSession: preferSession) else {
             problem = BoothConfig.publicBaseURL == nil
                 ? "BOOTH_URL isn't set, so this iPad can't reach the booth."
                 : nil

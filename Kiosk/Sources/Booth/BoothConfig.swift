@@ -13,10 +13,11 @@ struct BoothConfig: Sendable {
     static let staffSessionAccount = "boothStaffSession"
 
     /// The staff role's token: `-boothStaffToken`, then `BOOTH_STAFF_TOKEN`, then a staff session saved after a PIN sign-in.
-    static func staff() -> BoothConfig? {
-        let session = Keychain.data(for: staffSessionAccount).flatMap { String(data: $0, encoding: .utf8) }
-        guard let token = clean(UserDefaults.standard.string(forKey: "boothStaffToken")) ?? plistValue("BoothStaffToken") ?? clean(session)
-        else { return nil }
+    /// Right after a sign-in the new session comes first, so it replaces a configured token the booth refused.
+    static func staff(preferSession: Bool = false) -> BoothConfig? {
+        let session = clean(Keychain.data(for: staffSessionAccount).flatMap { String(data: $0, encoding: .utf8) })
+        let configured = clean(UserDefaults.standard.string(forKey: "boothStaffToken")) ?? plistValue("BoothStaffToken")
+        guard let token = preferSession ? session ?? configured : configured ?? session else { return nil }
         return make(token: token)
     }
 
