@@ -33,9 +33,9 @@ private struct CardPressStyle: ButtonStyle {
 private let slotRadius: CGFloat = 26
 private let slotSize = CGSize(width: 100, height: 106)
 
-/// Holds the place of the item that's out for editing. Its one control is a delete badge on the corner,
-/// like a home-screen icon in edit mode; finishing the edit is the screen's primary button.
-/// Follows its slot every frame while the tray scrolls, clipped like the tiles; the badge shows only while
+/// Holds the place of the item that's out for editing. Tapping it finishes the edit from any step, and a
+/// delete badge sits on the corner like a home-screen icon in edit mode.
+/// Follows its slot every frame while the tray scrolls, clipped like the tiles; the controls show only while
 /// the whole slot is in view.
 private struct EditingSlot: View {
     let app: AppModel
@@ -56,6 +56,25 @@ private struct EditingSlot: View {
                 .clipShape(TrayClip.itemsShape)
                 .position(x: area.midX, y: area.midY)
                 .allowsHitTesting(false)
+
+            Button { app.finishEditing(then: .newItem) } label: {
+                HStack(spacing: 5) {
+                    LucideIcon(name: "check", size: 15)
+                    Text("Done").font(Theme.sans(15, .semibold))
+                }
+                .foregroundStyle(Theme.ink)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .frame(width: slotSize.width, height: slotSize.height)
+                .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Finish editing this item")
+            .opacity(inView ? 1 : 0)
+            .allowsHitTesting(inView)
+            .animation(.easeInOut(duration: 0.2), value: inView)
+            .position(x: x, y: Layout.trayCenterY)
 
             Button { app.requestDelete(id) } label: {
                 LucideIcon(name: "minus", size: 15)
@@ -108,11 +127,7 @@ struct BuilderBackdrop: View {
 
     var body: some View {
         ZStack {
-            if !app.itemInFlight {
-                cards
-                    .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.3).delay(0.22)),
-                                            removal: .opacity.animation(.easeIn(duration: 0.16))))
-            }
+            cards
 
             SheetGlass(model: app.stage.sheetModel)
             TrayTiles(app: app)
@@ -242,14 +257,13 @@ struct BuilderForeground: View {
 
             header
 
-            if !app.itemInFlight {
-                switch app.step {
-                case .vessel: vesselCards.transition(stepFade)
-                case .flavors: flavorCards.transition(stepFade)
-                case .toppings: EmptyView()
-                }
+            switch app.step {
+            case .vessel: vesselCards.transition(stepFade)
+            case .flavors: flavorCards.transition(stepFade)
+            case .toppings: EmptyView()
             }
 
+            previousStepButton
             primaryButton
         }
     }
@@ -397,12 +411,12 @@ struct BuilderForeground: View {
     }
 
     private var primaryButton: some View {
-        Button { app.isEditing ? app.finishEditing(then: .newItem) : app.goForward() } label: {
+        Button { finishesEdit ? app.finishEditing(then: .newItem) : app.goForward() } label: {
             // A fixed-width ZStack so the old and new labels crossfade in place instead of the glass resizing.
             ZStack {
                 HStack(spacing: 12) {
                     Text(primaryTitle)
-                    LucideIcon(name: app.isEditing ? "check" : (app.step == .toppings ? "plus" : "arrow-right"), size: 26)
+                    LucideIcon(name: finishesEdit ? "check" : (app.step == .toppings ? "plus" : "arrow-right"), size: 26)
                 }
                 .id(primaryTitle)
                 .transition(.opacity.animation(.easeInOut(duration: 0.22)))
@@ -410,15 +424,26 @@ struct BuilderForeground: View {
             .frame(width: Layout.primaryButtonSize.width - 64)
         }
         .buttonStyle(.glassCTA(height: Layout.primaryButtonSize.height))
-        .disabled((!app.canContinue && !app.isEditing) || app.itemInFlight)
-        .opacity(app.itemInFlight ? 0 : 1)
-        .animation(.easeOut(duration: 0.18), value: app.itemInFlight)
+        .disabled(!app.canContinue && !finishesEdit)
         .animation(.easeInOut(duration: 0.25), value: app.step)
         .position(Layout.primaryButtonCenter)
     }
 
+    private var previousStepButton: some View {
+        GlassIconButton(icon: "chevron-left", size: Layout.previousStepButtonSize.height,
+                        width: Layout.previousStepButtonSize.width, iconSize: 30, shape: .capsule) { app.goBack() }
+            .accessibilityLabel("Previous step")
+            .disabled(app.step == .vessel)
+            .opacity(app.step == .vessel ? 0.45 : 1)
+            .animation(.easeInOut(duration: 0.25), value: app.step)
+            .position(Layout.previousStepButtonCenter)
+    }
+
+    /// Enabled even with no scoops left, so an emptied item still reaches the "Remove item N?" prompt.
+    private var finishesEdit: Bool { app.isEditing && app.step == .toppings }
+
     private var primaryTitle: String {
-        if app.isEditing { return "Done" }
+        if finishesEdit { return "Done" }
         return app.step == .toppings ? "Add to Order" : "Continue"
     }
 

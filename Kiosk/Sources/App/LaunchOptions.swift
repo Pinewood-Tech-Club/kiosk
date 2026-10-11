@@ -180,14 +180,34 @@ struct ScriptRunner {
             await wait(0.8)
             if let first = app.items.first { app.tapTrayItem(first.id) }
             await wait(2.0)
-            app.jumpToStep(.flavors)
+            app.jumpToStep(.vessel)
+            await wait(1.6)
+            app.goForward()
             await wait(0.8)
             await add(.cookies)
             await wait(1.6)
-            app.jumpToStep(.toppings)
-            await wait(0.8)
+            app.goForward()
+            await wait(1.6)
             app.goForward()
             await wait(2.5)
+        case "vessel-new":
+            await wait(0.6)
+            app.selectVessel(.cone)
+            await wait(1.2)
+            app.goForward()
+            await wait(0.8)
+            await add(.chocolate)
+            await wait(1.4)
+            app.goBack()
+            await wait(1.2)
+            app.startNewItem()
+            await wait(2.6)
+            if let first = app.items.first { app.tapTrayItem(first.id) }
+            await wait(2.0)
+            app.jumpToStep(.vessel)
+            await wait(1.2)
+            app.startNewItem()
+            await wait(3.0)
         case "edit-done":
             await wait(0.8)
             if let first = app.items.first { app.tapTrayItem(first.id) }
@@ -415,7 +435,7 @@ struct StressRunner {
         try? await Task.sleep(for: .seconds(seconds))
     }
 
-    private var cardsVisible: Bool { app.mode == .customize && !app.itemInFlight && app.confirmation == nil }
+    private var cardsVisible: Bool { app.mode == .customize && app.confirmation == nil }
 
     func run() async {
         let defaults = UserDefaults.standard

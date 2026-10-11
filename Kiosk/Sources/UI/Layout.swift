@@ -44,6 +44,11 @@ enum Layout {
     static let captionY: CGFloat = 1106
     static let primaryButtonCenter = CGPoint(x: midX, y: 1158)
     static let primaryButtonSize = CGSize(width: 380, height: 72)
+    static let previousStepButtonSize = CGSize(width: 96, height: 72)
+    static let previousStepButtonCenter = CGPoint(
+        x: primaryButtonCenter.x - primaryButtonSize.width / 2 - KioskGlassButtonStyle.horizontalInset - 16
+            - previousStepButtonSize.width / 2,
+        y: primaryButtonCenter.y)
 
     static let sheetRect = CGRect(x: 0, y: 64, width: 1032, height: 1376)
     static let summaryListRect = CGRect(x: 0, y: 206, width: 1032, height: 846)
