@@ -63,6 +63,7 @@ export const Action = z.discriminatedUnion("type", [
   z.object({ id, type: z.literal("ack"), alertId: z.string().min(1).max(64), by: text(40).optional() }),
   z.object({ id, type: z.literal("setSoldOut"), flavor: FlavorId, soldOut: z.boolean(), by: text(40).optional() }),
   z.object({ id, type: z.literal("setOrderStatus"), orderId: id, status: OrderStatus, by: text(40).optional() }),
+  z.object({ id, type: z.literal("setKioskOpen"), open: z.boolean(), by: text(40).optional() }),
 ]);
 export type Action = z.infer<typeof Action>;
 

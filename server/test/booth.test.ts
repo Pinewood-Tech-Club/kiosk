@@ -99,6 +99,7 @@ class Client {
 function applyChange(state: BoothState, change: Change) {
   if (change.kind === "flavors") state.flavors = change.flavors;
   if (change.kind === "kiosk") state.kiosk = change.kiosk;
+  if (change.kind === "kioskOpen") state.kioskOpen = change.kioskOpen;
   if (change.kind === "alert") {
     const index = state.alerts.findIndex((a) => a.id === change.alert.id);
     if (index >= 0) state.alerts[index] = change.alert;
@@ -130,7 +131,7 @@ async function serverState(): Promise<BoothState> {
 
 function comparable(state: BoothState) {
   const alerts = [...state.alerts].sort((a, b) => a.id.localeCompare(b.id));
-  return { rev: state.rev, flavors: state.flavors, alerts, health: state.kiosk.health, online: state.kiosk.online };
+  return { rev: state.rev, kioskOpen: state.kioskOpen, flavors: state.flavors, alerts, health: state.kiosk.health, online: state.kiosk.online };
 }
 
 const healthy = KioskHealth.parse({
@@ -234,6 +235,56 @@ describe("events", () => {
     const result = await post("/v1/events", KIOSK, device, { events: [{ ...help("skew", 1, "no_reader"), at: "1999-01-01T00:00:00Z" }] });
     const alert = (await serverState()).alerts.find((a) => a.id === result.body.results[0].alertId)!;
     expect(alert.createdAt).toBeGreaterThanOrEqual(before);
+  });
+});
+
+const setKioskOpen = (id: string, open: boolean) => ({ id, type: "setKioskOpen", open, by: "Test" });
+
+describe("kiosk open flag", () => {
+  it("defaults to open, closes and reopens idempotently and converges on every client", async () => {
+    const kiosk = await open(KIOSK, newDevice("k"));
+    const staff = await open(STAFF, newDevice("s"));
+    const before = await serverState();
+    if (!before.kioskOpen.open) {
+      staff.send({ type: "action", action: setKioskOpen("reset-open", true) });
+      await staff.next("result", (m) => m.id === "reset-open");
+    }
+    expect((await serverState()).kioskOpen.open).toBe(true);
+
+    const device = newDevice("web");
+    const close = setKioskOpen(`close-${device}`, false);
+    const first = await post("/v1/actions", STAFF, device, { actions: [close] });
+    expect(first.body.results[0].status).toBe("ok");
+    const replay = await post("/v1/actions", STAFF, device, { actions: [close] });
+    expect(replay.body.results[0].status).toBe("duplicate");
+    const same = await post("/v1/actions", STAFF, device, { actions: [setKioskOpen(`close-again-${device}`, false)] });
+    expect(same.body.results[0].status).toBe("ok");
+    expect(same.body.rev).toBe(first.body.rev);
+
+    await kiosk.settle();
+    await staff.settle();
+    const closed = await serverState();
+    expect(closed.kioskOpen).toMatchObject({ open: false, changedBy: "Test" });
+    expect(kiosk.state!.kioskOpen.open).toBe(false);
+    expect(comparable(kiosk.state!)).toEqual(comparable(closed));
+
+    kiosk.dropNextPatches = 1;
+    const reopen = await post("/v1/actions", STAFF, device, { actions: [setKioskOpen(`reopen-${device}`, true), setSoldOut(`after-${device}`, "vanilla", true)] });
+    expect(reopen.body.results.map((r: { status: string }) => r.status)).toEqual(["ok", "ok"]);
+    await kiosk.settle();
+    await kiosk.settle();
+    await staff.settle();
+    const truth = comparable(await serverState());
+    expect(truth.kioskOpen.open).toBe(true);
+    expect(comparable(kiosk.state!)).toEqual(truth);
+    expect(comparable(staff.state!)).toEqual(truth);
+    await post("/v1/actions", STAFF, device, { actions: [setSoldOut(`undo-${device}`, "vanilla", false)] });
+  });
+
+  it("rejects a malformed open action without failing the batch", async () => {
+    const response = await post("/v1/actions", STAFF, newDevice("s"), { actions: [{ id: "bad-open", type: "setKioskOpen", open: "yes" }, setKioskOpen("fine-open", true)] });
+    expect(response.body.results[0].status).toBe("rejected");
+    expect(response.body.results[1].status).toBe("ok");
   });
 });
 
