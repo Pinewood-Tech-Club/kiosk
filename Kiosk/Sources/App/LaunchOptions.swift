@@ -36,6 +36,14 @@ struct LaunchOptions {
             options.current = parseItem(current)
             if options.screen == nil { options.screen = "builder" }
         }
+        if let toppings = defaults.string(forKey: "kioskToppings") {
+            var item = options.current ?? IceCreamItem()
+            item.toppings = Topping.stacked(toppings.split(separator: ",").compactMap {
+                Topping(rawValue: $0.trimmingCharacters(in: .whitespaces))
+            })
+            options.current = item
+            if options.screen == nil { options.screen = "builder" }
+        }
         options.name = defaults.string(forKey: "kioskName")
         if defaults.object(forKey: "kioskSlowmo") != nil {
             options.slowMotion = defaults.double(forKey: "kioskSlowmo")
@@ -109,6 +117,43 @@ struct ScriptRunner {
         await tap(.vessel(vessel)) { app.selectVessel(vessel) }
     }
 
+    private func toggle(_ topping: Topping) async {
+        var toppings = app.current.toppings
+        if let index = toppings.firstIndex(of: topping) { toppings.remove(at: index) } else { toppings.append(topping) }
+        log("toppings \(toppings.map(\.rawValue).joined(separator: ","))")
+        await tap(.topping(topping)) { app.setToppingsForScript(toppings) }
+    }
+
+    /// Whip and syrup going on and off under pieces, scoops added and removed under toppings, a vessel swap, then the tray.
+    private func toppingsTour() async {
+        if app.step != .toppings { app.jumpToStep(.toppings); await wait(1.0) }
+        await wait(1.0)
+        await toggle(.whip)
+        await wait(3.0)
+        await toggle(.whip)
+        await wait(3.0)
+        await toggle(.chocolate)
+        await wait(2.5)
+        await toggle(.chocolate)
+        await wait(2.5)
+        await toggle(.sprinkles)
+        await wait(2.0)
+        await toggle(.whip)
+        await wait(3.0)
+        app.jumpToStep(.flavors)
+        await wait(1.0)
+        if app.current.scoopCount < Pricing.maxScoopsPerItem { await add(.cookies); await wait(3.0) }
+        if let last = app.current.flavors.last { app.removeScoop(last); await wait(3.0) }
+        app.jumpToStep(.vessel)
+        await wait(1.0)
+        await select(app.current.vessel == .cup ? .cone : .cup)
+        await wait(3.5)
+        app.jumpToStep(.toppings)
+        await wait(1.5)
+        app.addToOrder()
+        await wait(3.0)
+    }
+
     func run(_ script: String) async {
         await wait(1.2)
         log("start \(script)")
@@ -160,6 +205,8 @@ struct ScriptRunner {
             await clipTour()
         case "clip-interrupts":
             await clipInterrupts()
+        case "toppings-tour":
+            await toppingsTour()
         case "remove-middle":
             await wait(0.6)
             app.removeScoop(.chocolate)

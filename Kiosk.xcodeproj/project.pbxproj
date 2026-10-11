@@ -17,6 +17,7 @@
 		330D40F9722FCB8FC0082573 /* Stage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 955D9B0FEA00CB8CCA27E91D /* Stage.swift */; };
 		38B1CA4705AFB81ABDBA21E7 /* NotoSerif-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */; };
 		3C31FD5A503731D14148D8CC /* BoothLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51AC43E1339B441E1F8BD95F /* BoothLink.swift */; };
+		51C89CB794FD18FF76D5DFE7 /* ScoopSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A5C513CA4EED620DB0C9835 /* ScoopSurface.swift */; };
 		536DCDE99FE4949A7CD2BFC7 /* HelpButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3D9A0CFAC70BA8E576B608E /* HelpButton.swift */; };
 		565858834D2F23FCC9892AE8 /* LaunchOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5212A82265C88FFEC5453F08 /* LaunchOptions.swift */; };
 		5C03C19E8737AD328AC9C08E /* MockReaderUI in Frameworks */ = {isa = PBXBuildFile; productRef = 71F7D5957E77382361776981 /* MockReaderUI */; };
@@ -25,7 +26,9 @@
 		5F9C7D0544857EDEAD4E22C6 /* StageActors.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB1DFC96A2B464467CC2110 /* StageActors.swift */; };
 		6735B223D0F752A9B4C1C427 /* TrayTiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D0BD8A918E962602B31E95B /* TrayTiles.swift */; };
 		6788115AD2F9F28D7D442445 /* LogShipper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 989E4F9F6FFDC723DDD4BEA7 /* LogShipper.swift */; };
+		6A1B2B0B6FEFF85E93E0D406 /* ToppingIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32D26707361619BE434DD978 /* ToppingIcons.swift */; };
 		6AD8D94397D99092AF46F1B7 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 019AB8B349B0B11885D0A1B1 /* Config.swift */; };
+		6F9F44FFE58846892442C831 /* StageToppings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A427B0BBC2F44DCB35CDA2F /* StageToppings.swift */; };
 		7335163B03B0F6F959250B9A /* BoothOutbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */; };
 		74456A6B3CED1B853F498EDE /* ContactSolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B88A56B517EB00EB9EFB3F /* ContactSolver.swift */; };
 		7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DFD4680D9AC7197C5C0B25 /* Receipt.swift */; };
@@ -56,6 +59,7 @@
 		DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */; };
 		DF96ED4630E78827B560EDCB /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A6A3D2C8370D7698E2E811 /* Glass.swift */; };
 		E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */; };
+		E21404B759B7FBEE10853958 /* ToppingStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5406E8E764595F07AE47CDAC /* ToppingStack.swift */; };
 		E4F831145DF772EE0B60DCBF /* BoothConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C430771D6BEE6DF3E2F669E /* BoothConnection.swift */; };
 		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
 		F33FD48A4B7F07D6B639671D /* StageVessels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B353824019534A970B3D1DE6 /* StageVessels.swift */; };
@@ -86,9 +90,12 @@
 		275115659D156690770E9F4D /* BoothHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothHealth.swift; sourceTree = "<group>"; };
 		2B6A6A9019E6492315EB68CA /* Local.xcconfig.example */ = {isa = PBXFileReference; path = Local.xcconfig.example; sourceTree = "<group>"; };
 		309806DC452BB62BEE356569 /* DebugBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugBar.swift; sourceTree = "<group>"; };
+		32D26707361619BE434DD978 /* ToppingIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingIcons.swift; sourceTree = "<group>"; };
 		3576D0AAEDEAFA110046DA31 /* AttractView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttractView.swift; sourceTree = "<group>"; };
 		37AB58ED0D97D8805BD8DAA1 /* NameEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameEntryView.swift; sourceTree = "<group>"; };
 		37DFD4680D9AC7197C5C0B25 /* Receipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Receipt.swift; sourceTree = "<group>"; };
+		3A427B0BBC2F44DCB35CDA2F /* StageToppings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageToppings.swift; sourceTree = "<group>"; };
+		3A5C513CA4EED620DB0C9835 /* ScoopSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopSurface.swift; sourceTree = "<group>"; };
 		3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Regular.ttf"; sourceTree = "<group>"; };
 		41288991151D7382A2F4C89D /* 3D */ = {isa = PBXFileReference; lastKnownFileType = folder; name = 3D; path = Kiosk/Resources/3D; sourceTree = SOURCE_ROOT; };
 		425B72639F56A451EDADC970 /* Layout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Layout.swift; sourceTree = "<group>"; };
@@ -100,6 +107,7 @@
 		51AC43E1339B441E1F8BD95F /* BoothLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothLink.swift; sourceTree = "<group>"; };
 		5212A82265C88FFEC5453F08 /* LaunchOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchOptions.swift; sourceTree = "<group>"; };
 		53B88A56B517EB00EB9EFB3F /* ContactSolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactSolver.swift; sourceTree = "<group>"; };
+		5406E8E764595F07AE47CDAC /* ToppingStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingStack.swift; sourceTree = "<group>"; };
 		5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmationView.swift; sourceTree = "<group>"; };
 		5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "NotoSerif-OFL.txt"; sourceTree = "<group>"; };
 		60A6A3D2C8370D7698E2E811 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
@@ -116,7 +124,6 @@
 		98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopMesh.swift; sourceTree = "<group>"; };
 		A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Bold.ttf"; sourceTree = "<group>"; };
 		A313CBED428256A71A858FEA /* BuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuilderView.swift; sourceTree = "<group>"; };
-		A4AF753BDA765B17988D4DAB /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		AB066A180A20C3F6CB7774B4 /* StageIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageIcons.swift; sourceTree = "<group>"; };
 		B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareAPI.swift; sourceTree = "<group>"; };
 		B353824019534A970B3D1DE6 /* StageVessels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageVessels.swift; sourceTree = "<group>"; };
@@ -248,7 +255,6 @@
 			isa = PBXGroup;
 			children = (
 				F84857165E0E1562299FB634 /* Kiosk.xcconfig */,
-				A4AF753BDA765B17988D4DAB /* Local.xcconfig */,
 				2B6A6A9019E6492315EB68CA /* Local.xcconfig.example */,
 			);
 			path = Config;
@@ -294,7 +300,11 @@
 		933EFE036EC4FB9DBB0AC00F /* Toppings */ = {
 			isa = PBXGroup;
 			children = (
+				3A5C513CA4EED620DB0C9835 /* ScoopSurface.swift */,
+				3A427B0BBC2F44DCB35CDA2F /* StageToppings.swift */,
+				32D26707361619BE434DD978 /* ToppingIcons.swift */,
 				48740B6EF1BC55783B05082A /* ToppingLayer.swift */,
+				5406E8E764595F07AE47CDAC /* ToppingStack.swift */,
 			);
 			path = Toppings;
 			sourceTree = "<group>";
@@ -514,6 +524,7 @@
 				7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */,
 				0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */,
 				C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */,
+				51C89CB794FD18FF76D5DFE7 /* ScoopSurface.swift in Sources */,
 				E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */,
 				B9749DDDBF8E0072C6AAB590 /* SquareCatalog.swift in Sources */,
 				9FB4EB59530BF0754BDBC1F3 /* SquareService.swift in Sources */,
@@ -522,12 +533,15 @@
 				8446E36717CEF4B196007F30 /* StageConsistency.swift in Sources */,
 				B9265D2432927A885ACDCF2C /* StageIcons.swift in Sources */,
 				13BA8C20840B4FEE6E0C80E2 /* StageScoops.swift in Sources */,
+				6F9F44FFE58846892442C831 /* StageToppings.swift in Sources */,
 				A8D3BC10264CCE3EA6CBD9D9 /* StageTray.swift in Sources */,
 				F33FD48A4B7F07D6B639671D /* StageVessels.swift in Sources */,
 				F86ED738CAD06D788946D97B /* StageView.swift in Sources */,
 				5C4E87910C7013DDFEBDB6ED /* SummaryView.swift in Sources */,
 				2B591179C416EC14B3DF661F /* Theme.swift in Sources */,
+				6A1B2B0B6FEFF85E93E0D406 /* ToppingIcons.swift in Sources */,
 				FE0C1C733FBF872A34848749 /* ToppingLayer.swift in Sources */,
+				E21404B759B7FBEE10853958 /* ToppingStack.swift in Sources */,
 				6735B223D0F752A9B4C1C427 /* TrayTiles.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

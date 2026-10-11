@@ -22,6 +22,7 @@ struct ScoopModelKey: Hashable {
 enum CardKey: Hashable {
     case vessel(Vessel)
     case flavor(Flavor)
+    case topping(Topping)
 }
 
 /// Owns every 3D entity (main item, selector icons, flying entities, tray and summary minis) and drives
@@ -71,7 +72,13 @@ final class Stage {
     var iconShownTweens: [CardKey: Tween] = [:]
     var iconShownTargets: [CardKey: Float] = [:]
     var flavorIcons: [Flavor: FlavorIcon] = [:]
-    var pressSprings = [Spring1D](repeating: Spring1D(value: 0, response: Stage.pressResponse, dampingRatio: Stage.pressDamping), count: 5)
+    var toppingIcons: [Topping: ToppingCardIcon] = [:]
+    var toppingIconFrames: [Topping: CGRect] = [:]
+    var toppingStacks: [ToppingStack] = []
+    var detachedToppings: [DetachedToppings] = []
+    /// Height fields of the settled scoops per vessel and count ("cup2"), built once in the background.
+    var scoopSurfaces: [String: ScoopSurface] = [:]
+    var pressSprings = [Spring1D](repeating: Spring1D(value: 0, response: Stage.pressResponse, dampingRatio: Stage.pressDamping), count: 10)
     var vesselIconTarget: [Vessel: Float] = [.cup: 0, .cone: 0]
     var heroes: [Vessel: ItemRig] = [:]
     /// Vessels no longer anyone's hero that scoops may still be leaving.
@@ -161,9 +168,11 @@ final class Stage {
             root.addChild(icon.holder)
         }
         fillScoopModelPool()
+        makeToppingIcons()
         let occluder = SheetOccluder()
         sheetOccluder = occluder
         root.addChild(occluder.root)
+        precomputeScoopSurfaces()
         buildWarmup()
         isBuilt = true
         setStep(.vessel, animated: false)
@@ -247,6 +256,20 @@ final class Stage {
                                pitch: 0.3, roll: vessel == .cone ? -0.6 : 0, yaw: 0)
             rig.apply()
             group.addChild(rig.root)
+            if vessel == .cup {
+                let toppings = ToppingStack(rig: rig)
+                toppings.light = { [unowned self] in applyLighting($0) }
+                toppings.setScoops(1, surface: scoopSurface(.cup, count: 1), animated: false, now: now)
+                toppings.setToppings(Topping.allCases, animated: false, now: now)
+            }
+        }
+        for icon in toppingIcons.values {
+            let copy = icon.holder.clone(recursive: true)
+            copy.isEnabled = true
+            copy.scale = .init(repeating: 0.08)
+            copy.position = [x, 0.1, 0]
+            x += 0.09
+            group.addChild(copy)
         }
         // Tiny and tucked under the debug-bar corner: it only has to be drawn, not seen.
         group.scale = .init(repeating: 0.04)
@@ -280,6 +303,7 @@ final class Stage {
         tweens.removeAll { $0.isFinished }
         updateIcons()
         updateTray(dt: Float(dt))
+        updateToppings()
         clipCheck?.run(self)
         flushMorphs()
 
@@ -510,11 +534,12 @@ final class Stage {
     /// Fits the item into the band between the title and the cards, centered, never larger than the vessel's
     /// hero scale. While a new scoop is arriving, the band also has to hold the ball waiting above its slot, so
     /// the item eases back a little and settles in again once the scoop has landed.
-    func heroFraming(_ vessel: Vessel, count: Int, arriving: Bool = false) -> Framing {
+    func heroFraming(_ vessel: Vessel, count: Int, arriving: Bool = false, headroom: Float = 0) -> Framing {
         let band = Layout.heroBand
-        guard let e = contentExtents["\(vessel.rawValue)\(min(count, 3))"] else {
+        guard var e = contentExtents["\(vessel.rawValue)\(min(count, 3))"] else {
             return Framing(position: world(CGPoint(x: band.midX, y: band.midY)), scale: Self.maxHeroScale(vessel))
         }
+        e.yMax += headroom * cos(Self.preferredPitch)
         let tightScale = min(Self.maxHeroScale(vessel), Float(band.height) * 0.001 / (e.yMax - e.yMin),
                              Float(band.width) * 0.001 / (2 * e.xHalf))
         var position = world(CGPoint(x: band.midX, y: band.midY))
@@ -530,7 +555,8 @@ final class Stage {
     }
 
     func reframe(_ rig: ItemRig, animated: Bool = true) {
-        let target = heroFraming(rig.vessel, count: rig.scoops.count, arriving: rig.scoops.contains { $0.isArriving })
+        let target = heroFraming(rig.vessel, count: rig.scoops.count, arriving: rig.scoops.contains { $0.isArriving },
+                                 headroom: toppingHeadroom(rig))
         guard target != rig.framingTarget || rig.framing == nil else { return }
         rig.framingTarget = target
         rig.framingTween?.cancel()

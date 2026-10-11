@@ -62,6 +62,7 @@ final class ItemRig {
     /// Scales the model inside the rig (card icons hide this way when their item flies out).
     var modelScale: Float = 1
     var scoops: [ScoopActor] = []
+    var toppings: ToppingStack?
     var motion: Tween?
     var appearTween: Tween?
     var opacityTween: Tween?

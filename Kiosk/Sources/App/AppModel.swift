@@ -58,7 +58,9 @@ final class AppModel {
     var builderVisible = false
     private(set) var mode: BuilderMode = .customize
     private(set) var step: BuilderStep = .vessel
-    private(set) var current = IceCreamItem()
+    private(set) var current = IceCreamItem() {
+        didSet { if current.toppings != oldValue.toppings { stage.setToppings(current.toppings, itemID: current.id) } }
+    }
     private(set) var items: [IceCreamItem] = []
     private(set) var editingID: UUID?
     private(set) var stageReady = false
@@ -588,6 +590,7 @@ final class AppModel {
     }
 
     func setCustomerNameForScript(_ name: String) { customerName = name }
+    func setToppingsForScript(_ toppings: [Topping]) { current.toppings = toppings }
 
     func setSummaryScroll(_ offset: CGFloat) {
         stage.summaryScroll = offset

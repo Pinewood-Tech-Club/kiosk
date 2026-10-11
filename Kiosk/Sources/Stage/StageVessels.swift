@@ -211,6 +211,7 @@ extension Stage {
             }
         }
         rig.scoops.removeAll()
+        forgetToppings(rig)
         rig.root.removeFromParent()
     }
 
@@ -309,6 +310,7 @@ extension Stage {
         launch(incoming, isNew: isNew, duration: carrying ? duration - 0.16 : duration, delay: carrying ? 0.1 : 0,
                underScoops: carrying)
         if let outgoing = heroes[old] {
+            moveToppings(from: outgoing, to: incoming)
             flyHeroHome(outgoing, duration: carrying ? 0.75 : 1.0, leavingScoops: scoops.count)
         }
         if carrying { transferScoops(to: incoming, arrival: duration) }

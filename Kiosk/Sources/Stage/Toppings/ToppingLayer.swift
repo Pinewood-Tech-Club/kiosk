@@ -28,6 +28,25 @@ protocol ToppingLayer: AnyObject {
     var isFinished: Bool { get }
     /// The surface layers above this one should rest on, given the one beneath it.
     func surfaceAbove(_ below: ToppingSurface) -> ToppingSurface
+    /// The topping card icon's current position in `entity`'s parent space (rig body space); re-evaluate every
+    /// frame, the item spins and moves. Set only on layers applied from a tap.
+    var launchPoint: (() -> SIMD3<Float>)? { get set }
+    /// How long `apply(animated: true)` takes to reach its final shape; layers above resurface over the same time.
+    var growDuration: Double { get }
+    /// How long `remove` takes; layers above sink back over the same time.
+    var removeDuration: Double { get }
+    /// The card's icon, set alongside `launchPoint`. A layer that stores it drives the icon itself (`takeOut` when its
+    /// pieces leave the card, `putBack` once they're out, `react` for a squish); otherwise the stack drives it on tap.
+    var cardIcon: ToppingCardIcon? { get set }
+}
+
+extension ToppingLayer {
+    var growDuration: Double { 0.8 }
+    var removeDuration: Double { 0.4 }
+    var cardIcon: ToppingCardIcon? {
+        get { nil }
+        set {}
+    }
 }
 
 struct ToppingRandom: RandomNumberGenerator {
