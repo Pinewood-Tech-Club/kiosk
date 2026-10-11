@@ -247,7 +247,6 @@ struct BuilderForeground: View {
         if app.step == .toppings {
             Text("Coming soon")
                 .font(Theme.serif(22, .regular))
-                .italic()
                 .foregroundStyle(Theme.ink.opacity(0.6))
                 .transition(.opacity)
         }

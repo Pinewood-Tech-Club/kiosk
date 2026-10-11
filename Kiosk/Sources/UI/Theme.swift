@@ -11,6 +11,10 @@ enum Theme {
     static let accentDeep = Color(red: 0.792, green: 0.353, blue: 0.325)
     static let success = Color(red: 0.31, green: 0.62, blue: 0.47)
 
+    // Type system: Noto Serif for every word a customer reads (titles, buttons, labels, hints) and for headline
+    // amounts. The system sans is reserved for small figures and fine print: card prices, counts, timers, dates
+    // and payment IDs.
+    // Noto Serif ships without an italic face, so `.italic()` has no effect on it.
     enum SerifWeight: String {
         case regular = "NotoSerif-Regular"
         case medium = "NotoSerif-Medium"

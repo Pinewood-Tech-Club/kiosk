@@ -38,7 +38,7 @@ struct SummaryView: View {
                     Text(([notice.title] + notice.details).joined(separator: " "))
                         .lineLimit(2)
                 }
-                .font(Theme.sans(17, .medium))
+                .font(Theme.serif(19, .medium))
                 .foregroundStyle(Theme.accentDeep)
                 .frame(maxWidth: 820)
                 .position(x: Layout.midX, y: Layout.summaryListRect.minY - 26)
@@ -89,7 +89,6 @@ struct SummaryView: View {
             .padding(.top, 22)
             Text(contents(quote))
                 .font(Theme.serif(19, .regular))
-                .italic()
                 .foregroundStyle(Theme.ink.opacity(0.65))
             Button { app.completeOrder() } label: {
                 Text("Check Out").frame(maxWidth: .infinity)
@@ -124,7 +123,6 @@ private struct SummaryRow: View {
                     .foregroundStyle(Theme.ink)
                 Text(line.item.flavors.map(\.title).joined(separator: " · "))
                     .font(Theme.serif(21, .regular))
-                    .italic()
                     .foregroundStyle(Theme.ink.opacity(0.65))
             }
             Spacer(minLength: 16)

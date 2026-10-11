@@ -28,7 +28,6 @@ struct ConfirmationView: View {
                     .lineLimit(1)
                 Text("We'll call your name when it's ready.")
                     .font(Theme.serif(24, .regular))
-                    .italic()
                     .foregroundStyle(Theme.ink.opacity(0.7))
             }
             .padding(.top, 76)
@@ -251,7 +250,6 @@ private struct ReceiptView: View {
                             if !entry.flavors.isEmpty {
                                 Text(entry.flavors)
                                     .font(Theme.serif(14, .regular))
-                                    .italic()
                                     .foregroundStyle(Theme.inkSecondary)
                             }
                         }
