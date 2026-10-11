@@ -111,6 +111,9 @@ extension Stage {
             backdrop.position = world(CGPoint(x: 516, y: 640), z: -0.06)
             root.addChild(backdrop)
         }
-        log("Candy lab \(mode): \(holder.children.count) pieces on the item, \(points.count) scoop points")
+        let contents = candy.gummyBears.bear.mesh.contents
+        let parts = contents.models.map { "\($0.id):" + $0.parts.map { "\($0.id)#\($0.materialIndex)" }.joined(separator: ",") }
+        log("Candy lab \(mode): \(holder.children.count) pieces on the item, \(points.count) scoop points; bear instances "
+            + contents.instances.map { "\($0.id)->\($0.model) \($0.transform.columns.0.x)" }.joined(separator: " ") + " models " + parts.joined(separator: " "))
     }
 }
