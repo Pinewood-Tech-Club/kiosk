@@ -3,28 +3,28 @@ import UIKit
 
 @MainActor
 enum BoothHealth {
-    static func snapshot(square: SquareService, screen: String, simulatePayment: Bool) -> [String: Any] {
+    static func snapshot(square: SquareService, screen: String, simulatePayment: Bool) -> KioskHealth {
         let lastError = square.log.first { entry in
             guard !entry.message.hasPrefix("Booth") else { return false }
             let lowered = entry.message.lowercased()
             return ["failed", "error", "uncaught", "warning"].contains { lowered.contains($0) }
         }
         let readers = square.readers
-        return [
-            "appVersion": BoothIdentity.appVersion,
-            "environment": square.environmentName,
-            "authorized": square.isAuthorized,
-            "authorizationState": authorizationName(square.authorizationState),
-            "readers": readers.map(readerJSON),
-            "readerReady": readers.contains { $0.statusInfo.status == .ready },
-            "catalog": catalogJSON(square.catalogStatus),
-            "deviceBattery": deviceBattery(),
-            "simulatePayment": simulatePayment,
-            "screen": screen,
-            "lastError": lastError.map { String($0.message.prefix(300)) } ?? NSNull(),
-            "lastErrorAt": lastError.map { BoothTime.string($0.date) } ?? NSNull(),
-            "flavors": Flavor.allCases.map { ["id": $0.rawValue, "name": $0.title] },
-        ]
+        return KioskHealth(
+            appVersion: BoothIdentity.appVersion,
+            environment: square.environmentName,
+            authorized: square.isAuthorized,
+            authorizationState: authorizationName(square.authorizationState),
+            readers: readers.map(readerHealth),
+            readerReady: readers.contains { $0.statusInfo.status == .ready },
+            catalog: catalogHealth(square.catalogStatus),
+            deviceBattery: deviceBattery(),
+            simulatePayment: simulatePayment,
+            screen: screen,
+            lastError: lastError.map { String($0.message.prefix(300)) },
+            lastErrorAt: lastError.map { BoothTime.string($0.date) },
+            flavors: Flavor.allCases.map { KioskHealth.FlavorInfo(id: $0.rawValue, name: $0.title) }
+        )
     }
 
     private static func authorizationName(_ state: AuthorizationState) -> String {
@@ -35,14 +35,14 @@ enum BoothHealth {
         }
     }
 
-    private static func readerJSON(_ reader: ReaderInfo) -> [String: Any] {
-        [
-            "name": reader.name,
-            "model": modelName(reader.model),
-            "state": stateName(reader.statusInfo),
-            "batteryPercent": reader.batteryStatus.map { Int($0.percentage) } ?? NSNull(),
-            "isCharging": reader.batteryStatus?.isCharging ?? NSNull(),
-        ]
+    private static func readerHealth(_ reader: ReaderInfo) -> KioskHealth.Reader {
+        KioskHealth.Reader(
+            name: reader.name,
+            model: modelName(reader.model),
+            state: stateName(reader.statusInfo),
+            batteryPercent: reader.batteryStatus.map { Int($0.percentage) },
+            isCharging: reader.batteryStatus?.isCharging
+        )
     }
 
     private static func modelName(_ model: ReaderModel) -> String {
@@ -71,23 +71,20 @@ enum BoothHealth {
         }
     }
 
-    private static func catalogJSON(_ status: SquareService.CatalogStatus) -> [String: Any] {
-        var error: Any = NSNull()
-        var ok = true
+    private static func catalogHealth(_ status: SquareService.CatalogStatus) -> KioskHealth.Catalog {
         if case .failed(let message) = status {
-            ok = false
-            error = message
+            return KioskHealth.Catalog(ok: false, status: status.badgeText, error: message)
         }
-        return ["ok": ok, "status": status.badgeText, "error": error]
+        return KioskHealth.Catalog(ok: true, status: status.badgeText, error: nil)
     }
 
-    private static func deviceBattery() -> Any {
+    private static func deviceBattery() -> KioskHealth.Battery? {
         let device = UIDevice.current
-        guard device.batteryLevel >= 0 else { return NSNull() }
-        return [
-            "percent": Int((device.batteryLevel * 100).rounded()),
-            "charging": device.batteryState == .charging || device.batteryState == .full,
-        ]
+        guard device.batteryLevel >= 0 else { return nil }
+        return KioskHealth.Battery(
+            percent: Int((device.batteryLevel * 100).rounded()),
+            charging: device.batteryState == .charging || device.batteryState == .full
+        )
     }
 }
 

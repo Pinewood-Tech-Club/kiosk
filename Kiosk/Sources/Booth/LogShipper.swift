@@ -7,36 +7,60 @@ actor LogShipper {
         var offset: UInt64
     }
 
-    private struct Batch {
-        let body: Data?
-        let endOffset: UInt64
+    private struct Request: Encodable {
+        let appVersion: String
+        let lines: [Line]
+    }
+
+    private struct Line: Encodable {
+        let id: String
+        let ts: String
+        let level: String
+        let message: String
     }
 
     private static let stateKey = "boothLogShipState"
     private static let maxBatchBytes = 200_000
     private static let maxBatchLines = 300
+    private static let backlogLimit: UInt64 = 20_000_000
+    private static let backlogKeep: UInt64 = 5_000_000
 
-    private let http: BoothHTTP
+    private let api: BoothAPI
     private let fileURL: URL
     private let log: @Sendable (String) -> Void
     private var running = false
+    private var failures = 0
+    private var nextAttempt = Date.distantPast
     private var lastFailure: String?
 
-    init(http: BoothHTTP, fileURL: URL, log: @escaping @Sendable (String) -> Void) {
-        self.http = http
+    init(api: BoothAPI, fileURL: URL, log: @escaping @Sendable (String) -> Void) {
+        self.api = api
         self.fileURL = fileURL
         self.log = log
     }
 
+    func resetBackoff() {
+        failures = 0
+        nextAttempt = .distantPast
+    }
+
     func ship() async {
-        guard !running else { return }
+        guard !running, Date() >= nextAttempt else { return }
         running = true
         defer { running = false }
         while let batch = nextBatch() {
-            if let body = batch.body {
-                let outcome = await http.post("/v1/logs", body: body)
-                guard case .ok = outcome else {
-                    noteFailure(outcome.summary)
+            if let lines = batch.lines {
+                do {
+                    let _: BoothLogsResponse = try await api.post("/v1/logs", Request(appVersion: BoothIdentity.appVersion, lines: lines))
+                } catch let error as BoothError {
+                    if error.isItemFault {
+                        log("Booth: server refused a log batch (\(error.summary)); skipped it")
+                    } else {
+                        noteFailure(error)
+                        return
+                    }
+                } catch {
+                    noteFailure(.network(error.localizedDescription))
                     return
                 }
             }
@@ -47,13 +71,17 @@ actor LogShipper {
         }
     }
 
-    private func noteFailure(_ reason: String) {
-        guard lastFailure != reason else { return }
-        lastFailure = reason
-        log("Booth: log upload failed: \(reason)")
+    private func noteFailure(_ error: BoothError) {
+        failures += 1
+        nextAttempt = Date().addingTimeInterval(error.nextDelay(failures: failures, cap: 120))
+        guard lastFailure != error.summary else { return }
+        lastFailure = error.summary
+        log("Booth: log upload failed: \(error.summary)")
     }
 
     private func noteSuccess() {
+        failures = 0
+        nextAttempt = .distantPast
         guard lastFailure != nil else { return }
         lastFailure = nil
         log("Booth: log upload recovered")
@@ -67,7 +95,7 @@ actor LogShipper {
         UserDefaults.standard.set(state.flatMap { try? JSONEncoder().encode($0) }, forKey: Self.stateKey)
     }
 
-    private func nextBatch() -> Batch? {
+    private func nextBatch() -> (lines: [Line]?, endOffset: UInt64)? {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
               let size = (attributes[.size] as? NSNumber)?.uint64Value else { return nil }
         let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
@@ -79,6 +107,12 @@ actor LogShipper {
             state = State(identity: identity, epoch: 0, offset: 0)
         } else if let current = state, size < current.offset {
             state = State(identity: identity, epoch: current.epoch + 1, offset: 0)
+        }
+        if var current = state, size - min(size, current.offset) > Self.backlogLimit {
+            let skipped = size - current.offset
+            current.offset = skipAhead(to: size - Self.backlogKeep, size: size)
+            state = current
+            log("Booth: \(skipped / 1_000_000) MB of log was never uploaded; skipped ahead to the last \(Self.backlogKeep / 1_000_000) MB")
         }
         saveState(state)
         guard let state, size > state.offset,
@@ -99,8 +133,9 @@ actor LogShipper {
             return nil
         }
 
-        let idPrefix = "\(BoothIdentity.installID)-\(identity)" + (state.epoch > 0 ? "e\(state.epoch)" : "")
-        var lines: [[String: Any]] = []
+        let prefix = String(api.deviceID.prefix(8))
+        let idPrefix = "\(prefix)-\(identity)" + (state.epoch > 0 ? "e\(state.epoch)" : "")
+        var lines: [Line] = []
         var lineStart = 0
         var previousDate = Date()
         while lineStart < usable, lines.count < Self.maxBatchLines {
@@ -109,25 +144,21 @@ actor LogShipper {
             if !text.trimmingCharacters(in: .whitespaces).isEmpty {
                 let parsed = Self.parse(text, fallback: previousDate)
                 previousDate = parsed.date
-                lines.append([
-                    "id": "\(idPrefix)-\(state.offset + UInt64(lineStart))",
-                    "ts": BoothTime.string(parsed.date),
-                    "level": Self.level(of: parsed.message),
-                    "message": parsed.message,
-                ])
+                lines.append(Line(id: "\(idPrefix)-\(state.offset + UInt64(lineStart))", ts: BoothTime.string(parsed.date),
+                                  level: Self.level(of: parsed.message), message: parsed.message))
             }
             lineStart = min(end + 1, usable)
         }
         guard lineStart > 0 else { return nil }
+        return (lines.isEmpty ? nil : lines, state.offset + UInt64(lineStart))
+    }
 
-        let payload: [String: Any] = [
-            "device": BoothIdentity.installID,
-            "appVersion": BoothIdentity.appVersion,
-            "lines": lines,
-        ]
-        let body = lines.isEmpty ? nil : try? JSONSerialization.data(withJSONObject: payload)
-        if !lines.isEmpty, body == nil { return nil }
-        return Batch(body: body, endOffset: state.offset + UInt64(lineStart))
+    private func skipAhead(to target: UInt64, size: UInt64) -> UInt64 {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return target }
+        defer { try? handle.close() }
+        guard (try? handle.seek(toOffset: target)) != nil, let data = try? handle.read(upToCount: 65_536),
+              let newline = data.firstIndex(of: UInt8(ascii: "\n")) else { return target }
+        return min(size, target + UInt64(newline - data.startIndex) + 1)
     }
 
     private static func parse(_ line: String, fallback: Date) -> (date: Date, message: String) {

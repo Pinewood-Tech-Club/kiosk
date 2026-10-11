@@ -6,7 +6,9 @@ struct BoothConfig: Sendable {
     let token: String
 
     static let current: BoothConfig? = {
-        guard var host = value("BoothURL"), let token = value("BoothToken") else { return nil }
+        let defaults = UserDefaults.standard
+        guard var host = clean(defaults.string(forKey: "boothURL")) ?? plistValue("BoothURL"),
+              let token = clean(defaults.string(forKey: "boothToken")) ?? plistValue("BoothToken") else { return nil }
         if !host.contains("://") { host = "https://" + host }
         guard var components = URLComponents(string: host), components.host?.isEmpty == false else { return nil }
         components.path = ""
@@ -18,22 +20,17 @@ struct BoothConfig: Sendable {
         return BoothConfig(baseURL: base, socketURL: socket, token: token)
     }()
 
-    private static func value(_ key: String) -> String? {
-        guard let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func clean(_ raw: String?) -> String? {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty || trimmed.hasPrefix("$(") ? nil : trimmed
+    }
+
+    private static func plistValue(_ key: String) -> String? {
+        clean(Bundle.main.object(forInfoDictionaryKey: key) as? String)
     }
 }
 
 enum BoothIdentity {
-    static let installID: String = {
-        let key = "boothInstallID"
-        if let existing = UserDefaults.standard.string(forKey: key) { return existing }
-        let id = UUID().uuidString
-        UserDefaults.standard.set(id, forKey: key)
-        return id
-    }()
-
     static let appVersion: String = {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "0"
@@ -52,48 +49,9 @@ enum BoothTime {
     }
 }
 
-enum BoothOutcome: Sendable {
-    case ok
-    case unauthorized
-    case rejected(Int)
-    case failed(String)
-
-    var summary: String {
-        switch self {
-        case .ok: "ok"
-        case .unauthorized: "401 unauthorized (check BOOTH_TOKEN)"
-        case .rejected(let status): "HTTP \(status)"
-        case .failed(let reason): reason
-        }
-    }
-}
-
-struct BoothHTTP: Sendable {
-    let config: BoothConfig
-
-    private static let session: URLSession = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 20
-        configuration.timeoutIntervalForResource = 60
-        return URLSession(configuration: configuration)
-    }()
-
-    func post(_ path: String, body: Data) async -> BoothOutcome {
-        var request = URLRequest(url: config.baseURL.appending(path: path))
-        request.httpMethod = "POST"
-        request.httpBody = body
-        request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        do {
-            let (_, response) = try await Self.session.data(for: request)
-            guard let status = (response as? HTTPURLResponse)?.statusCode else { return .failed("no HTTP response") }
-            switch status {
-            case 200..<300: return .ok
-            case 401: return .unauthorized
-            default: return .rejected(status)
-            }
-        } catch {
-            return .failed(error.localizedDescription)
-        }
+enum BoothBackoff {
+    static func delay(failures: Int, cap: TimeInterval, jitter: ClosedRange<Double> = 0.5...1.5) -> TimeInterval {
+        let exponent = Double(min(max(failures - 1, 0), 10))
+        return min(cap, pow(2, exponent)) * Double.random(in: jitter)
     }
 }
