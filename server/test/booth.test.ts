@@ -1,4 +1,4 @@
-import { createScheduledController, evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
+import { createExecutionContext, createScheduledController, evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src";
@@ -435,7 +435,7 @@ describe("logs and orders", () => {
     await env.DB.prepare("INSERT INTO logs (id, device, ts, level, message, received_at) VALUES ('old', 'd', ?, 'info', 'old', ?), ('new', 'd', ?, 'info', 'new', ?)")
       .bind(old, old, Date.now(), Date.now())
       .run();
-    await worker.scheduled(createScheduledController({ cron: "17 9 * * *" }), env);
+    await worker.scheduled(createScheduledController({ cron: "17 9 * * *" }), env, createExecutionContext());
     const ids = (await env.DB.prepare("SELECT id FROM logs WHERE id IN ('old', 'new')").all<{ id: string }>()).results.map((r) => r.id);
     expect(ids).toEqual(["new"]);
   });

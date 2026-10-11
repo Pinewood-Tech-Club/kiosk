@@ -9,6 +9,13 @@ const timestamp = z.union([z.string().max(64), z.number().finite()]).optional();
 export const DeviceId = z.string().regex(/^[A-Za-z0-9._-]{1,64}$/);
 export const FlavorId = z.string().regex(/^[a-z0-9_-]{1,32}$/);
 
+export const ToppingId = z.string().regex(/^[a-z0-9_-]{1,32}$/);
+export const ReceiptToken = z.string().regex(/^[A-Za-z0-9_-]{22,64}$/, "22 to 64 of A-Z a-z 0-9 _ -");
+
+export const ORDER_STATUSES = ["paid", "preparing", "ready", "collected", "canceled"] as const;
+export const OrderStatus = z.enum(ORDER_STATUSES);
+export type OrderStatus = z.infer<typeof OrderStatus>;
+
 export const Flavor = z.object({ id: FlavorId, name: text(64).pipe(z.string().min(1)) });
 
 export const KioskHealth = z.object({
@@ -55,6 +62,7 @@ export type Event = z.infer<typeof Event>;
 export const Action = z.discriminatedUnion("type", [
   z.object({ id, type: z.literal("ack"), alertId: z.string().min(1).max(64), by: text(40).optional() }),
   z.object({ id, type: z.literal("setSoldOut"), flavor: FlavorId, soldOut: z.boolean(), by: text(40).optional() }),
+  z.object({ id, type: z.literal("setOrderStatus"), orderId: id, status: OrderStatus, by: text(40).optional() }),
 ]);
 export type Action = z.infer<typeof Action>;
 
@@ -98,13 +106,32 @@ export const Order = z.object({
   simulated: z.boolean().default(false),
   paidAt: timestamp,
   appVersion: text(40).optional(),
+  receiptToken: ReceiptToken.nullable().optional(),
   items: z
-    .array(z.object({ vessel: text(20), flavors: z.array(text(32)).max(10) }))
+    .array(z.object({ vessel: text(20), flavors: z.array(text(32)).max(10), toppings: z.array(text(32)).max(20).optional() }))
     .min(1)
     .max(50),
   lines: z.array(z.object({ title: text(80), detail: text(200), cents: z.number().int() })).max(200).optional(),
 });
 export type Order = z.infer<typeof Order>;
+
+export const CartItem = z.object({
+  vessel: z.enum(["cup", "cone"]),
+  flavors: z.array(FlavorId).min(1).max(3),
+  toppings: z.array(ToppingId).max(10).default([]),
+});
+
+export const CheckoutBody = z.object({
+  id,
+  receiptToken: ReceiptToken,
+  orderNumber: z.number().int().min(0).max(1_000_000_000).optional(),
+  customerName: text(80).pipe(z.string().min(1)),
+  sourceName: text(80).optional(),
+  locationId: z.string().max(64).optional(),
+  quotedCents: z.number().int().min(0).max(10_000_000).optional(),
+  items: z.array(CartItem).min(1).max(20),
+});
+export type CheckoutBody = z.infer<typeof CheckoutBody>;
 
 export const OrdersBody = z.object({ orders: z.array(z.unknown()).min(1).max(50) });
 

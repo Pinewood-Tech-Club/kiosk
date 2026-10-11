@@ -27,14 +27,24 @@
       "name": "CLIENT_LIMITER",
       "namespace_id": "4208",
       "simple": { "limit": 600, "period": 60 }
+    },
+    {
+      "name": "LOGIN_LIMITER",
+      "namespace_id": "4210",
+      "simple": { "limit": 10, "period": 60 }
     }
   ],
   "triggers": {
     "crons": ["17 9 * * *"]
   },
   "vars": {
-    "LOG_RETENTION_DAYS": "30"
+    "LOG_RETENTION_DAYS": "30",
+    "SQUARE_ENVIRONMENT": "production",
+    "SQUARE_LOCATION_ID": "",
+    "SQUARE_CATEGORY_NAME": "TC"
   },
+  // Optional secrets, not listed as required so a deploy without them still works (the Square routes then answer
+  // 503 not_configured): SQUARE_APPLICATION_ID, SQUARE_APPLICATION_SECRET, SQUARE_ACCESS_TOKEN, STAFF_PIN.
   "secrets": {
     "required": ["BOOTH_TOKEN", "STAFF_TOKEN"]
   },
@@ -60,10 +70,20 @@
           "name": "CLIENT_LIMITER",
           "namespace_id": "4209",
           "simple": { "limit": 600, "period": 60 }
+        },
+        {
+          "name": "LOGIN_LIMITER",
+          "namespace_id": "4211",
+          "simple": { "limit": 10, "period": 60 }
         }
       ],
-      "triggers": { "crons": [] },
-      "vars": { "LOG_RETENTION_DAYS": "7" },
+      "triggers": { "crons": ["47 9 * * *"] },
+      "vars": {
+        "LOG_RETENTION_DAYS": "7",
+        "SQUARE_ENVIRONMENT": "sandbox",
+        "SQUARE_LOCATION_ID": "LEAK1T7R20090",
+        "SQUARE_CATEGORY_NAME": "TC"
+      },
       "secrets": { "required": ["BOOTH_TOKEN", "STAFF_TOKEN"] }
     }
   }

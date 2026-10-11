@@ -10,11 +10,12 @@ import {
   type FlavorState,
   type ItemResult,
   type KioskState,
+  type OrderSummary,
   type Role,
   type ServerMessage,
   type Severity,
 } from "./protocol";
-import { Action, ClientMessage, Event, describe, type HelpReason, type KioskHealth } from "./schema";
+import { Action, ClientMessage, Event, describe, type HelpReason, type KioskHealth, type OrderStatus } from "./schema";
 
 export const OFFLINE_AFTER_MS = 30_000;
 export const HEALTH_GRACE_MS = 45_000;
@@ -25,6 +26,9 @@ export const FLOOD_LIMIT = 60;
 export const FLOOD_WINDOW_MS = 10_000;
 const RECENT_ALERTS_MS = 3 * 60 * 60_000;
 const RETENTION_MS = 7 * 24 * 60 * 60_000;
+export const OPEN_ORDER_STATUSES: OrderStatus[] = ["paid", "preparing", "ready"];
+const RECENT_ORDERS_MS = 3 * 60 * 60_000;
+const MAX_FEED_ORDERS = 100;
 
 interface Attachment {
   role: Role;
@@ -140,6 +144,7 @@ export class Booth extends DurableObject<Env> {
   private flood = new Map<WebSocket, { start: number; count: number }>();
   /** Patches wait here until their storage writes are committed, so a rolled-back write is never broadcast. */
   private outgoing: string[] = [];
+  private pendingStatuses = new Map<string, OrderSummary>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -171,6 +176,14 @@ export class Booth extends DurableObject<Env> {
           PRIMARY KEY (device, id)
         ) WITHOUT ROWID;
         CREATE INDEX IF NOT EXISTS processed_at ON processed (at);
+        CREATE TABLE IF NOT EXISTS orders_feed (
+          id TEXT PRIMARY KEY,
+          data TEXT NOT NULL,
+          status TEXT NOT NULL,
+          paid_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS orders_feed_paid ON orders_feed (paid_at);
       `);
     });
   }
@@ -350,6 +363,29 @@ export class Booth extends DurableObject<Env> {
       return this.apply(device, items, now);
     } finally {
       this.flushPatches();
+      await this.persistOrderStatuses();
+    }
+  }
+
+  /** Adds newly paid orders to the staff feed. Orders already in the feed are left alone, so retries are harmless. */
+  async recordOrders(orders: OrderSummary[]): Promise<{ added: number; rev: number }> {
+    try {
+      let added = 0;
+      this.transaction(() => {
+        for (const order of orders) {
+          const exists = this.sql.exec("SELECT 1 FROM orders_feed WHERE id = ?", order.id).toArray().length > 0;
+          if (exists) continue;
+          this.sql.exec(
+            "INSERT INTO orders_feed (id, data, status, paid_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            order.id, JSON.stringify(order), order.status, order.paidAt, order.statusAt,
+          );
+          this.commit({ kind: "order", order });
+          added++;
+        }
+      });
+      return { added, rev: this.rev() };
+    } finally {
+      this.flushPatches();
     }
   }
 
@@ -399,7 +435,9 @@ export class Booth extends DurableObject<Env> {
       const result = this.transaction(() => {
         const error = action.type === "ack"
           ? this.ack(action.alertId, action.by ?? null, now)
-          : this.setSoldOut(action.flavor, action.soldOut, action.by ?? null, now);
+          : action.type === "setSoldOut"
+            ? this.setSoldOut(action.flavor, action.soldOut, action.by ?? null, now)
+            : this.setOrderStatus(action.orderId, action.status, action.by ?? null, now);
         const stored: ItemResult = error ? { id: action.id, status: "rejected", error } : { id: action.id, status: "ok" };
         this.sql.exec("INSERT INTO processed (device, id, result, at) VALUES (?, ?, ?, ?)", device, action.id, JSON.stringify(stored), now);
         return stored;
@@ -468,6 +506,33 @@ export class Booth extends DurableObject<Env> {
       detail: `${soldOut ? "Greyed out" : "Available again"} on the kiosk${by ? `, set by ${by}` : ""}.`,
     }, now);
     return null;
+  }
+
+  private setOrderStatus(orderID: string, status: OrderStatus, by: string | null, now: number): ApiError | null {
+    const row = this.sql.exec<{ data: string }>("SELECT data FROM orders_feed WHERE id = ?", orderID).toArray()[0];
+    if (!row) return { code: "not_found", message: "No such order in the feed" };
+    const current = JSON.parse(row.data) as OrderSummary;
+    if (current.status === status) return null;
+    const order: OrderSummary = { ...current, status, statusAt: now, statusBy: by };
+    this.sql.exec("UPDATE orders_feed SET data = ?, status = ?, updated_at = ? WHERE id = ?", JSON.stringify(order), status, now, orderID);
+    this.pendingStatuses.set(orderID, order);
+    this.commit({ kind: "order", order });
+    return null;
+  }
+
+  /** D1 holds the permanent order record; the hub's copy is what staff see live, so D1 is updated best-effort. */
+  private async persistOrderStatuses() {
+    const pending = [...this.pendingStatuses.values()];
+    this.pendingStatuses.clear();
+    for (const order of pending) {
+      try {
+        await this.env.DB.prepare("UPDATE orders SET status = ?, status_at = ?, status_by = ? WHERE id = ?")
+          .bind(order.status, order.statusAt, order.statusBy, order.id)
+          .run();
+      } catch (error) {
+        console.warn({ event: "order-status-d1-failed", id: order.id, error: String(error) });
+      }
+    }
   }
 
   private kioskContact(now: number, update: { connected?: boolean; screen?: string }) {
@@ -556,7 +621,18 @@ export class Booth extends DurableObject<Env> {
       )
       .toArray()
       .map(toAlert);
-    return { rev: this.rev(), flavors: this.flavors(), kiosk: this.kiosk(), alerts, serverTime: now };
+    const orders = this.sql
+      .exec<{ data: string }>(
+        `SELECT data FROM orders_feed
+         WHERE status IN (${OPEN_ORDER_STATUSES.map(() => "?").join(", ")}) OR updated_at > ?
+         ORDER BY paid_at DESC LIMIT ?`,
+        ...OPEN_ORDER_STATUSES,
+        now - RECENT_ORDERS_MS,
+        MAX_FEED_ORDERS,
+      )
+      .toArray()
+      .map((row) => JSON.parse(row.data) as OrderSummary);
+    return { rev: this.rev(), flavors: this.flavors(), kiosk: this.kiosk(), alerts, orders, serverTime: now };
   }
 
   private rev(): number {
@@ -635,6 +711,7 @@ export class Booth extends DurableObject<Env> {
   private prune(now: number) {
     this.sql.exec("DELETE FROM alerts WHERE created_at < ? AND (acked_at IS NOT NULL OR resolved_at IS NOT NULL)", now - RETENTION_MS);
     this.sql.exec("DELETE FROM processed WHERE at < ?", now - RETENTION_MS);
+    this.sql.exec("DELETE FROM orders_feed WHERE paid_at < ? AND updated_at < ?", now - RETENTION_MS, now - RETENTION_MS);
   }
 
   private kiosk(): KioskState {

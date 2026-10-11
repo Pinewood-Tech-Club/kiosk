@@ -1,4 +1,4 @@
-import type { HelpReason, KioskHealth } from "./schema";
+import type { HelpReason, KioskHealth, OrderStatus } from "./schema";
 
 export type Role = "kiosk" | "staff";
 
@@ -35,18 +35,40 @@ export interface Alert {
   resolvedAt: number | null;
 }
 
+export interface OrderItem {
+  vessel: string;
+  flavors: string[];
+  toppings: string[];
+}
+
+export interface OrderSummary {
+  id: string;
+  orderNumber: number | null;
+  customerName: string | null;
+  items: OrderItem[];
+  totalCents: number;
+  simulated: boolean;
+  paidAt: number;
+  receivedAt: number;
+  status: OrderStatus;
+  statusAt: number;
+  statusBy: string | null;
+}
+
 export interface BoothState {
   rev: number;
   flavors: FlavorState[];
   kiosk: KioskState;
   alerts: Alert[];
+  orders: OrderSummary[];
   serverTime: number;
 }
 
 export type Change =
   | { kind: "flavors"; flavors: FlavorState[] }
   | { kind: "alert"; alert: Alert }
-  | { kind: "kiosk"; kiosk: KioskState };
+  | { kind: "kiosk"; kiosk: KioskState }
+  | { kind: "order"; order: OrderSummary };
 
 export interface ApiError {
   code: string;
