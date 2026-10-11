@@ -20,11 +20,11 @@ struct DrizzleStyle {
     static let chocolate = DrizzleStyle(name: "chocolate",
                                         color: UIColor(red: 0.085, green: 0.03, blue: 0.017, alpha: 1),
                                         thinColor: UIColor(red: 0.36, green: 0.15, blue: 0.075, alpha: 1),
-                                        width: 0.0056, viscosity: 0.45, gloss: 1, dripTendency: 0.9)
+                                        width: 0.0066, viscosity: 0.45, gloss: 1, dripTendency: 0.9)
     static let caramel = DrizzleStyle(name: "caramel",
                                       color: UIColor(red: 0.5, green: 0.21, blue: 0.04, alpha: 1),
                                       thinColor: UIColor(red: 0.86, green: 0.52, blue: 0.17, alpha: 1),
-                                      width: 0.0058, viscosity: 0.75, gloss: 0.95, dripTendency: 0.5)
+                                      width: 0.0068, viscosity: 0.75, gloss: 0.95, dripTendency: 0.5)
 }
 
 extension DrizzleStyle {
@@ -570,7 +570,7 @@ private extension DrizzleLayer {
         let position = angle / (2 * .pi) * Float(limitDirections)
         let k = Int(position) % limitDirections, x = position - Float(Int(position))
         let limit = limits[k] + (limits[(k + 1) % limitDirections] - limits[k]) * x
-        let knee = 0.7 * limit
+        let knee = 0.6 * limit
         guard r > knee else { return q }
         return q * ((knee + (limit - knee) * tanh((r - knee) / (limit - knee))) / r)
     }
@@ -584,8 +584,8 @@ private extension DrizzleLayer {
         points.reserveCapacity(count)
         normals.reserveCapacity(count)
         let limits = Self.reachLimits(surface, center: center, radius: radius)
-        for sample in path {
-            let (p, n) = Self.probe(surface, center + Self.fitted(sample.q, limits) * radius, center: center)
+        for q in Self.smoothed(path.map { Self.fitted($0.q, limits) }, reach: 4) {
+            let (p, n) = Self.probe(surface, center + q * radius, center: center)
             points.append(p)
             normals.append(n)
         }
@@ -607,10 +607,10 @@ private extension DrizzleLayer {
             for (k, sign) in [Float(-1), 1].enumerated() {
                 let q = p + side * (sign * reach)
                 if let hit = surface.sample(x: q.x, z: q.z) {
-                    lift[k] = min(max(simd_dot(SIMD3(q.x, hit.height, q.z) - p, n), -0.5 * reach), 0.25 * reach)
+                    lift[k] = min(max(simd_dot(SIMD3(q.x, hit.height, q.z) - p, n), -0.25 * reach), 0.15 * reach)
                 }
             }
-            if lift.x.isNaN { lift.x = lift.y.isNaN ? -0.3 * reach : lift.y }
+            if lift.x.isNaN { lift.x = lift.y.isNaN ? -0.25 * reach : lift.y }
             if lift.y.isNaN { lift.y = lift.x }
             lifts.append(lift)
             var around: Float = 0, found: Float = 0
@@ -622,7 +622,7 @@ private extension DrizzleLayer {
             }
             pools.append(found < 4 ? 0 : smoothstep(-0.0002, 0.0004, around / found - raw[i].y))
         }
-        lifts = Self.smoothed(lifts, reach: 3)
+        lifts = Self.smoothed(lifts, reach: 5)
         var bends: [Float] = (0..<count).map { i in
             let p0 = points[max(i - 4, 0)], p1 = points[i], p2 = points[min(i + 4, count - 1)]
             let d1 = p1 - p0, d2 = p2 - p1, chord = simd_length(p2 - p0)
