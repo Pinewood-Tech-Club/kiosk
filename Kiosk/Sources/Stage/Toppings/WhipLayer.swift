@@ -229,7 +229,7 @@ final class WhipLayer: ToppingLayer {
             let ends = 1 + 0.6 * (1 - Self.smoothstep(0, 2.5, x)) + 1.1 * (1 - Self.smoothstep(0, 2, (sweep.length - ring.arc) / a0))
             for k in 0..<ridges {
                 let o = Float(k) * 17.3
-                let puff = 0.4 * noise(x * 1.1 + o) + 0.35 * noise(x * 2.6 + o + 101) + 0.25 * noise(x * 5.5 + o + 151)
+                let puff = 0.35 * noise(x * 1.1 + o) + 0.3 * noise(x * 2.6 + o + 101) + 0.35 * noise(x * 5.5 + o + 151)
                 let depth = 0.7 + 0.5 * noise(x * 1.2 + o + 211) + 0.45 * noise(x * 3.1 + o + 241)
                 lobes[k] = [puff * ends, max(depth, 0.08)]
                 let shift = half * 0.45 * (2 * .pi / Float(ridges)) * noise(x * 2 + o + 307)
@@ -361,8 +361,8 @@ struct WhipStyle {
         ridges = Float.random(in: 0...1, using: &rng) < 0.6 ? 8 : 7
         twist = .random(in: 0.25...0.45, using: &rng) * (Bool.random(using: &rng) ? 1 : -1)
         spread = .random(in: 0.68...0.74, using: &rng)
-        tube = .random(in: 0.62...0.7, using: &rng)
-        peak = .random(in: 1.2...1.5, using: &rng)
+        tube = .random(in: 0.66...0.74, using: &rng)
+        peak = .random(in: 0.9...1.2, using: &rng)
         curl = .random(in: 1.2...1.8, using: &rng)
         noise = WhipNoise(rng: &rng)
     }
@@ -546,7 +546,7 @@ struct WhipSweep {
             let puff = 1 + 0.13 * noise(s * 8 + 400) + 0.07 * noise(s * 21 + 450)
             let a = a0 * (1 - 0.3 * spiral) * (0.6 + 0.4 * WhipLayer.smoothstep(0, 0.08, s)) * puff
             if u > 0 {
-                let pitch = 1.35 * sin(.pi * 0.8 * u) - 1.0 * u
+                let pitch = 1.2 * sin(.pi * 0.8 * u) - 1.3 * u
                 let turn = style.direction * style.curl * u
                 let along = simd_quatf(angle: turn, axis: [0, 1, 0]).act(heading)
                 rise += (cos(pitch) * along + SIMD3(0, sin(pitch), 0)) * (a0 * style.peak * du)
@@ -577,7 +577,7 @@ struct WhipSweep {
                 let below = lerp(base[back], base[back + 1], t)
                 let belowR = lerp(spiralRadius[back], spiralRadius[back + 1], t)
                 let belowA = lerp(stackRadius[back], stackRadius[back + 1], t)
-                let reach = 0.82 * (belowA + a)
+                let reach = 0.78 * (belowA + a)
                 let d = belowR - r
                 let climb = WhipLayer.smoothstep(-ramp, 0, behind)
                 onCream = below + climb * squash * sqrt(max(reach * reach - d * d, 0))
@@ -674,7 +674,7 @@ final class WhipMesh {
     static let capReach: Float = 0.62
     static let samplesPerRidge = 9
     static let maxRings = bodyRings + 2 + 2 * capRings + 2
-    static let puff: Float = 0.18
+    static let puff: Float = 0.22
     static let groove: Float = 0.3
     static let grain: Float = 0.035
     static let bubble: Float = 0.12
