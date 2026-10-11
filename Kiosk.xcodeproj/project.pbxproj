@@ -36,6 +36,7 @@
 		8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */; };
 		90AAEE7345EA5E45D4B405EF /* BoothHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 275115659D156690770E9F4D /* BoothHealth.swift */; };
 		9202055A9FECFAEDCE95CD2D /* BuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A313CBED428256A71A858FEA /* BuilderView.swift */; };
+		94E1859C196513DCA67FD99A /* GummyBears-CC-BY-4.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3E7BD938DB6C7D3B7D320A5E /* GummyBears-CC-BY-4.0.txt */; };
 		9BA8BBFF27C6B6D87613C68E /* AssetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3EB41C1A0D41F89C6D8FE8A /* AssetLibrary.swift */; };
 		9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309806DC452BB62BEE356569 /* DebugBar.swift */; };
 		9FB4EB59530BF0754BDBC1F3 /* SquareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D96DB54BCDC2006C377D8F /* SquareService.swift */; };
@@ -92,6 +93,7 @@
 		3576D0AAEDEAFA110046DA31 /* AttractView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttractView.swift; sourceTree = "<group>"; };
 		37AB58ED0D97D8805BD8DAA1 /* NameEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameEntryView.swift; sourceTree = "<group>"; };
 		37DFD4680D9AC7197C5C0B25 /* Receipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Receipt.swift; sourceTree = "<group>"; };
+		3E7BD938DB6C7D3B7D320A5E /* GummyBears-CC-BY-4.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "GummyBears-CC-BY-4.0.txt"; sourceTree = "<group>"; };
 		3FA3E60559106CA02A126E9A /* NotoSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Regular.ttf"; sourceTree = "<group>"; };
 		41288991151D7382A2F4C89D /* 3D */ = {isa = PBXFileReference; lastKnownFileType = folder; name = 3D; path = Kiosk/Resources/3D; sourceTree = SOURCE_ROOT; };
 		425B72639F56A451EDADC970 /* Layout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Layout.swift; sourceTree = "<group>"; };
@@ -320,6 +322,7 @@
 		A6233471908EE83B074D0C11 /* Licenses */ = {
 			isa = PBXGroup;
 			children = (
+				3E7BD938DB6C7D3B7D320A5E /* GummyBears-CC-BY-4.0.txt */,
 				6309D5E2BEA9F305D01718A3 /* Lucide-LICENSE.txt */,
 				5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */,
 			);
@@ -445,6 +448,7 @@
 			files = (
 				CFA9251FBFBDD52ED6806157 /* 3D in Resources */,
 				5E0527E4240E6371F48181A6 /* Assets.xcassets in Resources */,
+				94E1859C196513DCA67FD99A /* GummyBears-CC-BY-4.0.txt in Resources */,
 				A193DDDF8212752C4341DAC5 /* Lucide-LICENSE.txt in Resources */,
 				38B1CA4705AFB81ABDBA21E7 /* NotoSerif-Bold.ttf in Resources */,
 				2F1D9CFC58D885C3AD6E9BEA /* NotoSerif-Medium.ttf in Resources */,

@@ -140,4 +140,4 @@ pnpm chaos                 # staging: drops, half-open sockets, a redeploy, repl
 - Lock the iPad to the app with Guided Access (Settings → Accessibility).
 - The terms only allow attended use: the kiosk must be within staff line of sight and inaccessible outside business hours.
 
-Fonts: Noto Serif (SIL Open Font License). Icons: Lucide (ISC). Licenses are in `Kiosk/Resources/Licenses/`.
+Fonts: Noto Serif (SIL Open Font License). Icons: Lucide (ISC). Gummy bear model: "Gummy Bears" by Styro (CC-BY-4.0), modified. Licenses are in `Kiosk/Resources/Licenses/`.
