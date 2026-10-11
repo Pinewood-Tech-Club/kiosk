@@ -58,19 +58,15 @@ private struct EditingSlot: View {
                 .allowsHitTesting(false)
 
             Button { app.finishEditing(then: .newItem) } label: {
-                HStack(spacing: 5) {
-                    LucideIcon(name: "check", size: 15)
-                    Text("Done").font(Theme.sans(15, .semibold))
-                }
-                .foregroundStyle(Theme.ink)
-                .padding(.horizontal, 12)
-                .frame(height: 30)
-                .glassEffect(.regular.interactive(), in: .capsule)
-                .frame(width: slotSize.width, height: slotSize.height)
-                .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
+                LucideIcon(name: "check", size: 28)
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 58, height: 58)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .frame(width: slotSize.width, height: slotSize.height)
+                    .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Finish editing this item")
+            .accessibilityLabel("Done editing")
             .opacity(inView ? 1 : 0)
             .allowsHitTesting(inView)
             .animation(.easeInOut(duration: 0.2), value: inView)
