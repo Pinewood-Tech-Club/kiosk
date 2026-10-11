@@ -95,16 +95,16 @@ final class DrizzleLayer: ToppingLayer {
     /// Once the pour has finished, resurfacing and draining only move vertices, so they blend two prebuilt meshes.
     private var blend: Blend?
 
-    private static let ringSides = 12
+    private static let ringSides = 10
     private static let floatsPerVertex = 8
     private static let capRings = 4
-    private static let dripRings = 18
+    private static let dripRings = 15
     private static let dripPathPoints = 28
     private static let strandRings = 14
     private static let streamLead: Double = 0.1
     private static let streamCut: Double = 0.16
     private static let removeDuration: Double = 0.5
-    private static let nozzleHeight: Float = 0.028
+    private static let nozzleHeight: Float = 0.017
     nonisolated private static let crown: Float = 0.6
     /// Per vertex of the ribbon's cross-section: x across the width, height, its slope, and 1 on the top face.
     private static let ribbonTable: [Float] = {
@@ -113,7 +113,7 @@ final class DrizzleLayer: ToppingLayer {
             let x = cos(Float.pi * Float(k) / 8)
             table += [x, crownShape(x), crownSlope(x), 1]
         }
-        for x: Float in [-0.7, 0, 0.7] { table += [x, 0, 0, 0] }
+        table += [0, 0, 0, 0]
         return table
     }()
     private static let roundTable: [Float] = {
@@ -273,7 +273,7 @@ private struct DrizzleCoverSurface: ToppingSurface {
     let halfWidths: [Float]
     let heights: [Float]
     private let cells: [SIMD2<Int32>: [Int32]]
-    private static let cell: Float = 0.004
+    private static let cell: Float = 0.005
 
     init(below: ToppingSurface, points: [SIMD2<Float>], halfWidths: [Float], heights: [Float]) {
         self.below = below
@@ -434,7 +434,7 @@ private extension DrizzleLayer {
             dense[i].q = q
         }
 
-        let spacingUnit = 0.001 / radius
+        let spacingUnit = 0.0012 / radius
         var samples: [PathSample] = [PathSample(q: dense[0].q, time: 0, flow: dense[0].speed)]
         var carried: Float = 0
         var time: Float = 0
@@ -767,7 +767,7 @@ private extension DrizzleLayer {
     }
 
     func makeMesh() {
-        let rings = (path.count + 2 * Self.capRings + 2) + drips.count * (Self.dripRings + 1) + (Self.strandRings + 1)
+        let rings = (path.count + 2 * Self.capRings + 2) + drips.count * (Self.dripRings + 1) + (Self.strandRings + 1 + Self.capRings)
         let vertexCount = rings * Self.ringSides
         let indexCount = rings * Self.ringSides * 6
         let attributes: [LowLevelMesh.Attribute] = [
@@ -803,60 +803,60 @@ private extension DrizzleLayer {
 
     func emit(_ ring: Ring) {
         guard let scratch, scratch.floatCount + Self.ringSides * Self.floatsPerVertex <= scratch.floatCapacity else { return }
-        let out = scratch.floats + scratch.floatCount
+        var out = scratch.floats + scratch.floatCount
         scratch.floatCount += Self.ringSides * Self.floatsPerVertex
-        let a = max(ring.a, 1e-6), h = max(ring.h, 1e-6), scale = ring.scale
+        let a: Float = ring.a > 1e-6 ? ring.a : 1e-6, h: Float = ring.h > 1e-6 ? ring.h : 1e-6, scale = ring.scale
         let cx = ring.center.x, cy = ring.center.y, cz = ring.center.z
         let sx = ring.side.x, sy = ring.side.y, sz = ring.side.z
         let ux = ring.up.x, uy = ring.up.y, uz = ring.up.z
         let lx = ring.along.x * ring.lean, ly = ring.along.y * ring.lean, lz = ring.along.z * ring.lean
         let leans = ring.lean != 0
-        func store(_ o: Int, _ px: Float, _ py: Float, _ pz: Float, _ nx: Float, _ ny: Float, _ nz: Float, _ u: Float) {
-            var nx = nx, ny = ny, nz = nz
-            if leans {
-                nx += lx; ny += ly; nz += lz
-                let inverse = 1 / (nx * nx + ny * ny + nz * nz).squareRoot()
-                nx *= inverse; ny *= inverse; nz *= inverse
-            }
-            out[o] = px; out[o + 1] = py; out[o + 2] = pz
-            out[o + 3] = nx; out[o + 4] = ny; out[o + 5] = nz
-            out[o + 6] = u; out[o + 7] = 0.5
-        }
-        if ring.round {
-            let r = a * scale
-            Self.roundTable.withUnsafeBufferPointer { table in
-                for k in 0..<Self.ringSides {
-                    let c = table[2 * k], s = table[2 * k + 1]
-                    let nx = sx * c + ux * s, ny = sy * c + uy * s, nz = sz * c + uz * s
-                    store(k * Self.floatsPerVertex, cx + nx * r, cy + ny * r, cz + nz * r, nx, ny, nz, 0.3)
-                }
-            }
-            return
-        }
+        let round = ring.round
         let reach = lateralReach
         let tilt = (ring.lift.y - ring.lift.x) * 0.5 / reach
         let bend = (ring.lift.y + ring.lift.x) / (reach * reach)
         let depth = 1 / (halfWidth * 0.55)
-        let right = ring.bend > 0 ? min(a, 0.85 / ring.bend) : a
-        let left = ring.bend < 0 ? min(a, -0.85 / ring.bend) : a
-        Self.ribbonTable.withUnsafeBufferPointer { table in
+        let right = ring.bend > 0 && 0.85 / ring.bend < a ? 0.85 / ring.bend : a
+        let left = ring.bend < 0 && -0.85 / ring.bend < a ? -0.85 / ring.bend : a
+        let table = round ? Self.roundTable : Self.ribbonTable
+        table.withUnsafeBufferPointer { table in
+            let t = table.baseAddress!
             for k in 0..<Self.ringSides {
-                let x = table[4 * k], a = x >= 0 ? right : left, l = x * a
-                let lift = (tilt + 0.5 * bend * l) * l
-                let o = k * Self.floatsPerVertex
-                if table[4 * k + 3] > 0 {
-                    let rise = h * table[4 * k + 1]
-                    let slope = h * table[4 * k + 2] / a + tilt + bend * l
-                    let lateral = l * scale, normal = (rise + lift) * scale
-                    let inverse = 1 / (1 + slope * slope).squareRoot()
-                    store(o, cx + sx * lateral + ux * normal, cy + sy * lateral + uy * normal, cz + sz * lateral + uz * normal,
-                          (ux - sx * slope) * inverse, (uy - sy * slope) * inverse, (uz - sz * slope) * inverse,
-                          0.02 + 0.96 * min(rise * depth, 1))
+                var px: Float, py: Float, pz: Float, nx: Float, ny: Float, nz: Float, u: Float
+                if round {
+                    let c = t[2 * k], s = t[2 * k + 1], r = a * scale
+                    nx = sx * c + ux * s; ny = sy * c + uy * s; nz = sz * c + uz * s
+                    px = cx + nx * r; py = cy + ny * r; pz = cz + nz * r
+                    u = 0.3
                 } else {
-                    let lateral = l * scale, normal = (lift - 0.4 * h) * scale
-                    store(o, cx + sx * lateral + ux * normal, cy + sy * lateral + uy * normal, cz + sz * lateral + uz * normal,
-                          -ux, -uy, -uz, 0.5)
+                    let x = t[4 * k], a = x >= 0 ? right : left, l = x * a
+                    let lift = (tilt + 0.5 * bend * l) * l
+                    let lateral = l * scale
+                    if t[4 * k + 3] > 0 {
+                        let rise = h * t[4 * k + 1]
+                        let slope = h * t[4 * k + 2] / a + tilt + bend * l
+                        let normal = (rise + lift) * scale
+                        let inverse = 1 / (1 + slope * slope).squareRoot()
+                        px = cx + sx * lateral + ux * normal; py = cy + sy * lateral + uy * normal; pz = cz + sz * lateral + uz * normal
+                        nx = (ux - sx * slope) * inverse; ny = (uy - sy * slope) * inverse; nz = (uz - sz * slope) * inverse
+                        let thickness = rise * depth
+                        u = 0.02 + 0.96 * (thickness < 1 ? thickness : 1)
+                    } else {
+                        let normal = (lift - 0.4 * h) * scale
+                        px = cx + sx * lateral + ux * normal; py = cy + sy * lateral + uy * normal; pz = cz + sz * lateral + uz * normal
+                        nx = -ux; ny = -uy; nz = -uz
+                        u = 0.5
+                    }
                 }
+                if leans {
+                    nx += lx; ny += ly; nz += lz
+                    let inverse = 1 / (nx * nx + ny * ny + nz * nz).squareRoot()
+                    nx *= inverse; ny *= inverse; nz *= inverse
+                }
+                out.pointee = px; out[1] = py; out[2] = pz
+                out[3] = nx; out[4] = ny; out[5] = nz
+                out[6] = u; out[7] = 0.5
+                out += Self.floatsPerVertex
             }
         }
     }
@@ -1107,10 +1107,12 @@ private extension DrizzleLayer {
             let t = simd_normalize(tangent)
             let side = simd_normalize(simd_cross(t, reference))
             let up = simd_cross(side, t)
-            let r = radius * (0.62 + 0.38 * s) * smoothstep(1.0, 0.93, s).squareRoot()
-            emit(Ring(center: p, side: side, up: up, along: t, a: max(r, 1e-5), h: max(r, 1e-5), round: true))
+            let r = radius * (0.62 + 0.38 * s)
+            let ring = Ring(center: p, side: side, up: up, along: t, a: max(r, 1e-5), h: max(r, 1e-5), round: true)
+            emit(ring)
+            if j == Self.strandRings { emitCap(from: ring, direction: 1) }
         }
-        stitch(rings: Self.strandRings + 1)
+        stitch(rings: Self.strandRings + 1 + Self.capRings)
     }
 }
 
