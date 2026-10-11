@@ -545,6 +545,9 @@ extension Stage {
             root.addChild(rig.root)
             releaseTime = now - 2
             yawVelocity = Self.baseSpin
+            if UserDefaults.standard.string(forKey: "kioskToppingLab") == "whip" {
+                toppingLab = ToppingLab(stage: self, rig: rig)
+            }
         }
         controlsVisible = true
         setStep(step, animated: false)

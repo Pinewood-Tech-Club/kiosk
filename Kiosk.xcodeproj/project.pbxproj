@@ -14,6 +14,7 @@
 		1BB0562605F01093714A5FD4 /* BoothCheckout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DBF1469A678F767112B34C4 /* BoothCheckout.swift */; };
 		1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF36BF94972C41A51D71D966 /* KioskApp.swift */; };
 		1D208167E95C76C2B5B5A490 /* BoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */; };
+		26DDA3A6B7252388900B3E37 /* ToppingLab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A1568D90FE5A52B433D80B /* ToppingLab.swift */; };
 		2B591179C416EC14B3DF661F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF77AD1D7C8D64414EA6DB92 /* Theme.swift */; };
 		2F1D9CFC58D885C3AD6E9BEA /* NotoSerif-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */; };
 		31E11CF00B709FFA3131CDD2 /* PaymentProblem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */; };
@@ -47,6 +48,7 @@
 		90AAEE7345EA5E45D4B405EF /* BoothHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 275115659D156690770E9F4D /* BoothHealth.swift */; };
 		9202055A9FECFAEDCE95CD2D /* BuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A313CBED428256A71A858FEA /* BuilderView.swift */; };
 		94E1859C196513DCA67FD99A /* GummyBears-CC-BY-4.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3E7BD938DB6C7D3B7D320A5E /* GummyBears-CC-BY-4.0.txt */; };
+		978A90B9BB7DA98E01B83A03 /* WhipLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A340C15A80FAF3849CA78721 /* WhipLayer.swift */; };
 		9BA8BBFF27C6B6D87613C68E /* AssetLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3EB41C1A0D41F89C6D8FE8A /* AssetLibrary.swift */; };
 		9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309806DC452BB62BEE356569 /* DebugBar.swift */; };
 		9FB4EB59530BF0754BDBC1F3 /* SquareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D96DB54BCDC2006C377D8F /* SquareService.swift */; };
@@ -143,12 +145,14 @@
 		98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopMesh.swift; sourceTree = "<group>"; };
 		A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Bold.ttf"; sourceTree = "<group>"; };
 		A313CBED428256A71A858FEA /* BuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuilderView.swift; sourceTree = "<group>"; };
+		A340C15A80FAF3849CA78721 /* WhipLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhipLayer.swift; sourceTree = "<group>"; };
 		AB066A180A20C3F6CB7774B4 /* StageIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageIcons.swift; sourceTree = "<group>"; };
 		B167035449C278995411C2B4 /* ToppingGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingGlyph.swift; sourceTree = "<group>"; };
 		B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareAPI.swift; sourceTree = "<group>"; };
 		B353824019534A970B3D1DE6 /* StageVessels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageVessels.swift; sourceTree = "<group>"; };
 		C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderScatterKind.swift; sourceTree = "<group>"; };
 		C1105750A779779A5507FAF2 /* Order.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Order.swift; sourceTree = "<group>"; };
+		C2A1568D90FE5A52B433D80B /* ToppingLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingLab.swift; sourceTree = "<group>"; };
 		C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothOutbox.swift; sourceTree = "<group>"; };
 		C47A1B344994FAF846FD449E /* StageConsistency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageConsistency.swift; sourceTree = "<group>"; };
 		C6EB437FE04FC84CEA440D1E /* ScatterPhysics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScatterPhysics.swift; sourceTree = "<group>"; };
@@ -336,8 +340,10 @@
 				3A5C513CA4EED620DB0C9835 /* ScoopSurface.swift */,
 				3A427B0BBC2F44DCB35CDA2F /* StageToppings.swift */,
 				32D26707361619BE434DD978 /* ToppingIcons.swift */,
+				C2A1568D90FE5A52B433D80B /* ToppingLab.swift */,
 				48740B6EF1BC55783B05082A /* ToppingLayer.swift */,
 				5406E8E764595F07AE47CDAC /* ToppingStack.swift */,
+				A340C15A80FAF3849CA78721 /* WhipLayer.swift */,
 			);
 			path = Toppings;
 			sourceTree = "<group>";
@@ -588,9 +594,11 @@
 				2B591179C416EC14B3DF661F /* Theme.swift in Sources */,
 				7568C47CEA97F79633A7EA91 /* ToppingGlyph.swift in Sources */,
 				6A1B2B0B6FEFF85E93E0D406 /* ToppingIcons.swift in Sources */,
+				26DDA3A6B7252388900B3E37 /* ToppingLab.swift in Sources */,
 				FE0C1C733FBF872A34848749 /* ToppingLayer.swift in Sources */,
 				E21404B759B7FBEE10853958 /* ToppingStack.swift in Sources */,
 				6735B223D0F752A9B4C1C427 /* TrayTiles.swift in Sources */,
+				978A90B9BB7DA98E01B83A03 /* WhipLayer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

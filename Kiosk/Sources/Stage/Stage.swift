@@ -122,6 +122,7 @@ final class Stage {
     var receiptFrames: [UUID: CGRect] = [:]
     var receiptClip: CGRect = .zero
     var clipCheck: ClipCheck?
+    var toppingLab: ToppingLab?
 
     func attach(to content: inout RealityViewCameraContent) {
         content.add(root)
@@ -312,6 +313,7 @@ final class Stage {
         }
         tweens.removeAll { $0.isFinished }
         updateIcons()
+        toppingLab?.update(now: now)
         updateTray(dt: Float(dt))
         updateToppings()
         clipCheck?.run(self)
