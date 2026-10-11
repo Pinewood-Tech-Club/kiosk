@@ -14,3 +14,7 @@ SQUARE_CATEGORY_NAME = TC
 
 // Shown on the receipt screen (the Square location's business name is shown above it).
 KIOSK_EVENT_NAME = Tech Club Ice Cream
+
+// Staff dashboard backend. BOOTH_URL is a bare host because `//` starts a comment in an xcconfig file.
+BOOTH_URL = your-worker.example.workers.dev
+BOOTH_TOKEN = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
