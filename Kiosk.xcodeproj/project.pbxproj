@@ -65,6 +65,7 @@
 		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
 		F33FD48A4B7F07D6B639671D /* StageVessels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B353824019534A970B3D1DE6 /* StageVessels.swift */; };
 		F346DF14280B5329EFF72A73 /* Animation.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB286FAB60CDB38CF35280B /* Animation.swift */; };
+		F624DAFD3093814DE01B3C39 /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */; };
 		F86ED738CAD06D788946D97B /* StageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80DA186C645E6612A99CD769 /* StageView.swift */; };
 		FD0A874C890E38BDA7E2144C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64CD3F775C84109C65BEB08B /* AppModel.swift */; };
 		FE0C1C733FBF872A34848749 /* ToppingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48740B6EF1BC55783B05082A /* ToppingLayer.swift */; };
@@ -133,6 +134,7 @@
 		C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothOutbox.swift; sourceTree = "<group>"; };
 		C47A1B344994FAF846FD449E /* StageConsistency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageConsistency.swift; sourceTree = "<group>"; };
 		CBB1DFC96A2B464467CC2110 /* StageActors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageActors.swift; sourceTree = "<group>"; };
+		CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-SemiBold.ttf"; sourceTree = "<group>"; };
 		CF19FBBFF9063473EF2C011F /* loop.mp4 */ = {isa = PBXFileReference; path = loop.mp4; sourceTree = "<group>"; };
 		D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SheetDragUITests.m; sourceTree = "<group>"; };
@@ -343,6 +345,7 @@
 				60A6A3D2C8370D7698E2E811 /* Glass.swift */,
 				425B72639F56A451EDADC970 /* Layout.swift */,
 				37AB58ED0D97D8805BD8DAA1 /* NameEntryView.swift */,
+				CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */,
 				1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */,
 				EFA7ED72E4DEADA3ABEC34BA /* StaffView.swift */,
 				4BF79193415195B4A4327886 /* SummaryView.swift */,
@@ -528,6 +531,7 @@
 				A27FF852B7F37FBECEA57119 /* NameEntryView.swift in Sources */,
 				C0FFE25ACFD95D63EC7D4169 /* Order.swift in Sources */,
 				31E11CF00B709FFA3131CDD2 /* PaymentProblem.swift in Sources */,
+				F624DAFD3093814DE01B3C39 /* QRCodeView.swift in Sources */,
 				7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */,
 				0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */,
 				C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */,

@@ -40,14 +40,30 @@ struct ConfirmationView: View {
                 }
                 .padding(.top, 36)
 
-            HStack(spacing: 10) {
-                LucideIcon(name: "camera", size: 20)
+            if let url = receipt.receiptURL {
+                HStack(spacing: 22) {
+                    QRCodeView(url: url)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 10) {
+                            LucideIcon(name: "qr-code", size: 22)
+                            Text("Scan for your receipt")
+                                .font(Theme.serif(26))
+                        }
+                        .foregroundStyle(Theme.text)
+                        Text("Point your phone's camera at the code.")
+                            .font(Theme.serif(19, .regular))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                .padding(.top, 24)
+                .opacity(printed ? 1 : 0)
+            } else {
                 Text("Take a photo to keep this receipt.")
+                    .font(Theme.serif(19, .regular))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 20)
+                    .opacity(printed ? 1 : 0)
             }
-            .font(Theme.serif(19, .regular))
-            .foregroundStyle(Theme.textSecondary)
-            .padding(.top, 20)
-            .opacity(printed ? 1 : 0)
 
             Spacer(minLength: 24)
 
