@@ -2,16 +2,17 @@ import { dashboardBody, dashboardScript, loginBody, shell } from "./dashboard-pa
 import { cookie, html, HttpError, randomToken, type Route } from "./http";
 import { checkStaffSecret, clearedSessionCookie, createStaffSession, readStaffSession, sessionCookie, STAFF_COOKIE } from "./session";
 
-function csp(nonce: string): Record<string, string> {
+function csp(nonce: string, url: URL): Record<string, string> {
+  const socket = `${url.protocol === "http:" ? "ws" : "wss"}://${url.host}`;
   return {
     "Referrer-Policy": "same-origin",
-    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self' ${socket}; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
   };
 }
 
-function loginPage(message: string | null, status = 200): Response {
+function loginPage(url: URL, message: string | null, status = 200): Response {
   const nonce = randomToken(12);
-  return html(shell("Booth dashboard", loginBody(message), nonce), status, csp(nonce));
+  return html(shell("Booth dashboard", loginBody(message), nonce), status, csp(nonce, url));
 }
 
 export async function staffSessionFromCookie(request: Request, env: Env) {
@@ -27,24 +28,24 @@ export const routes: Route[] = [
   {
     method: "GET",
     path: "/dashboard",
-    async handle({ request, env }) {
-      if (!(await staffSessionFromCookie(request, env))) return loginPage(null);
+    async handle({ request, env, url }) {
+      if (!(await staffSessionFromCookie(request, env))) return loginPage(url, null);
       const nonce = randomToken(12);
-      return html(shell("Booth dashboard", dashboardBody(), nonce, dashboardScript()), 200, csp(nonce));
+      return html(shell("Booth dashboard", dashboardBody(), nonce, dashboardScript()), 200, csp(nonce, url));
     },
   },
   {
     method: "POST",
     path: "/dashboard/login",
-    async handle({ request, env }) {
-      if (!sameOrigin(request)) return loginPage("Sign in from the dashboard page.", 403);
+    async handle({ request, env, url }) {
+      if (!sameOrigin(request)) return loginPage(url, "Sign in from the dashboard page.", 403);
       const form = await request.formData().catch(() => null);
       const pin = form?.get("pin");
-      if (typeof pin !== "string" || pin.length === 0 || pin.length > 256) return loginPage("Enter the staff PIN.", 400);
+      if (typeof pin !== "string" || pin.length === 0 || pin.length > 256) return loginPage(url, "Enter the staff PIN.", 400);
       try {
         await checkStaffSecret(request, env, pin);
       } catch (error) {
-        if (error instanceof HttpError) return loginPage(error.status === 429 ? "Too many attempts. Wait a minute." : "Wrong PIN.", error.status);
+        if (error instanceof HttpError) return loginPage(url, error.status === 429 ? "Too many attempts. Wait a minute." : "Wrong PIN.", error.status);
         throw error;
       }
       const session = await createStaffSession(env);
@@ -57,8 +58,8 @@ export const routes: Route[] = [
   {
     method: "POST",
     path: "/dashboard/logout",
-    async handle({ request }) {
-      if (!sameOrigin(request)) return loginPage(null, 403);
+    async handle({ request, url }) {
+      if (!sameOrigin(request)) return loginPage(url, null, 403);
       return new Response(null, { status: 303, headers: { Location: "/dashboard", "Set-Cookie": clearedSessionCookie(), "Cache-Control": "no-store" } });
     },
   },

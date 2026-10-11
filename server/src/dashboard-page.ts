@@ -127,7 +127,7 @@ var ICONS = __ICONS__;
 function ico(n){return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+ICONS[n]+'</svg>';}
 var $ = function(id){return document.getElementById(id);};
 var state = null, stats = null, ws = null, everOpen = false, attempt = 0, retryTimer = null;
-var lastMessageAt = 0, statsTimer = null, serverOffset = 0;
+var lastMessageAt = 0, connectStartedAt = 0, lastPingAt = 0, statsTimer = null, serverOffset = 0, pendingAcks = {};
 
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function money(c){var d=c/100;return "$"+(c%100===0?d.toFixed(0):d.toFixed(2));}
@@ -171,6 +171,7 @@ function applyPatch(msg){
     var j=state.orders.findIndex(function(o){return o.id===c.order.id;});
     if(j>=0)state.orders[j]=c.order;else state.orders.unshift(c.order);
     state.orders.sort(function(a,b){return b.paidAt-a.paidAt;});
+    if(state.orders.length>100)state.orders.length=100;
     scheduleStats(800);
   }
   state.rev=msg.rev;
@@ -196,6 +197,7 @@ function connect(){
   var url=(location.protocol==="https:"?"wss://":"ws://")+location.host+"/v1/ws";
   var socket=new WebSocket(url);
   ws=socket;
+  connectStartedAt=Date.now();
   var opened=false;
   socket.onopen=function(){opened=true;everOpen=true;attempt=0;lastMessageAt=Date.now();renderLink();};
   socket.onmessage=function(e){if(ws===socket)onMessage(e);};
@@ -205,18 +207,29 @@ function connect(){
     if(!opened){
       fetch("/v1/state",{credentials:"same-origin"}).then(function(r){if(r.status===401||r.status===403)location.reload();}).catch(function(){});
     }
-    var delay=Math.min(30000,1000*Math.pow(2,attempt++))*(0.5+Math.random());
-    retryTimer=setTimeout(connect,delay);
+    retryTimer=setTimeout(connect,backoffDelay());
   };
   socket.onerror=function(){};
   renderLink();
 }
 
+function backoffDelay(){return Math.min(30000,1000*Math.pow(2,attempt++))*(0.5+Math.random());}
+
+function abandonSocket(){
+  var dead=ws;ws=null;
+  try{dead.close();}catch(e){}
+  renderLink();
+  clearTimeout(retryTimer);
+  retryTimer=setTimeout(connect,backoffDelay());
+}
+
 setInterval(function(){
-  if(!ws||ws.readyState!==1)return;
-  if(Date.now()-lastMessageAt>25000){ws.close();return;}
-  send({type:"ping",t:Date.now()});
-},10000);
+  if(!ws)return;
+  if(ws.readyState===0&&Date.now()-connectStartedAt>10000)return abandonSocket();
+  if(ws.readyState!==1)return;
+  if(Date.now()-lastMessageAt>25000)return abandonSocket();
+  if(Date.now()-lastPingAt>=10000){lastPingAt=Date.now();send({type:"ping",t:lastPingAt});}
+},5000);
 setInterval(function(){if(state)render(true);},5000);
 window.addEventListener("online",function(){attempt=0;connect();});
 document.addEventListener("visibilitychange",function(){
@@ -242,8 +255,12 @@ function act(action){
   action.id=uuid();action.by="Dashboard";
   return fetch("/v1/actions",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({actions:[action]})})
     .then(function(r){if(r.status===401||r.status===403)location.reload();return r.ok?r.json():null;})
-    .then(function(j){if(j&&state&&j.rev>state.rev)send({type:"sync"});})
-    .catch(function(){});
+    .then(function(j){
+      var ok=j&&j.results&&j.results[0]&&j.results[0].status!=="rejected";
+      if(!ok&&action.type==="ack"){delete pendingAcks[action.alertId];if(state)renderAlerts();}
+      if(j&&state&&j.rev>state.rev)send({type:"sync"});
+    })
+    .catch(function(){if(action.type==="ack"){delete pendingAcks[action.alertId];if(state)renderAlerts();}});
 }
 
 function renderLink(){
@@ -273,7 +290,7 @@ function sortedCounts(obj){
 function renderStats(){
   var s=stats;if(!s)return;
   $("tOrders").textContent=s.orders;
-  $("tOrdersSub").textContent=s.items+" items"+(s.simulatedOrders?", "+s.simulatedOrders+" test orders not counted":"");
+  $("tOrdersSub").textContent=s.items+" items"+(s.canceledOrders?", "+s.canceledOrders+" canceled not counted":"")+(s.simulatedOrders?", "+s.simulatedOrders+" test orders not counted":"");
   $("tRevenue").textContent=money(s.totalCents);
   $("tAvg").textContent=s.orders?"Average "+money(s.averageCents)+" per order":"No orders yet";
   $("tScoops").textContent=s.scoops;
@@ -287,14 +304,23 @@ function renderStats(){
   $("updated").textContent="Stats updated "+clock(s.generatedAt)+", counting since midnight";
 }
 
+function agoSpan(ms){return '<span data-ago="'+(ms==null?"":ms)+'">'+ago(ms)+"</span>";}
+
+function refreshTimes(){
+  document.querySelectorAll("[data-ago]").forEach(function(el){
+    var v=el.getAttribute("data-ago");el.textContent=ago(v===""?null:Number(v));
+  });
+}
+
 function renderAlerts(){
   var open=state.alerts.filter(function(a){return a.ackedAt==null&&a.resolvedAt==null;});
+  Object.keys(pendingAcks).forEach(function(id){if(!open.some(function(a){return a.id===id;}))delete pendingAcks[id];});
   $("alertsCard").style.display=open.length?"":"none";
   var rank={urgent:0,warning:1,info:2};
   open.sort(function(a,b){return rank[a.severity]-rank[b.severity]||b.updatedAt-a.updatedAt;});
   $("alerts").innerHTML=open.map(function(a){
     var name=a.kind==="help"?"help":a.kind==="soldout"?"ban":"alert";
-    return '<div class="alert '+esc(a.severity)+'">'+ico(name)+'<div class="body"><div class="title">'+esc(a.title)+(a.count>1?" (x"+a.count+")":"")+'</div><div class="detail">'+esc(a.detail)+" - "+ago(a.updatedAt)+'</div></div><button data-ack="'+esc(a.id)+'">'+ico("check")+" Acknowledge</button></div>";
+    return '<div class="alert '+esc(a.severity)+'">'+ico(name)+'<div class="body"><div class="title">'+esc(a.title)+(a.count>1?" (x"+a.count+")":"")+'</div><div class="detail">'+esc(a.detail)+" - "+agoSpan(a.updatedAt)+'</div></div><button data-ack="'+esc(a.id)+'"'+(pendingAcks[a.id]?" disabled":"")+'>'+ico("check")+" Acknowledge</button></div>";
   }).join("");
 }
 
@@ -326,33 +352,36 @@ function renderKiosk(){
   var pill=$("kioskPill");
   pill.className="pill "+(k.online?"ok":"bad");
   pill.innerHTML=ico("tablet")+(k.online?" Kiosk online":" Kiosk offline");
-  var rows=[["Last heard",ago(k.lastSeenAt),k.online?"ok":"bad"],["Screen",k.screen?titleCase(k.screen):"unknown",""]];
+  var rows=[["Last heard",ago(k.lastSeenAt),k.online?"ok":"bad",agoSpan(k.lastSeenAt)],["Screen",k.screen?titleCase(k.screen):"unknown",""]];
   if(h){
     rows.push(["Mode",h.simulatePayment?"Simulated payments":h.environment,h.simulatePayment?"warn":""]);
     rows.push(["Square",h.authorized?"Authorized":(h.authorizationState||"Not authorized"),h.authorized?"ok":"bad"]);
     rows.push(["Card reader",h.readerReady?"Ready":"Not ready",h.readerReady?"ok":(h.simulatePayment?"":"bad")]);
     h.readers.forEach(function(r){
-      if(r.batteryPercent!=null)rows.push([r.name,r.batteryPercent+"%"+(r.isCharging?" charging":""),r.batteryPercent<=20&&!r.isCharging?"bad":""]);
+      if(r.batteryPercent!=null&&r.batteryPercent>=0)rows.push([r.name,r.batteryPercent+"%"+(r.isCharging?" charging":""),r.batteryPercent<=20&&!r.isCharging?"bad":""]);
     });
-    if(h.deviceBattery)rows.push(["iPad battery",h.deviceBattery.percent+"%"+(h.deviceBattery.charging?" charging":""),h.deviceBattery.percent<=20&&!h.deviceBattery.charging?"bad":""]);
+    if(h.deviceBattery&&h.deviceBattery.percent>=0)rows.push(["iPad battery",h.deviceBattery.percent+"%"+(h.deviceBattery.charging?" charging":""),h.deviceBattery.percent<=20&&!h.deviceBattery.charging?"bad":""]);
     rows.push(["Catalog",h.catalog.ok?"OK":(h.catalog.error||h.catalog.status),h.catalog.ok?"ok":"warn"]);
     if(h.lastError)rows.push(["Last error",h.lastError,"warn"]);
     rows.push(["App",h.appVersion,""]);
   } else rows.push(["Health","No report yet","warn"]);
-  $("health").innerHTML=rows.map(function(r){return '<div><span>'+esc(r[0])+'</span><span class="'+r[2]+'">'+esc(r[1])+"</span></div>";}).join("");
+  $("health").innerHTML=rows.map(function(r){
+    var value=r[3]?r[3]:esc(r[1]);
+    return '<div><span>'+esc(r[0])+'</span><span class="'+r[2]+'">'+value+"</span></div>";
+  }).join("");
 }
 
 function render(timeOnly){
   renderLink();
   if(!state)return;
-  renderAlerts();renderOrders();renderKiosk();
-  if(!timeOnly)renderSoldOut();
+  if(timeOnly)return refreshTimes();
+  renderAlerts();renderOrders();renderKiosk();renderSoldOut();
 }
 
 document.addEventListener("click",function(e){
   var el=e.target.closest&&e.target.closest("button");
   if(!el)return;
-  if(el.dataset.ack){el.disabled=true;act({type:"ack",alertId:el.dataset.ack});}
+  if(el.dataset.ack){el.disabled=true;pendingAcks[el.dataset.ack]=true;act({type:"ack",alertId:el.dataset.ack});}
   else if(el.dataset.flavor){act({type:"setSoldOut",flavor:el.dataset.flavor,soldOut:el.dataset.out!=="1"});}
 });
 

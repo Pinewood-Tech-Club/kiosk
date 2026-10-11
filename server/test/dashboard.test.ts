@@ -47,7 +47,7 @@ describe("dashboard page", () => {
     const csp = response.headers.get("Content-Security-Policy")!;
     const nonce = /script-src 'nonce-([^']+)'/.exec(csp)![1];
     expect(response.text).toContain(`<script nonce="${nonce}">`);
-    expect(csp).toContain("connect-src 'self'");
+    expect(csp).toContain("connect-src 'self' wss://booth.test");
     const second = await call("/dashboard", { headers: { Cookie: cookie } });
     expect(second.headers.get("Content-Security-Policy")).not.toBe(csp);
   });
@@ -111,5 +111,12 @@ describe("stats endpoint", () => {
     expect(posted.status).toBe(200);
     const stats = await summarize(env, base - DAY, base + DAY, base);
     expect(stats).toMatchObject({ orders: 3, simulatedOrders: 1, totalCents: 1600, last15Min: { orders: 2, totalCents: 900 } });
+
+    await env.DB.prepare("UPDATE orders SET status = 'canceled' WHERE id = ?").bind(orders[0].id).run();
+    const after = await summarize(env, base - DAY, base + DAY, base);
+    expect(after).toMatchObject({
+      orders: 2, canceledOrders: 1, totalCents: 1200, scoops: 2, last15Min: { orders: 1, totalCents: 500 }, statuses: { paid: 2, canceled: 1 },
+    });
+    expect(after.byHour.reduce((sum, h) => sum + h.orders, 0)).toBe(2);
   });
 });

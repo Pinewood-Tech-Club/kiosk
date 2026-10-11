@@ -9,6 +9,7 @@ export interface StatsSummary {
   generatedAt: number;
   orders: number;
   simulatedOrders: number;
+  canceledOrders: number;
   totalCents: number;
   subtotalCents: number;
   taxCents: number;
@@ -35,7 +36,7 @@ interface Row {
   status: string | null;
 }
 
-/** Real (not simulated) orders paid in [since, until). Simulated orders are only counted in `simulatedOrders`. */
+/** Real (not simulated) orders paid in [since, until). Simulated orders only count in `simulatedOrders`; canceled ones only in `canceledOrders` and `statuses`. */
 export async function summarize(env: Env, since: number, until: number, now = Date.now()): Promise<StatsSummary> {
   const { results } = await withRetry("D1", () =>
     env.DB.prepare("SELECT total_cents, subtotal_cents, tax_cents, simulated, items, paid_at, status FROM orders WHERE paid_at >= ? AND paid_at < ?")
@@ -43,7 +44,7 @@ export async function summarize(env: Env, since: number, until: number, now = Da
       .all<Row>(),
   );
   const summary: StatsSummary = {
-    since, until, generatedAt: now, orders: 0, simulatedOrders: 0, totalCents: 0, subtotalCents: 0, taxCents: 0, averageCents: 0,
+    since, until, generatedAt: now, orders: 0, simulatedOrders: 0, canceledOrders: 0, totalCents: 0, subtotalCents: 0, taxCents: 0, averageCents: 0,
     items: 0, scoops: 0, cups: 0, cones: 0, toppings: 0, flavors: {}, toppingCounts: {}, statuses: {}, byHour: [], last15Min: { orders: 0, totalCents: 0 },
   };
   const hours = new Map<number, { orders: number; totalCents: number }>();
@@ -52,12 +53,16 @@ export async function summarize(env: Env, since: number, until: number, now = Da
       summary.simulatedOrders++;
       continue;
     }
+    const status = row.status ?? "paid";
+    summary.statuses[status] = (summary.statuses[status] ?? 0) + 1;
+    if (status === "canceled") {
+      summary.canceledOrders++;
+      continue;
+    }
     summary.orders++;
     summary.totalCents += row.total_cents;
     summary.taxCents += row.tax_cents ?? 0;
     summary.subtotalCents += row.subtotal_cents ?? row.total_cents - (row.tax_cents ?? 0);
-    const status = row.status ?? "paid";
-    summary.statuses[status] = (summary.statuses[status] ?? 0) + 1;
     let items: { vessel?: string; flavors?: string[]; toppings?: string[] }[] = [];
     try {
       items = JSON.parse(row.items);

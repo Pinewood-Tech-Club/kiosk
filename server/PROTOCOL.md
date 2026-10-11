@@ -305,12 +305,12 @@ Public, no auth: the token is the credential. The kiosk generates it (128 random
 
 ## Stats: `GET /v1/stats?since=<ms>&until=<ms>` (staff) *(added)*
 
-Defaults to the last 24 hours. Counts real orders only (simulated ones are only counted in `simulatedOrders`):
+Defaults to the last 24 hours. Counts real orders only: simulated ones are only counted in `simulatedOrders`, and orders staff set to `canceled` only in `canceledOrders` and `statuses` (they add nothing to money, items or `byHour`). `last15Min` compares the kiosk's `paidAt` with the server clock:
 
 ```json
-{ "since": 0, "until": 0, "generatedAt": 0, "orders": 42, "simulatedOrders": 3, "totalCents": 39100, "subtotalCents": 39100, "taxCents": 0,
+{ "since": 0, "until": 0, "generatedAt": 0, "orders": 42, "simulatedOrders": 3, "canceledOrders": 1, "totalCents": 39100, "subtotalCents": 39100, "taxCents": 0,
   "averageCents": 931, "items": 51, "scoops": 88, "cups": 30, "cones": 21, "toppings": 17,
-  "flavors": { "vanilla": 30 }, "toppingCounts": { "whip": 8 }, "statuses": { "paid": 2, "collected": 40 },
+  "flavors": { "vanilla": 30 }, "toppingCounts": { "whip": 8 }, "statuses": { "paid": 2, "collected": 40, "canceled": 1 },
   "byHour": [{ "hour": 1796500800000, "orders": 12, "totalCents": 11200 }],
   "last15Min": { "orders": 4, "totalCents": 3800 } }
 ```
