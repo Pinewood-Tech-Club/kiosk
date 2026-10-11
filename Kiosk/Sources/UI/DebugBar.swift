@@ -30,7 +30,6 @@ struct DebugBar: View {
                 Button("Log") { app.showsLog = true }
                 Menu("Debug") {
                     Toggle("Simulate payment success", isOn: $app.simulatePayment)
-                    Toggle("Use Square's payment screen", isOn: Binding(get: { square.usesSquarePrompt }, set: { square.usesSquarePrompt = $0 }))
                     Picker("Simulate error", selection: $app.forcedError) {
                         Text("None").tag(ForcedError?.none)
                         ForEach(ForcedError.allCases) { Text($0.label).tag(ForcedError?.some($0)) }

@@ -11,7 +11,6 @@
 		13BA8C20840B4FEE6E0C80E2 /* StageScoops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */; };
 		1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF36BF94972C41A51D71D966 /* KioskApp.swift */; };
 		1D208167E95C76C2B5B5A490 /* BoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */; };
-		2AB6F4CFB93D4535D4FF7A6D /* CardPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E517743A259C131BC4429F32 /* CardPromptView.swift */; };
 		2B591179C416EC14B3DF661F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF77AD1D7C8D64414EA6DB92 /* Theme.swift */; };
 		2F1D9CFC58D885C3AD6E9BEA /* NotoSerif-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6D75E878A3195356F060C484 /* NotoSerif-Medium.ttf */; };
 		31E11CF00B709FFA3131CDD2 /* PaymentProblem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */; };
@@ -116,7 +115,6 @@
 		D6974443317A2D4E0CE83F79 /* Kiosk.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kiosk.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF893650C7E0AA1ED76E777E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E3D9A0CFAC70BA8E576B608E /* HelpButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpButton.swift; sourceTree = "<group>"; };
-		E517743A259C131BC4429F32 /* CardPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardPromptView.swift; sourceTree = "<group>"; };
 		EC0881B5135769503EB56D68 /* BoothConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothConfig.swift; sourceTree = "<group>"; };
 		ECB286FAB60CDB38CF35280B /* Animation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Animation.swift; sourceTree = "<group>"; };
 		EF36BF94972C41A51D71D966 /* KioskApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KioskApp.swift; sourceTree = "<group>"; };
@@ -292,7 +290,6 @@
 			children = (
 				3576D0AAEDEAFA110046DA31 /* AttractView.swift */,
 				A313CBED428256A71A858FEA /* BuilderView.swift */,
-				E517743A259C131BC4429F32 /* CardPromptView.swift */,
 				5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */,
 				309806DC452BB62BEE356569 /* DebugBar.swift */,
 				60A6A3D2C8370D7698E2E811 /* Glass.swift */,
@@ -434,7 +431,6 @@
 				7335163B03B0F6F959250B9A /* BoothOutbox.swift in Sources */,
 				1D208167E95C76C2B5B5A490 /* BoothProtocol.swift in Sources */,
 				9202055A9FECFAEDCE95CD2D /* BuilderView.swift in Sources */,
-				2AB6F4CFB93D4535D4FF7A6D /* CardPromptView.swift in Sources */,
 				6AD8D94397D99092AF46F1B7 /* Config.swift in Sources */,
 				8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */,
 				74456A6B3CED1B853F498EDE /* ContactSolver.swift in Sources */,
