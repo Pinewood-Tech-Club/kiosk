@@ -6,27 +6,11 @@ import UIKit
 @Observable
 @MainActor
 final class BoothConnection {
-    enum Role { case kiosk, staff }
-
     enum ConnectionState: Equatable {
         case idle
         case connecting
         case connected
         case waiting(retryAt: Date)
-    }
-
-    private struct PendingAction: Codable {
-        let action: BoothAction
-        let createdAt: Date
-        var lastAttempt: Date?
-
-        var supersedingKey: String? {
-            switch action.type {
-            case "setSoldOut": action.flavor.map { "flavor:\($0)" }
-            case "setOrderStatus": action.orderId.map { "order:\($0)" }
-            default: nil
-            }
-        }
     }
 
     private static let beatInterval: TimeInterval = 10
@@ -35,8 +19,6 @@ final class BoothConnection {
     private static let healthyAfter: TimeInterval = 20
     private static let syncSpacing: TimeInterval = 3
     private static let syncRetry: TimeInterval = 10
-    private static let actionRetry: TimeInterval = 5
-    private static let actionLifetime: TimeInterval = 600
     private static let logSpacing: TimeInterval = 10
 
     private(set) var state: BoothState?
@@ -47,13 +29,10 @@ final class BoothConnection {
     @ObservationIgnored var screen: () -> String = { "" }
     @ObservationIgnored var onState: ((BoothState) -> Void)?
     @ObservationIgnored var onConnectionChange: ((ConnectionState) -> Void)?
-    @ObservationIgnored var onActionSettled: ((String, BoothResult?) -> Void)?
 
     @ObservationIgnored private let api: BoothAPI
-    @ObservationIgnored private let role: Role
     @ObservationIgnored private let log: (String) -> Void
     @ObservationIgnored private let session = URLSession(configuration: .ephemeral)
-    @ObservationIgnored private let actionStore: URL?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var stopped = false
     @ObservationIgnored private var tickTask: Task<Void, Never>?
@@ -73,18 +52,11 @@ final class BoothConnection {
     @ObservationIgnored private var lastBeat = Date.distantPast
     @ObservationIgnored private var needsSync = false
     @ObservationIgnored private var lastSync = Date.distantPast
-    @ObservationIgnored private var pendingActions: [PendingAction] = []
-    @ObservationIgnored private var actionHTTPInFlight = false
 
-    init(api: BoothAPI, role: Role, actionStore: URL? = nil, log: @escaping (String) -> Void) {
+    init(api: BoothAPI, log: @escaping (String) -> Void) {
         self.api = api
-        self.role = role
-        self.actionStore = actionStore
         self.log = log
-        loadActions()
     }
-
-    var queuedActions: [BoothAction] { pendingActions.map(\.action) }
 
     func start() {
         guard !started, !stopped else { return }
@@ -103,26 +75,10 @@ final class BoothConnection {
 
     func stop() {
         guard !stopped else { return }
-        saveActions()
         stopped = true
         tickTask?.cancel()
         pathMonitor?.cancel()
         suspend()
-    }
-
-    @discardableResult
-    func ack(alertID: String, by name: String) -> String {
-        enqueue(BoothAction(id: UUID().uuidString, type: "ack", alertId: alertID, flavor: nil, soldOut: nil, orderId: nil, status: nil, by: name))
-    }
-
-    @discardableResult
-    func setSoldOut(_ flavor: String, soldOut: Bool, by name: String) -> String {
-        enqueue(BoothAction(id: UUID().uuidString, type: "setSoldOut", alertId: nil, flavor: flavor, soldOut: soldOut, orderId: nil, status: nil, by: name))
-    }
-
-    @discardableResult
-    func setOrderStatus(_ orderID: String, status: String, by name: String) -> String {
-        enqueue(BoothAction(id: UUID().uuidString, type: "setOrderStatus", alertId: nil, flavor: nil, soldOut: nil, orderId: orderID, status: status, by: name))
     }
 
     func requestSync() {
@@ -331,16 +287,12 @@ final class BoothConnection {
         case .idle, .waiting:
             break
         }
-        retryActions(now)
     }
 
     private func beat(_ now: Date) {
         lastBeat = now
         let millis = Int(now.timeIntervalSince1970 * 1000)
-        switch role {
-        case .kiosk: send(["type": "heartbeat", "t": millis, "screen": screen()])
-        case .staff: send(["type": "ping", "t": millis])
-        }
+        send(["type": "heartbeat", "t": millis, "screen": screen()])
     }
 
     private func send(_ object: [String: Any]) {
@@ -348,13 +300,6 @@ final class BoothConnection {
               let data = try? JSONSerialization.data(withJSONObject: object),
               let text = String(data: data, encoding: .utf8) else { return }
         socket.send(.string(text)) { _ in }
-    }
-
-    private func sendEncodable(_ type: String, key: String, value: some Encodable) {
-        guard connectionState == .connected,
-              let valueData = try? JSONEncoder().encode(value),
-              let valueObject = try? JSONSerialization.jsonObject(with: valueData) else { return }
-        send(["type": type, key: valueObject])
     }
 
     private func handle(_ message: URLSessionWebSocketTask.Message) {
@@ -375,8 +320,8 @@ final class BoothConnection {
             applyPatch(rev: patchRev, change: change)
         case .pong(let serverRev):
             if let serverRev, serverRev > rev { requestSync() }
-        case .result(let result):
-            completeAction(result)
+        case .result:
+            break
         case .error(let body):
             log("Booth: server error \(body.code): \(body.message)")
         case .unknown:
@@ -417,72 +362,5 @@ final class BoothConnection {
         state = current
         rev = patchRev
         onState?(current)
-    }
-
-    /// A newer sold-out or order-status change replaces an unsent older one for the same flavor or order, so a
-    /// late retry of the older one can't overwrite it on the hub (last writer wins there).
-    private func enqueue(_ action: BoothAction) -> String {
-        let pending = PendingAction(action: action, createdAt: Date(), lastAttempt: nil)
-        if let key = pending.supersedingKey {
-            pendingActions.removeAll { $0.supersedingKey == key }
-        }
-        pendingActions.append(pending)
-        saveActions()
-        retryActions(Date())
-        return action.id
-    }
-
-    private func completeAction(_ result: BoothResult) {
-        guard let index = pendingActions.firstIndex(where: { $0.action.id == result.id }) else { return }
-        if result.status == "rejected" {
-            log("Booth: server rejected an action: \(result.error?.message ?? "no reason")")
-        }
-        pendingActions.remove(at: index)
-        saveActions()
-        onActionSettled?(result.id, result)
-    }
-
-    private func loadActions() {
-        guard let actionStore, let data = try? Data(contentsOf: actionStore),
-              let stored = try? JSONDecoder().decode([PendingAction].self, from: data) else { return }
-        pendingActions = stored.map { PendingAction(action: $0.action, createdAt: $0.createdAt, lastAttempt: nil) }
-    }
-
-    private func saveActions() {
-        guard !stopped, let actionStore, let data = try? JSONEncoder().encode(pendingActions) else { return }
-        try? FileManager.default.createDirectory(at: actionStore.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: actionStore, options: .atomic)
-    }
-
-    private func retryActions(_ now: Date) {
-        let expired = pendingActions.filter { now.timeIntervalSince($0.createdAt) > Self.actionLifetime }
-        if !expired.isEmpty {
-            pendingActions.removeAll { now.timeIntervalSince($0.createdAt) > Self.actionLifetime }
-            saveActions()
-            for item in expired {
-                log("Booth: gave up on a \(item.action.type) action after \(Int(Self.actionLifetime / 60)) minutes")
-                onActionSettled?(item.action.id, nil)
-            }
-        }
-        // An HTTP batch still in flight may carry an older action; sending a newer one over the socket now could
-        // let the older one land last.
-        guard !pendingActions.isEmpty, !actionHTTPInFlight else { return }
-        let due = pendingActions.indices.filter { index in
-            pendingActions[index].lastAttempt.map { now.timeIntervalSince($0) >= Self.actionRetry } ?? true
-        }
-        guard !due.isEmpty else { return }
-        for index in due { pendingActions[index].lastAttempt = now }
-        let actions = due.map { pendingActions[$0].action }
-        if connectionState == .connected {
-            for action in actions { sendEncodable("action", key: "action", value: action) }
-        } else {
-            actionHTTPInFlight = true
-            Task { [weak self, api] in
-                let response: BoothBatchResponse? = try? await api.post("/v1/actions", ["actions": actions])
-                guard let self else { return }
-                actionHTTPInFlight = false
-                response?.results.forEach { self.completeAction($0) }
-            }
-        }
     }
 }

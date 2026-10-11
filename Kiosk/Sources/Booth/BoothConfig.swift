@@ -10,21 +10,8 @@ struct BoothConfig: Sendable {
         return make(token: token)
     }()
 
-    static let staffSessionAccount = "boothStaffSession"
-    static let preferStaffSessionKey = "boothStaffPreferSession"
-
-    static var staffSession: String? {
-        clean(Keychain.data(for: staffSessionAccount).flatMap { String(data: $0, encoding: .utf8) })
-    }
-
-    /// The staff role's token: `-boothStaffToken`, then `BOOTH_STAFF_TOKEN`, then a staff session saved after a PIN sign-in.
-    /// After a PIN sign-in the session comes first (persisted across launches), so it replaces a configured token the booth refused.
-    static func staff(preferSession: Bool? = nil) -> BoothConfig? {
-        let session = staffSession
-        let configured = clean(UserDefaults.standard.string(forKey: "boothStaffToken")) ?? plistValue("BoothStaffToken")
-        let prefer = preferSession ?? UserDefaults.standard.bool(forKey: preferStaffSessionKey)
-        guard let token = prefer ? session ?? configured : configured ?? session else { return nil }
-        return make(token: token)
+    static var staffToken: String? {
+        clean(UserDefaults.standard.string(forKey: "boothStaffToken")) ?? plistValue("BoothStaffToken")
     }
 
     static var publicBaseURL: URL? { anonymous()?.baseURL }

@@ -88,7 +88,6 @@ final class AppModel {
 
     let square = SquareService()
     let booth = BoothLink()
-    let staff = StaffLink()
     private(set) var role: DeviceRole?
     private var kioskServicesStarted = false
     @ObservationIgnored let stage = Stage()
@@ -218,7 +217,6 @@ final class AppModel {
     func chooseStaffRole() {
         guard canChooseStaff else { return }
         role = .staff
-        staff.start { [weak self] in self?.square.record($0) }
         withAnimation(.easeInOut(duration: 0.5)) { screen = .staff }
     }
 

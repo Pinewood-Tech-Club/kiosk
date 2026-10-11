@@ -119,7 +119,7 @@ final class BoothLink {
             Task { @MainActor in self?.log(message) }
         }
 
-        let connection = BoothConnection(api: api, role: .kiosk) { [weak self] message in self?.log(message) }
+        let connection = BoothConnection(api: api) { [weak self] message in self?.log(message) }
         connection.screen = { [weak self] in self?.app?.screen.boothName ?? "roleSetup" }
         connection.onState = { [weak self] state in self?.applyState(state) }
         connection.onConnectionChange = { [weak self] state in self?.connectionChanged(state) }

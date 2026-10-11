@@ -64,7 +64,7 @@ struct RootView: View {
             }
 
             if shows(.staff) {
-                StaffView(app: app).transition(.identity)
+                StaffWebView().transition(.identity)
             }
 
             if shows(.name) {
