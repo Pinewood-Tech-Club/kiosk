@@ -36,6 +36,7 @@ export interface ReceiptRecord {
   items: ReceiptItemRecord[];
   lines: ReceiptLineRecord[];
   paid: boolean;
+  canceled: boolean;
 }
 
 interface Row {
@@ -52,6 +53,7 @@ interface Row {
   items: string;
   lines?: string | null;
   response?: string;
+  status?: string | null;
 }
 
 function parse<T>(text: string | null | undefined, fallback: T): T {
@@ -67,7 +69,7 @@ function parse<T>(text: string | null | undefined, fallback: T): T {
 export async function findReceipt(env: Env, token: string): Promise<ReceiptRecord | null> {
   const order = await withRetry("D1", () =>
     env.DB.prepare(
-      `SELECT id, order_number, customer_name, total_cents, subtotal_cents, tax_cents, card, simulated, paid_at, square_payment_id, items, lines
+      `SELECT id, order_number, customer_name, total_cents, subtotal_cents, tax_cents, card, simulated, paid_at, square_payment_id, items, lines, status
        FROM orders WHERE receipt_token = ?`,
     )
       .bind(token)
@@ -89,6 +91,7 @@ export async function findReceipt(env: Env, token: string): Promise<ReceiptRecor
       items: parse(order.items, []),
       lines: parse(order.lines, []),
       paid: true,
+      canceled: order.status === "canceled",
     };
   }
   const checkout = await withRetry("D1", () =>
@@ -113,6 +116,7 @@ export async function findReceipt(env: Env, token: string): Promise<ReceiptRecor
       items: parse(checkout.items, []),
       lines: response.lines ?? [],
       paid: false,
+      canceled: false,
     };
   }
   return null;
@@ -124,8 +128,8 @@ export function formatEventTime(ms: number): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: EVENT_TIME_ZONE, dateStyle: "long", timeStyle: "short" }).format(new Date(ms));
 }
 
-/** What Square charged per item (lines tagged "#N"), or the app's pricing when the lines don't add up. */
-export function itemPrices(items: ReceiptItemRecord[], lines: ReceiptLineRecord[]): number[] {
+/** What Square charged per item (lines tagged "#N"), or the app's pricing when the lines don't add up to the subtotal. */
+export function itemPrices(items: ReceiptItemRecord[], lines: ReceiptLineRecord[], subtotalCents: number): number[] {
   const tagged = new Array<number>(items.length).fill(0);
   let usable = lines.length > 0;
   for (const line of lines) {
@@ -136,24 +140,36 @@ export function itemPrices(items: ReceiptItemRecord[], lines: ReceiptLineRecord[
     }
     tagged[number - 1] += line.cents;
   }
-  if (usable) return tagged;
+  if (usable && tagged.reduce((a, b) => a + b, 0) === subtotalCents) return tagged;
   const cart: CartItem[] = items.map((i) => ({ vessel: i.vessel === "cone" ? "cone" : "cup", flavors: i.flavors, toppings: i.toppings ?? [] }));
   return quote(cart).lines.map((l) => l.totalCents);
 }
 
+const SQUARE_PAYMENT_ID = /^[A-Za-z0-9]{10,64}$/;
+const SQUARE_LOOKUP_MS = 2500;
+
+async function lookupSquareReceiptUrl(env: Env, paymentId: string): Promise<string | null> {
+  const credentials = await resolveCredentials(env);
+  if (!credentials) return null;
+  const response = await squareRequest<{ payment?: { receipt_url?: string } }>(
+    credentials.environment,
+    `/v2/payments/${encodeURIComponent(paymentId)}`,
+    { bearer: credentials.accessToken, timeoutMs: SQUARE_LOOKUP_MS },
+  );
+  const url = response.payment?.receipt_url;
+  return url && url.startsWith("https://") ? url : null;
+}
+
 async function squareReceiptUrl(env: Env, paymentId: string): Promise<string | null> {
+  if (!SQUARE_PAYMENT_ID.test(paymentId)) return null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), SQUARE_LOOKUP_MS);
+  });
   try {
-    const credentials = await resolveCredentials(env);
-    if (!credentials) return null;
-    const response = await squareRequest<{ payment?: { receipt_url?: string } }>(
-      credentials.environment,
-      `/v2/payments/${encodeURIComponent(paymentId)}`,
-      { bearer: credentials.accessToken, timeoutMs: 2500 },
-    );
-    const url = response.payment?.receipt_url;
-    return url && url.startsWith("https://") ? url : null;
-  } catch {
-    return null;
+    return await Promise.race([lookupSquareReceiptUrl(env, paymentId).catch(() => null), timeout]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -171,6 +187,7 @@ hr{border:0;border-top:1px dashed #cfc7bf;margin:1.1rem 0}
 .total{display:flex;justify-content:space-between;font:700 1.35rem Georgia,serif;margin-top:.4rem}
 .meta{text-align:center;color:#6b625b;font-size:.85rem}
 .test{text-align:center;color:#b3541e;font-weight:600;margin-top:.6rem}
+.canceled{text-align:center;color:#b3261e;font-weight:700;margin:.8rem 0 0}
 .center{text-align:center}
 a.btn{display:block;margin-top:1rem;text-align:center;padding:.8rem;border-radius:10px;background:#1f1a17;color:#fff;text-decoration:none;font-weight:600}
 p{margin:.6rem 0}`;
@@ -204,14 +221,15 @@ export function notFoundPage(): string {
 }
 
 export function receiptPage(record: ReceiptRecord, squareUrl: string | null): string {
-  const prices = itemPrices(record.items, record.lines);
   const subtotal = record.subtotalCents ?? record.totalCents - (record.taxCents ?? 0);
+  const prices = itemPrices(record.items, record.lines, subtotal);
   const label = record.orderNumber !== null ? `Order ${record.orderNumber}` : "Your order";
   return page(
     `${EVENT_NAME} receipt`,
     `<div class="card"><h1>${escapeHtml(EVENT_NAME)}</h1>
 <p class="sub">${record.paidAt ? escapeHtml(formatEventTime(record.paidAt)) : ""}</p>
-<div class="who"><span>${escapeHtml(label)}</span><span>${escapeHtml(record.customerName ?? "")}</span></div><hr>
+<div class="who"><span>${escapeHtml(label)}</span><span>${escapeHtml(record.customerName ?? "")}</span></div>
+${record.canceled ? '<p class="canceled">This order was canceled</p>' : ""}<hr>
 ${record.items.map((item, i) => itemHtml(item, i, prices[i] ?? 0)).join("")}<hr>
 <div class="row"><span>Subtotal</span><span class="amt">${money(subtotal)}</span></div>
 <div class="row"><span>Tax</span><span class="amt">${money(record.taxCents ?? 0)}</span></div>
@@ -230,7 +248,13 @@ export const routes: Route[] = [
     async handle({ env, params }) {
       const token = ReceiptToken.safeParse(params[0]);
       if (!token.success) return html(notFoundPage(), 404, NOINDEX);
-      const record = await findReceipt(env, token.data);
+      let record: ReceiptRecord | null;
+      try {
+        record = await findReceipt(env, token.data);
+      } catch (error) {
+        console.error({ event: "receipt-lookup-failed", error: String(error) });
+        return html(pendingPage(), 503, NOINDEX);
+      }
       if (!record || !record.paid) return html(pendingPage(), 200, NOINDEX);
       const squareUrl = record.squarePaymentId && !record.simulated ? await squareReceiptUrl(env, record.squarePaymentId) : null;
       return html(receiptPage(record, squareUrl), 200, NOINDEX);

@@ -3,10 +3,16 @@ import SwiftUI
 struct ConfirmationView: View {
     let app: AppModel
     let receipt: Receipt
-    @State private var deadline = Date().addingTimeInterval(Self.timeout)
+    @State private var deadline: Date
     @State private var printed = false
+    private let timeout: TimeInterval
 
-    private static let timeout: TimeInterval = 10
+    init(app: AppModel, receipt: Receipt) {
+        self.app = app
+        self.receipt = receipt
+        timeout = receipt.receiptURL == nil ? 10 : 30
+        _deadline = State(initialValue: Date().addingTimeInterval(timeout))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -74,7 +80,7 @@ struct ConfirmationView: View {
                         Text("New Order").frame(minWidth: 320)
                     }
                     .buttonStyle(.glassCTA(height: 88, fontSize: 30))
-                    Countdown(remaining: remaining, total: Self.timeout)
+                    Countdown(remaining: remaining, total: timeout)
                 }
                 .onChange(of: remaining <= 0) { _, expired in
                     if expired { app.resetToAttract() }
@@ -84,7 +90,7 @@ struct ConfirmationView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onReceive(NotificationCenter.default.publisher(for: TouchObserver.didTouch)) { _ in
-            deadline = Date().addingTimeInterval(Self.timeout)
+            deadline = Date().addingTimeInterval(timeout)
         }
         .onAppear {
             withAnimation(.easeOut(duration: 1.1).delay(0.25)) { printed = true }
