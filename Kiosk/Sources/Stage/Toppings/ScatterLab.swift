@@ -34,6 +34,7 @@ final class ScatterLab {
     var steps: [(time: Double, action: () -> Void)] = []
     var updateTime: Double = 0
     var updateFrames = 0
+    var updateMax: Double = 0
 
     init(stage: Stage, rig: ItemRig, assets: AssetLibrary) {
         let defaults = UserDefaults.standard
@@ -154,12 +155,21 @@ final class ScatterLab {
             setWhip(lerp(whipFrom, whipTo, Ease.inOutCubic(p)))
             if p >= 1 { self.whipStart = nil }
         }
+        let animating = layers.contains { $0.isAnimating }
         let started = CACurrentMediaTime()
         for layer in layers { layer.update(now: stage.now) }
-        updateTime += CACurrentMediaTime() - started
-        updateFrames += 1
-        if updateFrames % 120 == 0 {
-            stage.log(String(format: "ScatterLab: layer update avg %.1f µs/frame", updateTime / Double(updateFrames) * 1e6))
+        let spent = CACurrentMediaTime() - started
+        if animating {
+            updateTime += spent
+            updateFrames += 1
+            updateMax = max(updateMax, spent)
+        } else if updateFrames > 0 {
+            stage.log(String(format: "ScatterLab: animating update avg %.1f µs, max %.1f µs over %d frames, %d pieces; idle %.2f µs",
+                             updateTime / Double(updateFrames) * 1e6, updateMax * 1e6, updateFrames,
+                             layers.reduce(0) { $0 + $1.footprints.count }, spent * 1e6))
+            updateTime = 0
+            updateFrames = 0
+            updateMax = 0
         }
         if let freeze, t >= freeze, stage.timeScale > 0 {
             for layer in layers {
@@ -253,16 +263,12 @@ struct HeightfieldSurface: ToppingSurface {
         let fx = (x - origin.x) / cell, fz = (z - origin.y) / cell
         let i = Int(fx.rounded(.down)), j = Int(fz.rounded(.down))
         guard i >= 0, j >= 0, i < size - 1, j < size - 1 else { return nil }
-        let corners = [j * size + i, j * size + i + 1, (j + 1) * size + i, (j + 1) * size + i + 1]
-        guard corners.allSatisfy({ heights[$0] > -.infinity }) else { return nil }
+        let a = j * size + i, b = a + 1, c = a + size, d = c + 1
+        guard heights[a] > -.infinity, heights[b] > -.infinity, heights[c] > -.infinity, heights[d] > -.infinity else { return nil }
         let u = fx - Float(i), v = fz - Float(j)
-        let weights = [(1 - u) * (1 - v), u * (1 - v), (1 - u) * v, u * v]
-        var height: Float = 0
-        var normal = SIMD3<Float>.zero
-        for k in 0..<4 {
-            height += heights[corners[k]] * weights[k]
-            normal += normals[corners[k]] * weights[k]
-        }
+        let wa = (1 - u) * (1 - v), wb = u * (1 - v), wc = (1 - u) * v, wd = u * v
+        let height = heights[a] * wa + heights[b] * wb + heights[c] * wc + heights[d] * wd
+        let normal = normals[a] * wa + normals[b] * wb + normals[c] * wc + normals[d] * wd
         return (height, simd_normalize(normal))
     }
 }
