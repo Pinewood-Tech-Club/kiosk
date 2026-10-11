@@ -63,6 +63,7 @@ struct NameEntryView: View {
             .textContentType(nil)
             .submitLabel(.continue)
             .background(PublicKeyboard())
+            .accessibilityLabel("Name for pickup")
             .focused($focused)
             .onSubmit { submit() }
             .onChange(of: app.customerName) { _, value in

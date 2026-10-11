@@ -11,14 +11,15 @@ struct ConfirmationView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 14) {
-                HStack(spacing: 8) {
-                    LucideIcon(name: "check", size: 20)
+                HStack(spacing: 10) {
+                    LucideIcon(name: "check", size: 16)
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Theme.success, in: .circle)
                     Text("Paid")
-                        .font(Theme.sans(16, .bold))
-                        .tracking(2.2)
-                        .textCase(.uppercase)
+                        .font(Theme.serif(24, .semibold))
+                        .foregroundStyle(Theme.success)
                 }
-                .foregroundStyle(Theme.success)
                 Text("Thank you, \(receipt.customerName).")
                     .font(Theme.serif(64))
                     .foregroundStyle(Theme.ink)
@@ -40,11 +41,11 @@ struct ConfirmationView: View {
                 }
                 .padding(.top, 36)
 
-            HStack(spacing: 8) {
-                LucideIcon(name: "camera", size: 18)
+            HStack(spacing: 10) {
+                LucideIcon(name: "camera", size: 20)
                 Text("Take a photo to keep this receipt.")
             }
-            .font(Theme.sans(16))
+            .font(Theme.serif(19, .regular))
             .foregroundStyle(Theme.inkSecondary)
             .padding(.top, 20)
             .opacity(printed ? 1 : 0)
@@ -193,8 +194,11 @@ private struct ReceiptView: View {
         .padding(.horizontal, 40)
         .padding(.top, 34)
         .padding(.bottom, 40)
-        .background(Theme.card, in: ReceiptShape())
-        .shadow(color: Theme.cardShadow, radius: 24, y: 12)
+        .background {
+            ReceiptShape()
+                .fill(Theme.card)
+                .shadow(color: Theme.cardShadow, radius: 24, y: 12)
+        }
     }
 
     private var rule: some View {
@@ -205,18 +209,14 @@ private struct ReceiptView: View {
 
     private var header: some View {
         VStack(spacing: 6) {
-            Text(receipt.merchantName)
-                .font(Theme.serif(22))
-                .tracking(1.5)
-                .textCase(.uppercase)
+            LucideIcon(name: "ice-cream-cone", size: 30)
+                .padding(.bottom, 6)
+            Text(receipt.eventName)
+                .font(Theme.serif(30))
                 .multilineTextAlignment(.center)
-            if receipt.eventName != receipt.merchantName {
-                Text(receipt.eventName).font(Theme.serif(17, .regular)).italic()
-            }
             Text(receipt.date.formatted(.dateTime.month(.wide).day().year().hour().minute()))
                 .font(Theme.sans(14))
                 .foregroundStyle(Theme.inkSecondary)
-                .padding(.top, 2)
             HStack {
                 Text("Order \(receipt.orderNumber)")
                 Spacer()
@@ -283,6 +283,9 @@ private struct ReceiptView: View {
     private var payment: some View {
         VStack(spacing: 6) {
             Text(receipt.cardDescription).font(Theme.sans(15, .medium))
+            if receipt.merchantName != receipt.eventName {
+                Text(receipt.merchantName).font(Theme.sans(13))
+            }
             Text("Payment \(receipt.paymentID)")
             Text("Square order \(receipt.squareOrderID)")
             if receipt.isSimulated {
@@ -326,9 +329,9 @@ private struct Line: Shape {
 }
 
 private struct ReceiptShape: Shape {
-    var cornerRadius: CGFloat = 6
-    var toothWidth: CGFloat = 16
-    var toothDepth: CGFloat = 7
+    var cornerRadius: CGFloat = 3
+    var toothWidth: CGFloat = 10
+    var toothDepth: CGFloat = 4.5
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
