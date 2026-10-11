@@ -104,6 +104,33 @@ a.pill{color:var(--dim);text-decoration:none}
 .frow .items{grid-column:2;color:var(--dim)}
 .frow .when{grid-column:3;color:var(--dim);font-size:.9rem;text-align:right;white-space:nowrap}
 .frow.sim{opacity:.6}
+.order li.big{display:grid;grid-template-columns:auto 1fr;gap:.1rem .7rem;align-items:baseline;padding:.6rem .8rem}
+.order li.big .n{grid-row:span 3;display:grid;place-items:center;width:1.9rem;height:1.9rem;border-radius:50%;background:var(--panel);font-weight:800;font-size:1rem;align-self:center}
+.order li.big .v{font-size:1rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+.order li.big .f{font-size:1.45rem;font-weight:800;line-height:1.2}
+.order li.big .f .t{color:var(--accent)}.order li.big .f .nt{color:var(--dim);font-weight:600}
+.order li.big .sm{font-size:.95rem;color:var(--dim)}
+.order li.big:not(:has(.n)){grid-template-columns:1fr}
+.openstate{display:grid;gap:.8rem}
+.ostatus{display:flex;gap:.9rem;align-items:center}
+.ostatus>svg{width:2.4rem;height:2.4rem;flex:none}
+.ostatus b{display:block;font-size:1.3rem}
+.ostatus span{color:var(--dim)}
+.is-open .ostatus>svg{color:var(--ok)}
+.is-closed{background:var(--bad-soft);margin:-.4rem;padding:.8rem;border-radius:.9rem}
+.is-closed .ostatus>svg,.is-closed .ostatus b{color:var(--bad)}
+.urow.sev-urgent{color:var(--bad)}.urow.sev-urgent .ut b{color:var(--bad)}
+.board{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,28rem),1fr))}
+.board .card h2{font-size:1.4rem}
+.board .card.ready{background:var(--ok-soft);border-color:transparent}
+.btiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(12rem,1fr));gap:.8rem}
+.btile{display:grid;gap:.1rem;padding:.9rem 1.1rem;border-radius:1rem;background:var(--panel2)}
+.ready .btile{background:var(--panel)}
+.btile .num{font-size:3rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.btile .who{font-size:1.5rem;font-weight:700;overflow-wrap:anywhere}
+.kind-display ~ * button,.kind-display button{display:none}
+@media(min-width:1200px){html:has(.kind-display){font-size:20px}}
+body.closed #kioskPill{animation:none}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:1.2rem;padding:1rem 1.1rem;box-shadow:var(--shadow);min-width:0}
 .card h2{margin:0 0 .75rem;font-size:.95rem;color:var(--dim);font-weight:700;letter-spacing:.05em;text-transform:uppercase;display:flex;gap:.5rem;align-items:center}
 .card h2 .count{margin-left:auto;background:var(--panel2);color:var(--text);border-radius:99rem;padding:.1rem .7rem;font-size:.95rem;letter-spacing:0}
@@ -202,6 +229,8 @@ const ICONS: Record<string, string> = {
   loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
   list: '<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
+  store: '<path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/><path d="M22 7v3a2 2 0 0 1-2 2a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7"/>',
+  storeOff: '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
   layout: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
 };
 
@@ -234,10 +263,13 @@ export function pickerBody(message: string | null = null): string {
 }
 
 const SECTIONS: Record<StaffSection, () => string> = {
-  queue: () => `<section class="card"><h2>${icon("receipt")} Orders <span class="count" id="openCount">0</span></h2><div id="orders"></div><details class="done" id="doneWrap"><summary>${icon("chevron")} <span id="doneTitle">Finished</span></summary><div id="done"></div></details></section>`,
+  make: () => `<section class="card"><h2>${icon("cone")} To make, oldest first <span class="count" id="makeCount">0</span></h2><div id="make"></div></section>`,
+  handoff: () => `<section class="card"><h2>${icon("receipt")} Orders <span class="count" id="handoffCount">0</span></h2><div id="handoff"></div><details class="done" id="doneWrap" hidden><summary>${icon("chevron")} <span id="doneTitle">Finished</span></summary><div id="done"></div></details></section>`,
+  board: () => `<div class="board"><section class="card"><h2>${icon("cone")} Being made</h2><div class="btiles" id="boardMaking"></div></section><section class="card ready"><h2>${icon("bell")} Ready for pickup</h2><div class="btiles" id="boardReady"></div></section></div>`,
   feed: () => `<section class="card"><h2>${icon("list")} All orders <span class="count" id="feedCount">0</span></h2><div id="feed"></div></section>`,
-  soldout: () => `<section class="card"><h2>${icon("ban")} Sold out</h2><div class="flavors" id="soldout"></div></section>`,
-  kiosk: () => `<section class="card"><h2>${icon("tablet")} Kiosk</h2><div class="health" id="health"></div></section>`,
+  supplies: () => `<section class="card"><h2>${icon("ban")} Supplies</h2><div class="flavors" id="soldout"></div></section>`,
+  open: () => `<section class="card"><h2>${icon("store")} Kiosk ordering</h2><div id="openCard"></div></section>`,
+  kiosk: () => `<section class="card"><h2>${icon("tablet")} Kiosk health</h2><div class="health" id="health"></div></section>`,
   stats: () => `<div class="tiles">
 <div class="tile"><div class="label">${icon("receipt")} Orders</div><div class="value" id="tOrders">0</div><div class="sub" id="tOrdersSub"></div></div>
 <div class="tile"><div class="label">${icon("dollar")} Revenue</div><div class="value" id="tRevenue">$0</div><div class="sub" id="tAvg"></div></div>
@@ -247,21 +279,21 @@ const SECTIONS: Record<StaffSection, () => string> = {
 <section class="card"><h2>${icon("cone")} Scoops by flavor</h2><div id="flavorBars"></div></section>
 <section class="card"><h2>${icon("sparkles")} Toppings</h2><div id="toppingBars"></div></section>
 <section class="card"><h2>${icon("chart")} Orders per hour</h2><div class="hours" id="hourBars"></div></section>
-<div class="foot"><span id="updated"></span><a href="/v1/square/oauth/start" class="web-only">Connect Square</a></div>`,
+<div class="foot"><span id="updated"></span></div>`,
 };
 
 export function dashboardBody(roleId: string, role: StaffRole): string {
   const columns = role.columns.map((sections) => `<div class="col">${sections.map((s) => SECTIONS[s]()).join("")}</div>`).join("");
+  const controls = role.kind === "display" ? "" : `<button class="pill" id="sound" type="button" hidden></button>
+<a class="pill muted web-only" href="/staff" aria-label="Switch page">${icon("layout")}<span class="lbl">Pages</span></a>${signOut()}`;
   return `<div class="sticky"><header class="top"><h1>${icon(role.icon)}<span class="lbl">${escapeHtml(role.title)}</span></h1>
-<div class="status"><span class="pill" id="link" role="status"></span><span class="pill" id="kioskPill"></span>
-<button class="pill" id="sound" type="button" hidden></button>
-<a class="pill muted web-only" href="/staff" aria-label="Switch page">${icon("layout")}<span class="lbl">Pages</span></a>${signOut()}</div></header>
+<div class="status"><span class="pill" id="link" role="status"></span><span class="pill" id="kioskPill"></span>${controls}</div></header>
 <div id="banner" class="banner" hidden role="status"></div></div>
-<div class="wrap" data-role="${escapeHtml(roleId)}">
-${role.alerts ? `<section class="alerts" id="alerts" aria-live="assertive"></section>` : ""}
+<div class="wrap role-${escapeHtml(roleId)} kind-${role.kind}" data-title="${escapeHtml(role.title)}" data-kind="${role.kind}" data-alerts="${role.alerts}">
+${role.alerts === "none" ? "" : `<section class="alerts" id="alerts" aria-live="assertive"></section>`}
 <main class="grid cols-${role.columns.length}">${columns}</main></div>
 <div id="toast" class="toast" hidden role="status"></div>
-<dialog id="confirm"><h3 id="confirmTitle"></h3><p id="confirmText"></p><div class="row"><button class="btn quiet big" id="confirmNo" type="button">Keep order</button><button class="btn urgent" id="confirmYes" type="button">${icon("x")} Cancel order</button></div></dialog>`;
+${role.kind === "display" ? "" : `<dialog id="confirm"><h3 id="confirmTitle"></h3><p id="confirmText"></p><div class="row"><button class="btn quiet big" id="confirmNo" type="button">Keep</button><button class="btn urgent big" id="confirmYes" type="button">Confirm</button></div></dialog>`}`;
 }
 
 const SCRIPT = String.raw`
@@ -269,7 +301,9 @@ const SCRIPT = String.raw`
 var ICONS = __ICONS__;
 var BASE_TITLE = document.title;
 var IN_APP = /BoothStaffApp\//.test(navigator.userAgent);
-var ACTOR = IN_APP ? "Counter iPad" : "Dashboard";
+var WRAP = document.querySelector(".wrap");
+var ROLE_TITLE = WRAP.getAttribute("data-title"), READONLY = WRAP.getAttribute("data-kind") === "display", ALERTS = WRAP.getAttribute("data-alerts");
+var ACTOR = ROLE_TITLE + (IN_APP ? " iPad" : " page");
 var OUTBOX_KEY = "booth.outbox.v1", DEVICE_KEY = "booth.device", MUTE_KEY = "booth.muted";
 var MAX_QUEUE_AGE = 60 * 60000, SETTLE_GRACE = 5000;
 var NEXT = { paid: "preparing", preparing: "ready", ready: "collected" };
@@ -295,7 +329,7 @@ var state=null, stats=null, ws=null, everLive=false, attempt=0, retryTimer=null;
 var lastMessageAt=0, connectStartedAt=0, lastPingAt=0, statsTimer=null, serverOffset=0;
 var offlineSince=null, pageStartedAt=Date.now();
 var outbox=[], settled={}, flushing=false, flushFailures=0, flushTimer=null;
-var toastTimer=null, confirmOrder=null;
+var toastTimer=null;
 
 function now(){return Date.now()+serverOffset;}
 function span(ms){
@@ -318,9 +352,9 @@ function flavorName(id){
 function agoSpan(ms){return '<span data-ago="'+(ms==null?"":ms)+'">'+ago(ms)+"</span>";}
 
 function keyOf(a){
-  return a.type==="ack"?"ack:"+a.alertId:a.type==="setSoldOut"?"flavor:"+a.flavor:"order:"+a.orderId;
+  return a.type==="ack"?"ack:"+a.alertId:a.type==="setSoldOut"?"flavor:"+a.flavor:a.type==="setKioskOpen"?"open":"order:"+a.orderId;
 }
-function valueOf(a){return a.type==="ack"?true:a.type==="setSoldOut"?a.soldOut:a.status;}
+function valueOf(a){return a.type==="ack"?true:a.type==="setSoldOut"?a.soldOut:a.type==="setKioskOpen"?a.open:a.status;}
 
 function restoreOutbox(){
   try{
@@ -429,6 +463,7 @@ function reconcile(){
     var s=settled[key],actual;
     if(key.indexOf("flavor:")===0){var f=state.flavors.filter(function(x){return "flavor:"+x.id===key;})[0];actual=f?f.soldOut:undefined;}
     else if(key.indexOf("order:")===0){var o=state.orders.filter(function(x){return "order:"+x.id===key;})[0];actual=o?o.status:undefined;}
+    else if(key==="open"){actual=!state.kioskOpen||state.kioskOpen.open!==false;}
     else{var a=state.alerts.filter(function(x){return "ack:"+x.id===key;})[0];actual=!a||a.ackedAt!=null||a.resolvedAt!=null;}
     if(actual===s.value||(live&&t-s.at>SETTLE_GRACE)){delete settled[key];changed=true;}
   });
@@ -446,6 +481,7 @@ function applyPatch(msg){
   var c=msg.change;
   if(c.kind==="flavors")state.flavors=c.flavors;
   else if(c.kind==="kiosk")state.kiosk=c.kiosk;
+  else if(c.kind==="kioskOpen")state.kioskOpen=c.kioskOpen;
   else if(c.kind==="alert"){
     var i=state.alerts.findIndex(function(a){return a.id===c.alert.id;});
     if(i>=0)state.alerts[i]=c.alert;else state.alerts.unshift(c.alert);
@@ -588,7 +624,7 @@ function urgentOpen(){
 }
 
 function soundTick(){
-  if(!HAS.alerts)return;
+  if(!HAS.alerts||ALERTS!=="front")return;
   var open=urgentOpen();
   var fresh=open.filter(function(a){return !heard[a.id+":"+a.count];});
   open.forEach(function(a){heard[a.id+":"+a.count]=true;});
@@ -599,7 +635,8 @@ function soundTick(){
 
 function renderSound(){
   var b=$("sound");
-  b.hidden=!HAS.alerts||(IN_APP&&soundState==="on");
+  if(!b)return;
+  b.hidden=!HAS.alerts||ALERTS!=="front"||(IN_APP&&soundState==="on");
   if(soundState==="locked"){b.className="pill attn";b.innerHTML=ico("volumeX")+'<span>Enable sound</span>';b.setAttribute("aria-label","Enable alert sound");}
   else if(soundState==="on"){b.className="pill";b.innerHTML=ico("volume")+'<span class="lbl">Sound on</span>';b.setAttribute("aria-label","Alert sound on, tap to mute");}
   else{b.className="pill muted";b.innerHTML=ico("volumeX")+'<span class="lbl">Muted</span>';b.setAttribute("aria-label","Alert sound muted, tap to turn on");}
@@ -682,59 +719,96 @@ function pendingTag(key){
 
 function alertIcon(a){return a.kind==="help"?"bellRing":a.kind==="soldout"?"ban":a.kind==="offline"?"wifiOff":"alert";}
 
+function openAlerts(){
+  return state.alerts.filter(function(a){return a.ackedAt==null&&a.resolvedAt==null&&!alertAcked(a);});
+}
+
+function alertRow(a){
+  return '<div class="urow sev-'+esc(a.severity)+'">'+ico(alertIcon(a))+'<span class="ut"><b>'+esc(a.title)+(a.count>1?" (x"+a.count+")":"")+'</b> <span class="when">'+agoSpan(a.updatedAt)+'</span></span>'+(READONLY?"":'<button class="btn quiet" type="button" data-ack="'+esc(a.id)+'">'+ico("check")+" OK</button>")+"</div>";
+}
+
 function compactList(cls,title,list,ackLabel,max){
   var ids=list.map(function(a){return a.id;}).join(",");
-  return '<div class="updates '+cls+'"><div class="uhead"><span>'+ico(cls==="more"?"alert":"bell")+" "+title+" ("+list.length+')</span>'+(list.length>1?'<button class="btn quiet" type="button" data-ackids="'+esc(ids)+'">'+ico("checkCheck")+" "+ackLabel+"</button>":"")+"</div>"+list.slice(0,max).map(function(a){
-    return '<div class="urow">'+ico(alertIcon(a))+'<span class="ut"><b>'+esc(a.title)+(a.count>1?" (x"+a.count+")":"")+'</b> <span class="when">'+agoSpan(a.updatedAt)+'</span></span><button class="btn quiet" type="button" data-ack="'+esc(a.id)+'">'+ico("check")+" OK</button></div>";
-  }).join("")+(list.length>max?'<div class="urow more-n">and '+(list.length-max)+" more</div>":"")+"</div>";
+  return '<div class="updates '+cls+'"><div class="uhead"><span>'+ico(cls==="more"?"alert":"bell")+" "+title+" ("+list.length+')</span>'+(!READONLY&&list.length>1?'<button class="btn quiet" type="button" data-ackids="'+esc(ids)+'">'+ico("checkCheck")+" "+ackLabel+"</button>":"")+"</div>"+list.slice(0,max).map(alertRow).join("")+(list.length>max?'<div class="urow more-n">and '+(list.length-max)+" more</div>":"")+"</div>";
+}
+
+function alertCard(a){
+  var urgent=a.severity==="urgent";
+  return '<div class="alert '+esc(a.severity)+'" role="alert"><span class="ic">'+ico(alertIcon(a))+'</span><div class="body"><div class="title">'+esc(a.title)+(a.count>1?" (x"+a.count+")":"")+'<span class="when">'+agoSpan(a.updatedAt)+'</span></div>'+(a.detail?'<div class="detail">'+esc(a.detail)+'</div>':"")+'</div>'+(READONLY?"":'<button class="btn '+(urgent?"urgent":"quiet")+'" type="button" data-ack="'+esc(a.id)+'">'+ico("check")+(urgent?" Acknowledge":" OK")+"</button>")+"</div>";
 }
 
 function renderAlerts(){
-  var open=state.alerts.filter(function(a){return a.ackedAt==null&&a.resolvedAt==null&&!alertAcked(a);});
+  var open=openAlerts();
   var rank={urgent:0,warning:1};
   var main=open.filter(function(a){return a.severity!=="info";}).sort(function(a,b){return rank[a.severity]-rank[b.severity]||b.updatedAt-a.updatedAt;});
   var info=open.filter(function(a){return a.severity==="info";}).sort(function(a,b){return b.updatedAt-a.updatedAt;});
-  var shown=main.slice(0,2),rest=main.slice(2);
-  var html=shown.map(function(a){
-    var urgent=a.severity==="urgent";
-    return '<div class="alert '+esc(a.severity)+'" role="alert"><span class="ic">'+ico(alertIcon(a))+'</span><div class="body"><div class="title">'+esc(a.title)+(a.count>1?" (x"+a.count+")":"")+'<span class="when">'+agoSpan(a.updatedAt)+'</span></div>'+(a.detail?'<div class="detail">'+esc(a.detail)+'</div>':"")+'</div><button class="btn '+(urgent?"urgent":"quiet")+'" type="button" data-ack="'+esc(a.id)+'">'+ico("check")+(urgent?" Acknowledge":" OK")+"</button></div>";
-  }).join("");
-  if(rest.length)html+=compactList("more","More alerts",rest,"Acknowledge all",5);
-  if(info.length)html+=compactList("info","Updates",info,"Clear all",3);
+  var html="";
+  if(ALERTS==="front"){
+    html=main.slice(0,2).map(alertCard).join("");
+    if(main.length>2)html+=compactList("more","More alerts",main.slice(2),"Acknowledge all",5);
+    if(info.length)html+=compactList("info","Updates",info,"Clear all",3);
+  } else {
+    if(main.length)html+=compactList("more","Alerts",main,"Acknowledge all",ALERTS==="quiet"?3:6);
+    if(info.length&&ALERTS!=="quiet"&&!READONLY)html+=compactList("info","Updates",info,"Clear all",3);
+  }
   $("alerts").innerHTML=html;
 }
 
-function itemsHtml(o){
-  return o.items.map(function(it){
-    var f=it.flavors.map(flavorName).join(", ")||"No flavor";
-    var vessel=it.vessel==="cone"?"Waffle cone":titleCase(it.vessel);
-    var t=it.toppings&&it.toppings.length?' <span class="t">+ '+esc(it.toppings.map(titleCase).join(", "))+"</span>":' <span class="nt">no toppings</span>';
-    return '<li><span class="v">'+esc(vessel)+":</span> "+esc(f)+t+"</li>";
+function vesselName(v){return v==="cone"?"Waffle cone":titleCase(v);}
+
+function itemsHtml(o,focus){
+  return o.items.map(function(it,i){
+    var f=esc(it.flavors.map(flavorName).join(", ")||"No flavor");
+    var tops=it.toppings&&it.toppings.length?esc(it.toppings.map(titleCase).join(", ")):"";
+    var n=o.items.length>1?'<span class="n">'+(i+1)+"</span>":"";
+    if(focus==="flavors")return '<li class="big">'+n+'<span class="v">'+esc(vesselName(it.vessel))+'</span><span class="f">'+f+"</span>"+(tops?'<span class="sm">then toppings: '+tops+"</span>":"")+"</li>";
+    if(focus==="toppings")return '<li class="big">'+n+'<span class="v">'+esc(vesselName(it.vessel))+'</span><span class="f">'+(tops?'<span class="t">'+tops+"</span>":'<span class="nt">No toppings</span>')+'</span><span class="sm">'+f+"</span></li>";
+    return '<li><span class="v">'+esc(vesselName(it.vessel))+":</span> "+f+(tops?' <span class="t">+ '+tops+"</span>":' <span class="nt">no toppings</span>')+"</li>";
   }).join("");
 }
 
 function orderLabel(o){return (o.orderNumber!=null?"#"+o.orderNumber+" ":"")+(o.customerName||"Guest");}
 
-function orderCard(o,status){
-  var next=NEXT[status],key="order:"+o.id;
-  var primary=status==="paid"?'<button class="btn primary big" type="button" data-order="'+esc(o.id)+'" data-to="preparing">'+ico("play")+" Start</button>"
-    :status==="preparing"?'<button class="btn go big" type="button" data-order="'+esc(o.id)+'" data-to="ready">'+ico("check")+" Ready</button>"
-    :'<button class="btn primary big" type="button" data-order="'+esc(o.id)+'" data-to="collected">'+ico("checkCheck")+" Collected</button>";
-  return '<article class="order s-'+status+'"><div class="head"><span class="num">'+(o.orderNumber!=null?"#"+o.orderNumber:"")+'</span><span class="who">'+esc(o.customerName||"Guest")+'</span>'+pendingTag(key)+'<span class="age">'+agoSpan(o.receivedAt)+'</span></div><ul>'+itemsHtml(o)+'</ul><div class="acts"><span class="chip '+status+'">'+STATUS_LABEL[status]+'</span><span class="grow"></span><button class="btn danger" type="button" data-cancel="'+esc(o.id)+'">'+ico("x")+" Cancel</button>"+(next?primary:"")+"</div></article>";
+function statusButton(o,to,label,icon,cls){
+  return '<button class="btn '+cls+' big" type="button" data-order="'+esc(o.id)+'" data-to="'+to+'">'+ico(icon)+" "+label+"</button>";
 }
 
-function renderOrders(){
-  var real=state.orders.filter(function(o){return !o.simulated;});
-  var withStatus=real.map(function(o){return {o:o,s:orderStatus(o)};});
-  var making=withStatus.filter(function(x){return x.s==="paid"||x.s==="preparing";}).sort(function(a,b){return a.o.paidAt-b.o.paidAt;});
-  var ready=withStatus.filter(function(x){return x.s==="ready";}).sort(function(a,b){return a.o.paidAt-b.o.paidAt;});
-  var done=withStatus.filter(function(x){return x.s==="collected"||x.s==="canceled";}).sort(function(a,b){return b.o.statusAt-a.o.statusAt;}).slice(0,12);
-  $("openCount").textContent=making.length+ready.length;
-  var html="";
-  if(!making.length&&!ready.length)html='<div class="empty">No open orders. New ones appear here the moment a customer pays.</div>';
-  if(making.length)html+='<div class="sub-h">'+ico("cone")+" To make ("+making.length+')</div><div class="orders">'+making.map(function(x){return orderCard(x.o,x.s);}).join("")+"</div>";
-  if(ready.length)html+='<div class="sub-h" style="margin-top:1rem">'+ico("bell")+" Ready for pickup ("+ready.length+')</div><div class="orders">'+ready.map(function(x){return orderCard(x.o,x.s);}).join("")+"</div>";
-  $("orders").innerHTML=html;
+function orderCard(o,status,mode){
+  var key="order:"+o.id,acts="";
+  if(!READONLY){
+    if(mode==="make")acts=status==="paid"?statusButton(o,"preparing","Start","play","primary"):statusButton(o,"ready","Done","check","go");
+    else{
+      acts='<button class="btn danger" type="button" data-cancel="'+esc(o.id)+'">'+ico("x")+" Cancel</button>";
+      if(status==="ready")acts+=statusButton(o,"collected","Handed off","checkCheck","primary");
+    }
+  }
+  return '<article class="order s-'+status+'"><div class="head"><span class="num">'+(o.orderNumber!=null?"#"+o.orderNumber:"")+'</span><span class="who">'+esc(o.customerName||"Guest")+'</span>'+pendingTag(key)+'<span class="age">'+agoSpan(o.receivedAt)+'</span></div><ul>'+itemsHtml(o,mode==="make"?"flavors":"toppings")+'</ul><div class="acts"><span class="chip '+status+'">'+STATUS_LABEL[status]+'</span><span class="grow"></span>'+acts+"</div></article>";
+}
+
+function realOrders(){
+  return state.orders.filter(function(o){return !o.simulated;}).map(function(o){return {o:o,s:orderStatus(o)};});
+}
+function byPaid(a,b){return a.o.paidAt-b.o.paidAt;}
+
+function group(title,icon,list,mode){
+  return list.length?'<div class="sub-h">'+ico(icon)+" "+title+" ("+list.length+')</div><div class="orders">'+list.map(function(x){return orderCard(x.o,x.s,mode);}).join("")+"</div>":"";
+}
+
+function renderMake(){
+  var all=realOrders();
+  var todo=all.filter(function(x){return x.s==="paid"||x.s==="preparing";}).sort(byPaid);
+  $("makeCount").textContent=todo.length;
+  $("make").innerHTML=todo.length?'<div class="orders">'+todo.map(function(x){return orderCard(x.o,x.s,"make");}).join("")+"</div>":'<div class="empty">Nothing to make. New orders appear here the moment a customer pays.</div>';
+}
+
+function renderHandoff(){
+  var all=realOrders();
+  var ready=all.filter(function(x){return x.s==="ready";}).sort(byPaid);
+  var coming=all.filter(function(x){return x.s==="paid"||x.s==="preparing";}).sort(byPaid);
+  var done=all.filter(function(x){return x.s==="collected"||x.s==="canceled";}).sort(function(a,b){return b.o.statusAt-a.o.statusAt;}).slice(0,12);
+  $("handoffCount").textContent=ready.length+coming.length;
+  var html=group("Ready to hand off","bell",ready,"handoff")+group("Coming up","cone",coming,"handoff");
+  $("handoff").innerHTML=html||'<div class="empty">No open orders.</div>';
   $("doneWrap").hidden=!done.length;
   $("doneTitle").textContent="Finished ("+done.length+")";
   $("done").innerHTML=done.map(function(x){
@@ -743,18 +817,42 @@ function renderOrders(){
   }).join("");
 }
 
-function renderSoldOut(){
+function renderBoard(){
+  var all=realOrders();
+  var making=all.filter(function(x){return x.s==="paid"||x.s==="preparing";}).sort(byPaid);
+  var ready=all.filter(function(x){return x.s==="ready";}).sort(byPaid);
+  var tile=function(x){return '<div class="btile"><span class="num">'+(x.o.orderNumber!=null?"#"+x.o.orderNumber:"")+'</span><span class="who">'+esc(x.o.customerName||"Guest")+"</span></div>";};
+  $("boardMaking").innerHTML=making.map(tile).join("")||'<div class="empty">Nothing being made</div>';
+  $("boardReady").innerHTML=ready.map(tile).join("")||'<div class="empty">Nothing waiting</div>';
+}
+
+function renderSupplies(){
   $("soldout").innerHTML=state.flavors.map(function(f){
-    var out=flavorOut(f);
-    return '<button class="flavor'+(out?" out":"")+'" type="button" data-flavor="'+esc(f.id)+'" aria-pressed="'+out+'"><span class="name">'+esc(f.name)+'</span><span class="state">'+(out?ico("ban")+"Sold out":ico("check")+"Available")+"</span>"+pendingTag("flavor:"+f.id)+"</button>";
+    var out=flavorOut(f),tag=READONLY?"div":"button";
+    return "<"+tag+' class="flavor'+(out?" out":"")+'"'+(READONLY?"":' type="button" data-flavor="'+esc(f.id)+'" aria-pressed="'+out+'"')+'><span class="name">'+esc(f.name)+'</span><span class="state">'+(out?ico("ban")+"Sold out":ico("check")+"Available")+"</span>"+pendingTag("flavor:"+f.id)+"</"+tag+">";
   }).join("")||'<div class="empty">The kiosk hasn\'t reported its flavors yet.</div>';
+}
+
+function renderOpen(){
+  var open=kioskIsOpen(),k=state.kioskOpen||{};
+  var who=k.changedAt?(open?"Opened":"Closed")+" "+agoSpan(k.changedAt)+(k.changedBy?" by "+esc(k.changedBy):""):"";
+  $("openCard").className="openstate "+(open?"is-open":"is-closed");
+  $("openCard").innerHTML='<div class="ostatus">'+ico(open?"store":"storeOff")+'<div><b>'+(open?"Kiosk is open":"Kiosk is closed")+'</b><span>'+(open?"Customers can start orders.":"Begin Order is turned off. Customers mid-order can still finish.")+(who?" "+who+".":"")+"</span></div></div>"+pendingTag("open")+(READONLY?"":'<button class="btn '+(open?"danger":"go")+' big" type="button" data-open="'+(open?"0":"1")+'">'+ico(open?"storeOff":"store")+(open?" Close kiosk":" Reopen kiosk")+"</button>");
+}
+
+function kioskIsOpen(){
+  var i=intended("open");
+  if(i)return i.value;
+  return !state||!state.kioskOpen||state.kioskOpen.open!==false;
 }
 
 function renderKiosk(){
   var k=state.kiosk,h=k.health,pill=$("kioskPill"),live=isLive();
-  if(!live){pill.className="pill muted";pill.innerHTML=ico("tablet")+'Kiosk unknown';}
-  else{pill.className="pill "+(k.online?"ok":"bad");pill.innerHTML=ico("tablet")+'Kiosk '+(k.online?"online":"offline");}
-  var rows=[["Last heard",null,k.online?"ok-t":"bad-t",agoSpan(k.lastSeenAt)],["Screen",k.screen?titleCase(k.screen):"Unknown",""]];
+  var closed=!kioskIsOpen();
+  if(!live){pill.className="pill muted";pill.innerHTML=ico("tablet")+"Kiosk unknown";}
+  else{pill.className="pill "+(closed||!k.online?"bad":"ok");pill.innerHTML=ico(closed?"storeOff":"tablet")+"Kiosk "+(k.online?"online":"offline")+(closed?", closed":"");}
+  if(!HAS.health)return;
+  var rows=[["Taking orders",closed?"No, closed":"Yes",closed?"bad-t":"ok-t"],["Last heard",null,k.online?"ok-t":"bad-t",agoSpan(k.lastSeenAt)],["Screen",k.screen?titleCase(k.screen):"Unknown",""]];
   if(h){
     rows.push(["Payments",h.simulatePayment?"Simulated":h.environment,h.simulatePayment?"warn-t":""]);
     rows.push(["Square",h.authorized?"Authorized":(h.authorizationState||"Not authorized"),h.authorized?"ok-t":"bad-t"]);
@@ -767,39 +865,43 @@ function renderKiosk(){
     if(h.lastError)rows.push(["Last error",h.lastError,"warn-t"]);
     rows.push(["App",h.appVersion,""]);
   } else rows.push(["Health","No report yet","warn-t"]);
-  if(HAS.health)$("health").innerHTML=rows.map(function(r){
+  $("health").innerHTML=rows.map(function(r){
     return '<div><span>'+esc(r[0])+'</span><span class="'+r[2]+'">'+(r[3]?r[3]:esc(r[1]))+"</span></div>";
   }).join("");
-}
-
-var HAS={alerts:!!$("alerts"),orders:!!$("orders"),feed:!!$("feed"),soldout:!!$("soldout"),health:!!$("health"),stats:!!$("tOrders")};
-
-function render(){
-  renderLink();renderSound();
-  if(!state){
-    var waiting='<div class="empty">'+ico("loader")+" Waiting for the booth</div>";
-    ["orders","feed","soldout","health"].forEach(function(id){if(HAS[id]&&!$(id).innerHTML)$(id).innerHTML=waiting;});
-    return;
-  }
-  if(HAS.alerts)renderAlerts();
-  if(HAS.orders)renderOrders();
-  if(HAS.feed)renderFeed();
-  if(HAS.soldout)renderSoldOut();
-  renderKiosk();
 }
 
 function renderFeed(){
   var list=state.orders.slice().sort(function(a,b){return b.paidAt-a.paidAt;});
   $("feedCount").textContent=list.filter(function(o){return !o.simulated;}).length;
   if(!list.length){$("feed").innerHTML='<div class="empty">No orders yet. They appear here the moment a customer pays.</div>';return;}
-  $("feed").innerHTML=list.map(function(o){
+  $("feed").innerHTML=list.slice(0,40).map(function(o){
     var st=orderStatus(o);
     var items=o.items.map(function(it){
       var t=it.toppings&&it.toppings.length?" + "+it.toppings.map(titleCase).join(", "):"";
-      return (it.vessel==="cone"?"Waffle cone":titleCase(it.vessel))+": "+(it.flavors.map(flavorName).join(", ")||"no flavor")+t;
+      return vesselName(it.vessel)+": "+(it.flavors.map(flavorName).join(", ")||"no flavor")+t;
     }).join("; ");
     return '<div class="frow'+(o.simulated?" sim":"")+'"><span class="num">'+(o.orderNumber!=null?"#"+o.orderNumber:"")+'</span><span class="who">'+esc(o.customerName||"Guest")+' <span class="chip '+st+'">'+(o.simulated?"Test, ":"")+STATUS_LABEL[st]+"</span>"+pendingTag("order:"+o.id)+'</span><span class="total">'+money(o.totalCents)+'</span><span class="items">'+esc(items)+'</span><span class="when">'+clock(o.paidAt)+"</span></div>";
   }).join("");
+}
+
+var HAS={alerts:!!$("alerts"),make:!!$("make"),handoff:!!$("handoff"),board:!!$("boardMaking"),feed:!!$("feed"),soldout:!!$("soldout"),open:!!$("openCard"),health:!!$("health"),stats:!!$("tOrders")};
+
+function render(){
+  renderLink();renderSound();
+  if(!state){
+    var waiting='<div class="empty">'+ico("loader")+" Waiting for the booth</div>";
+    ["make","handoff","feed","soldout","health","openCard","boardMaking"].forEach(function(id){if($(id)&&!$(id).innerHTML)$(id).innerHTML=waiting;});
+    return;
+  }
+  document.body.classList.toggle("closed",!kioskIsOpen());
+  if(HAS.alerts)renderAlerts();
+  if(HAS.make)renderMake();
+  if(HAS.handoff)renderHandoff();
+  if(HAS.board)renderBoard();
+  if(HAS.feed)renderFeed();
+  if(HAS.soldout)renderSupplies();
+  if(HAS.open)renderOpen();
+  renderKiosk();
 }
 
 function setStatus(id,to,withUndo){
@@ -811,45 +913,69 @@ function setStatus(id,to,withUndo){
   if(withUndo)showToast(orderLabel(o)+": "+STATUS_LABEL[to],function(){enqueue({type:"setOrderStatus",orderId:id,status:from});});
 }
 
+var pendingConfirm=null;
+function ask(title,text,yesLabel,yesClass,noLabel,onYes){
+  pendingConfirm=onYes;
+  $("confirmTitle").textContent=title;
+  $("confirmText").textContent=text;
+  $("confirmYes").className="btn big "+yesClass;
+  $("confirmYes").textContent=yesLabel;
+  $("confirmNo").textContent=noLabel;
+  var d=$("confirm");
+  if(d.showModal)d.showModal();else d.setAttribute("open","");
+}
+function closeConfirm(){var d=$("confirm");if(d.close)d.close();else d.removeAttribute("open");pendingConfirm=null;}
+
 function askCancel(id){
   var o=state&&state.orders.filter(function(x){return x.id===id;})[0];
   if(!o)return;
-  confirmOrder=id;
-  $("confirmTitle").textContent="Cancel order "+orderLabel(o)+"?";
-  $("confirmText").textContent="It leaves the queue and stops counting in totals. Any refund is done separately in Square.";
-  var d=$("confirm");
-  if(d.showModal)d.showModal();else if(confirm($("confirmTitle").textContent))finishCancel();
+  ask("Cancel order "+orderLabel(o)+"?","It leaves the queue and stops counting in totals. Any refund is done separately in Square.","Cancel order","urgent","Keep order",function(){setStatus(id,"canceled",true);});
 }
-function finishCancel(){
-  var d=$("confirm");if(d.open)d.close();
-  if(confirmOrder)setStatus(confirmOrder,"canceled",true);
-  confirmOrder=null;
+
+function askSoldOut(f){
+  var out=flavorOut(f);
+  if(out)ask("Mark "+f.name+" available again?","Customers will be able to add "+f.name+" to new scoops right away.","Mark available","go","Keep sold out",function(){enqueue({type:"setSoldOut",flavor:f.id,soldOut:false});});
+  else ask("Mark "+f.name+" sold out?","Customers won't be able to add "+f.name+". Scoops already in a cart stay.","Mark sold out","urgent","Keep available",function(){enqueue({type:"setSoldOut",flavor:f.id,soldOut:true});});
+}
+
+function askOpen(open){
+  if(open)ask("Reopen the kiosk?","Customers will be able to start new orders on the kiosk right away.","Reopen kiosk","go","Keep closed",function(){enqueue({type:"setKioskOpen",open:true});});
+  else ask("Close the kiosk?","Begin Order turns off on the kiosk. A customer already ordering can still finish and pay.","Close kiosk","urgent","Keep open",function(){enqueue({type:"setKioskOpen",open:false});});
 }
 
 document.addEventListener("click",function(e){
   var el=e.target.closest&&e.target.closest("button");
   if(!el)return;
+  if(el.id==="confirmYes"){var go=pendingConfirm;closeConfirm();if(go)go();return;}
+  if(el.id==="confirmNo"){closeConfirm();return;}
+  if(el.id==="sound"){
+    if(soundState==="on"){soundState="off";store(MUTE_KEY,"1");renderSound();}
+    else{store(MUTE_KEY,null);soundState="on";chime(true);renderSound();}
+    return;
+  }
+  if(READONLY)return;
   if(el.dataset.ack){enqueue({type:"ack",alertId:el.dataset.ack});}
   else if(el.dataset.ackids){el.dataset.ackids.split(",").forEach(function(id){if(id)enqueue({type:"ack",alertId:id});});}
   else if(el.dataset.flavor){
     var f=state&&state.flavors.filter(function(x){return x.id===el.dataset.flavor;})[0];
-    if(f)enqueue({type:"setSoldOut",flavor:f.id,soldOut:!flavorOut(f)});
+    if(f)askSoldOut(f);
   }
+  else if(el.dataset.open){askOpen(el.dataset.open==="1");}
   else if(el.dataset.order&&el.dataset.to){setStatus(el.dataset.order,el.dataset.to,true);}
   else if(el.dataset.cancel){askCancel(el.dataset.cancel);}
-  else if(el.id==="sound"){
-    if(soundState==="on"){soundState="off";store(MUTE_KEY,"1");renderSound();}
-    else{store(MUTE_KEY,null);soundState="on";chime(true);renderSound();}
-  }
-  else if(el.id==="confirmYes")finishCancel();
-  else if(el.id==="confirmNo"){$("confirm").close();confirmOrder=null;}
 });
+
+function renewSession(){
+  fetch("/dashboard/renew",{method:"POST",credentials:"same-origin",cache:"no-store"}).then(function(r){if(r.status===401)location.reload();}).catch(function(){});
+}
+setInterval(renewSession,30*60000);
 
 restoreOutbox();
 render();
 connect();
 loadStats();
 flush();
+renewSession();
 `;
 
 export function dashboardScript(): string {

@@ -517,7 +517,7 @@ describe("dashboard and staff sessions", () => {
   it("signs staff in with the PIN and keeps the cookie same-origin", async () => {
     const login = (pin: string, origin = BASE) =>
       call("/dashboard/login", { method: "POST", headers: { Origin: origin, "Content-Type": "application/x-www-form-urlencoded" }, body: `pin=${pin}` });
-    expect((await call("/staff/counter")).body).toContain('name="pin"');
+    expect((await call("/staff/scooper")).body).toContain('name="pin"');
     expect((await login("1111")).status).toBe(401);
     expect((await login("2468", "https://evil.test")).status).toBe(403);
     const ok = await login("2468");
@@ -525,7 +525,7 @@ describe("dashboard and staff sessions", () => {
     const setCookie = ok.headers.get("Set-Cookie")!;
     expect(setCookie).toMatch(/HttpOnly; Secure; SameSite=Strict/);
     const cookie = setCookie.split(";")[0];
-    expect((await call("/staff/counter", { headers: { Cookie: cookie } })).body).toContain('id="orders"');
+    expect((await call("/staff/scooper", { headers: { Cookie: cookie } })).body).toContain('id="make"');
     expect((await call("/v1/stats", { headers: { Cookie: cookie } })).status).toBe(200);
     expect((await call("/v1/square/refresh", { method: "POST", headers: { Cookie: cookie } })).status).toBe(403);
     expect((await call("/v1/events", { method: "POST", headers: { Cookie: cookie, Origin: BASE }, body: "{}" })).status).toBe(403);

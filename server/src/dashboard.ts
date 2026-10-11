@@ -3,6 +3,8 @@ import { cookie, html, HttpError, randomToken, type Route } from "./http";
 import { checkStaffSecret, clearedSessionCookie, createStaffSession, readStaffSession, sessionCookie, STAFF_COOKIE } from "./session";
 import { staffRole } from "./staff-roles";
 
+const RENEW_BELOW_MS = 48 * 60 * 60_000;
+
 function csp(nonce: string, url: URL): Record<string, string> {
   const socket = `${url.protocol === "http:" ? "ws" : "wss"}://${url.host}`;
   return {
@@ -81,6 +83,18 @@ export const routes: Route[] = [
       }
       const session = await createStaffSession(env);
       return redirect(next, { "Set-Cookie": sessionCookie(session.token, session.expiresAt) });
+    },
+  },
+  {
+    method: "POST",
+    path: "/dashboard/renew",
+    async handle({ request, env }) {
+      if (!sameOrigin(request)) return new Response(null, { status: 403 });
+      const current = await staffSessionFromCookie(request, env);
+      if (!current) return new Response(null, { status: 401, headers: { "Cache-Control": "no-store" } });
+      if (current.exp - Date.now() > RENEW_BELOW_MS) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+      const session = await createStaffSession(env);
+      return new Response(null, { status: 204, headers: { "Cache-Control": "no-store", "Set-Cookie": sessionCookie(session.token, session.expiresAt) } });
     },
   },
   {

@@ -1,27 +1,46 @@
-export type StaffSection = "queue" | "feed" | "soldout" | "kiosk" | "stats";
+export type StaffSection = "make" | "handoff" | "supplies" | "open" | "kiosk" | "feed" | "stats" | "board";
 
 export interface StaffRole {
   title: string;
   summary: string;
   icon: string;
-  alerts: boolean;
+  kind: "ipad" | "display";
+  alerts: "front" | "quiet" | "display" | "none";
   columns: StaffSection[][];
 }
 
 export const STAFF_ROLES = {
-  counter: {
-    title: "Counter",
-    summary: "Toppings station iPad: alerts, the order queue, sold-out toggles and kiosk health.",
+  scooper: {
+    title: "Scooper",
+    summary: "Make list, oldest first, with start and done buttons, sold-out supplies and opening or closing the kiosk.",
     icon: "cone",
-    alerts: true,
-    columns: [["queue"], ["soldout", "kiosk"]],
+    kind: "ipad",
+    alerts: "quiet",
+    columns: [["make"], ["open", "supplies"]],
+  },
+  toppings: {
+    title: "Toppings",
+    summary: "Help alerts, toppings per order, handing orders off, cancelling, kiosk health and supplies.",
+    icon: "sparkles",
+    kind: "ipad",
+    alerts: "front",
+    columns: [["handoff"], ["open", "kiosk", "supplies"]],
   },
   organizer: {
-    title: "Organizer",
-    summary: "Laptop at the back: sales stats, the full order feed, alerts, kiosk health and sold-out.",
+    title: "Organizer display",
+    summary: "Read-only laptop display: sales stats, the order feed, kiosk health and alerts.",
     icon: "chart",
-    alerts: true,
-    columns: [["stats"], ["feed"], ["kiosk", "soldout"]],
+    kind: "display",
+    alerts: "display",
+    columns: [["stats"], ["feed"], ["open", "kiosk", "supplies"]],
+  },
+  board: {
+    title: "Order board",
+    summary: "Read-only display of orders being made and ready for pickup, readable across the booth.",
+    icon: "list",
+    kind: "display",
+    alerts: "none",
+    columns: [["board"]],
   },
 } satisfies Record<string, StaffRole>;
 

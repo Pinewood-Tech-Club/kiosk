@@ -2,6 +2,7 @@ import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test"
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src";
+import { createStaffSession } from "../src/session";
 import { STAFF_ROLES } from "../src/staff-roles";
 import { summarize } from "../src/stats";
 
@@ -38,12 +39,12 @@ describe("dashboard page", () => {
     expect(legacy.headers.get("Location")).toBe("/staff");
     const picker = await call("/staff");
     expect(picker.text).toContain('name="pin"');
-    expect(picker.text).not.toContain("/staff/counter");
-    const response = await call("/staff/counter");
+    expect(picker.text).not.toContain("/staff/scooper");
+    const response = await call("/staff/scooper");
     expect(response.status).toBe(200);
     expect(response.text).toContain('name="pin"');
     expect(response.text).toContain('inputmode="numeric"');
-    expect(response.text).toContain('name="next" value="/staff/counter"');
+    expect(response.text).toContain('name="next" value="/staff/scooper"');
     expect(response.text).not.toContain("WebSocket");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("Referrer-Policy")).toBe("same-origin");
@@ -72,24 +73,31 @@ describe("dashboard page", () => {
 
   it("shows each role only its own sections", async () => {
     const cookie = await signIn();
-    const counter = (await call("/staff/counter", { headers: { Cookie: cookie } })).text;
-    expect(counter).toContain('id="orders"');
-    expect(counter).toContain('id="soldout"');
-    expect(counter).not.toContain('id="tOrders"');
-    expect(counter).not.toContain('id="feed"');
-    const organizer = (await call("/staff/organizer", { headers: { Cookie: cookie } })).text;
-    expect(organizer).toContain('id="tOrders"');
-    expect(organizer).toContain('id="feed"');
-    expect(organizer).toContain('id="alerts"');
-    expect(organizer).not.toContain('id="orders"');
+    const page = async (id: string) => (await call(`/staff/${id}`, { headers: { Cookie: cookie } })).text;
+    const scooper = await page("scooper");
+    for (const id of ["make", "soldout", "openCard", "alerts", "confirm"]) expect(scooper).toContain(`id="${id}"`);
+    for (const id of ["tOrders", "feed", "handoff", "health"]) expect(scooper).not.toContain(`id="${id}"`);
+    expect(scooper).toContain('data-alerts="quiet"');
+    const toppings = await page("toppings");
+    for (const id of ["handoff", "alerts", "health", "openCard", "soldout", "confirm"]) expect(toppings).toContain(`id="${id}"`);
+    expect(toppings).toContain('data-alerts="front"');
+    expect(toppings).not.toContain('id="make"');
+    const organizer = await page("organizer");
+    for (const id of ["tOrders", "feed", "alerts", "health", "openCard"]) expect(organizer).toContain(`id="${id}"`);
+    expect(organizer).toContain('data-kind="display"');
+    expect(organizer).not.toContain('id="confirm"');
+    expect(organizer).not.toContain("Sign out");
+    const board = await page("board");
+    expect(board).toContain('id="boardMaking"');
+    expect(board).not.toContain('id="alerts"');
   });
 
   it("serves a self-contained live page to a signed-in session", async () => {
     const cookie = await signIn();
-    const response = await call("/staff/counter", { headers: { Cookie: cookie } });
+    const response = await call("/staff/scooper", { headers: { Cookie: cookie } });
     expect(response.status).toBe(200);
     expect(response.text).toContain("new WebSocket");
-    expect(response.text).toContain('id="orders"');
+    expect(response.text).toContain('id="make"');
     expect(response.text).toContain('id="soldout"');
     expect(response.text).toContain("setOrderStatus");
     expect(response.text).toContain("booth.outbox.v1");
@@ -101,7 +109,7 @@ describe("dashboard page", () => {
     expect(response.text).toContain(`<script nonce="${nonce}">`);
     expect(csp).toContain("connect-src 'self' wss://booth.test");
     expect(csp).toContain("media-src blob:");
-    const second = await call("/staff/counter", { headers: { Cookie: cookie } });
+    const second = await call("/staff/scooper", { headers: { Cookie: cookie } });
     expect(second.headers.get("Content-Security-Policy")).not.toBe(csp);
   });
 
@@ -134,6 +142,22 @@ describe("dashboard page", () => {
     expect(ws.status).toBe(101);
     ws.webSocket?.accept();
     ws.webSocket?.close();
+  });
+});
+
+describe("session renewal", () => {
+  it("renews a session cookie only when it is close to expiring", async () => {
+    const renew = (cookieHeader: string, origin = BASE) => call("/dashboard/renew", { method: "POST", headers: { Cookie: cookieHeader, Origin: origin } });
+    const fresh = await createStaffSession(env);
+    const kept = await renew(`booth_staff=${fresh.token}`);
+    expect(kept.status).toBe(204);
+    expect(kept.headers.get("Set-Cookie")).toBeNull();
+    const old = await createStaffSession(env, Date.now() - 30 * 60 * 60_000);
+    const renewed = await renew(`booth_staff=${old.token}`);
+    expect(renewed.status).toBe(204);
+    expect(renewed.headers.get("Set-Cookie")).toMatch(/^booth_staff=st1\./);
+    expect((await renew(`booth_staff=${old.token}`, "https://evil.test")).status).toBe(403);
+    expect((await renew("booth_staff=nope")).status).toBe(401);
   });
 });
 
