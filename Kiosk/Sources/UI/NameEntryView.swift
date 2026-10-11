@@ -53,15 +53,16 @@ struct NameEntryView: View {
     }
 
     private var nameField: some View {
-        TextField("", text: $app.customerName, prompt: Text("Name for pickup").foregroundStyle(Theme.ink.opacity(0.3)))
+        TextField("", text: $app.customerName)
             .font(Theme.serif(48, .medium))
             .foregroundStyle(Theme.ink)
             .tint(Theme.accentDeep)
             .multilineTextAlignment(.center)
             .textInputAutocapitalization(.words)
             .autocorrectionDisabled()
-            .textContentType(.givenName)
+            .textContentType(nil)
             .submitLabel(.continue)
+            .background(PublicKeyboard())
             .focused($focused)
             .onSubmit { submit() }
             .onChange(of: app.customerName) { _, value in
@@ -117,5 +118,47 @@ struct NameEntryView: View {
         guard !trimmed.isEmpty else { return }
         focused = false
         app.submitName()
+    }
+}
+
+/// Strips the keyboard's QuickType and shortcut bars from the name field: on a shared kiosk they would offer
+/// the device owner's contacts and clipboard to every customer. SwiftUI exposes neither, so this finds the
+/// field's backing `UITextField` in the window.
+private struct PublicKeyboard: UIViewRepresentable {
+    func makeUIView(context: Context) -> Probe { Probe() }
+    func updateUIView(_ probe: Probe, context: Context) { probe.configureSoon() }
+
+    final class Probe: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            configureSoon()
+        }
+
+        func configureSoon() {
+            DispatchQueue.main.async { [weak self] in
+                guard let window = self?.window else { return }
+                Self.textFields(in: window).forEach(Self.configure)
+            }
+        }
+
+        private static func textFields(in view: UIView) -> [UITextField] {
+            if let field = view as? UITextField { return [field] }
+            return view.subviews.flatMap(textFields(in:))
+        }
+
+        private static func configure(_ field: UITextField) {
+            let assistant = field.inputAssistantItem
+            guard !assistant.leadingBarButtonGroups.isEmpty || !assistant.trailingBarButtonGroups.isEmpty
+                || field.autocorrectionType != .no || field.spellCheckingType != .no || field.inlinePredictionType != .no
+            else { return }
+            assistant.leadingBarButtonGroups = []
+            assistant.trailingBarButtonGroups = []
+            field.autocorrectionType = .no
+            field.spellCheckingType = .no
+            field.inlinePredictionType = .no
+            field.smartInsertDeleteType = .no
+            field.textContentType = nil
+            if field.isFirstResponder { field.reloadInputViews() }
+        }
     }
 }
