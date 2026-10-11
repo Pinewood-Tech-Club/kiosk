@@ -114,21 +114,6 @@ def make_scoop_mesh(seed, NT=240, NTH=400, seam=False):
     for poly in me.polygons: poly.use_smooth = True
     return me
 
-def drape_over(o, below, rad):
-    bc = below.matrix_world @ Vector((0, 0, 0.05*r))
-    mw = o.matrix_world; inv = mw.inverted()
-    oc = mw.translation
-    for v in o.data.vertices:
-        w = mw @ v.co
-        if w.z > oc.z: continue
-        rho = math.hypot(w.x - oc.x, w.y - oc.y)
-        w.z -= min(0.18*r, max(0.0, rho - 0.85*r)*0.55)
-        dv = w - bc; L = dv.length
-        if L < rad and L > 1e-9:
-            w = bc + dv*(rad/L)
-        v.co = inv @ w
-
-
 from mathutils.bvhtree import BVHTree
 CLEAR = 0.0008
 _DIRS = [Vector(d).normalized() for d in [(0.31,0.52,0.79),(-0.6,0.2,-0.77),(0.1,-0.9,0.42)]]
@@ -168,22 +153,131 @@ def push_out(o, below, clear=CLEAR, passes=3):
             v.co = inv @ w; n += 1
     return n
 
-def push_smooth(o, below, iters=6):
+def _world_tree(objs):
+    Ps, Fs, off = [], [], 0
+    for ob in objs:
+        ob.data.calc_loop_triangles()
+        n = len(ob.data.vertices)
+        P = np.empty(n*3); ob.data.vertices.foreach_get("co", P); P = P.reshape(-1,3)
+        M = np.array(ob.matrix_world); Ps.append(P @ M[:3,:3].T + M[:3,3])
+        T = np.empty(len(ob.data.loop_triangles)*3, dtype=np.int64); ob.data.loop_triangles.foreach_get("vertices", T)
+        Fs.append(T.reshape(-1,3) + off); off += n
+    P = np.vstack(Ps); F = np.vstack(Fs)
+    return BVHTree.FromPolygons(P.tolist(), F.tolist())
+
+def _world_verts(o):
     n = len(o.data.vertices)
-    P0 = np.empty(n*3); o.data.vertices.foreach_get("co", P0); P0 = P0.reshape(-1,3)
-    push_out(o, below, passes=2)
-    P1 = np.empty(n*3); o.data.vertices.foreach_get("co", P1); P1 = P1.reshape(-1,3)
-    d = P1 - P0
-    W = int(o.data["seam_cols"]); rows = (n-2)//W
-    E = np.array([[e.vertices[0], e.vertices[1]] for e in o.data.edges]); E = np.r_[E, E[:,::-1]]
-    a_ = np.arange(rows)*W + W - 1; b_ = np.arange(rows)*W
+    P = np.empty(n*3); o.data.vertices.foreach_get("co", P); P = P.reshape(-1,3)
+    M = np.array(o.matrix_world)
+    return P @ M[:3,:3].T + M[:3,3], M
+
+SETTLE_STEP = 0.0006
+def gap_field(o, lowers):
+    W, _ = _world_verts(o)
+    own = _world_tree([o]); low = _world_tree(lowers)
+    lo, hi = W.min(0), W.max(0)
+    xs = np.arange(lo[0] - SETTLE_STEP, hi[0] + 2*SETTLE_STEP, SETTLE_STEP)
+    ys = np.arange(lo[1] - SETTLE_STEP, hi[1] + 2*SETTLE_STEP, SETTLE_STEP)
+    zb = np.full((len(xs), len(ys)), np.nan); zl = np.full_like(zb, np.nan)
+    up, dn = Vector((0,0,1)), Vector((0,0,-1))
+    for i, x in enumerate(xs):
+        for j, y in enumerate(ys):
+            hb = own.ray_cast(Vector((x, y, lo[2] - 0.05)), up)
+            if hb[0] is None: continue
+            zb[i, j] = hb[0].z
+            hl = low.ray_cast(Vector((x, y, hi[2] + 0.05)), dn)
+            if hl[0] is not None: zl[i, j] = hl[0].z
+    return xs, ys, zb, zl, W
+
+def _bilinear(xs, ys, G, X, Y):
+    fx = np.clip((X - xs[0])/SETTLE_STEP, 0, len(xs) - 1.001); fy = np.clip((Y - ys[0])/SETTLE_STEP, 0, len(ys) - 1.001)
+    i = fx.astype(int); j = fy.astype(int); tx = fx - i; ty = fy - j
+    return (G[i, j]*(1-tx)*(1-ty) + G[i+1, j]*tx*(1-ty) + G[i, j+1]*(1-tx)*ty + G[i+1, j+1]*tx*ty)
+
+def _blur(G, sigma_cells):
+    k = int(math.ceil(3*sigma_cells)); x = np.arange(-k, k+1)
+    w = np.exp(-x*x/(2*sigma_cells**2)); w /= w.sum()
+    P = np.pad(G, k, mode='edge')
+    P = sum(w[t]*P[t:t+G.shape[0], :] for t in range(2*k+1))
+    return sum(w[t]*P[:, t:t+G.shape[1]] for t in range(2*k+1))
+
+def settle(o, lowers, press, core, support):
+    xs, ys, zb, zl, _ = gap_field(o, lowers)
+    c = o.matrix_world.translation
+    X, Y = np.meshgrid(xs, ys, indexing='ij')
+    g = np.where(np.hypot(X - c.x, Y - c.y) < core, zb - zl, np.nan) if core else zb - zl
+    if not np.isfinite(g).any(): return 0.0
+    drop = float(np.nanpercentile(g, support)) + press
+    M = o.matrix_world.copy(); M.translation.z -= drop
+    o.matrix_world = M; bpy.context.view_layer.update()
+    return drop
+
+def conform(o, lowers, g_in, g_out, falloff, upcap, skin=0.0005, blur_mm=1.2):
+    xs, ys, zb, zl, W = gap_field(o, lowers)
+    g = zb - zl
+    s = np.clip((g - g_in)/(g_out - g_in), 0, 1); s = s*s*(3 - 2*s)
+    D = np.where(np.isfinite(g), np.minimum((skin - g)*(1 - s), upcap), 0.0)
+    if blur_mm > 0: D = _blur(D, blur_mm*mm/SETTLE_STEP)
+    zbf = np.where(np.isfinite(zb), zb, np.nanmax(zb))
+    X, Y, Z = W[:,0], W[:,1], W[:,2]
+    h = np.maximum(Z - _bilinear(xs, ys, zbf, X, Y), 0.0)
+    f = np.clip(1 - h/falloff, 0, 1); f = f*f*(3 - 2*f)
+    W2 = W.copy(); W2[:,2] += _bilinear(xs, ys, D, X, Y)*f
+    M = np.array(o.matrix_world); Minv = np.linalg.inv(M)
+    L = W2 @ Minv[:3,:3].T + Minv[:3,3]
+    o.data.vertices.foreach_set("co", L.ravel()); o.data.update(); bpy.context.view_layer.update()
+
+def contact_report(o, lowers, tag):
+    xs, ys, zb, zl, _ = gap_field(o, lowers)
+    g = (zb - zl)[np.isfinite(zb - zl)]
+    print(f"SETTLE {tag}: gap min {g.min()*1000:.2f}mm, frac<1mm {np.mean(g < 0.001):.2f}")
+
+def _mesh_graph(o):
+    n = len(o.data.vertices)
+    E = np.empty(len(o.data.edges)*2, dtype=np.int64); o.data.edges.foreach_get("vertices", E); E = E.reshape(-1,2)
+    E = np.r_[E, E[:,::-1]]
     deg = np.bincount(E[:,0], minlength=n)[:,None].astype(float)
-    for _ in range(iters):
-        acc = np.zeros_like(d); np.add.at(acc, E[:,0], d[E[:,1]])
-        s = acc/np.maximum(deg,1)
-        d = np.maximum(d, 0.5*d + 0.5*s) if False else 0.5*d + 0.5*s
-        d[a_] = d[b_] = 0.5*(d[a_] + d[b_])
-    o.data.vertices.foreach_set("co", (P0 + d).ravel()); o.data.update()
+    W = int(o.data["seam_cols"]); rows = (n-2)//W
+    return E, deg, np.arange(rows)*W + W - 1, np.arange(rows)*W
+
+def soft_push(o, lowers, skin=0.0005, rounds=6, iters=300, reach=0.03):
+    E, deg, sa, sb = _mesh_graph(o)
+    trees = [_world_tree([l]) for l in lowers]
+    for _ in range(rounds):
+        W, M = _world_verts(o)
+        req = np.zeros_like(W); fixed = np.zeros(len(W), bool)
+        for tr in trees:
+            for k in range(len(W)):
+                w = Vector(W[k])
+                loc, nrm, _, dist = tr.find_nearest(w, reach)
+                if loc is None: continue
+                if dist >= skin and (w - loc).dot(nrm) > 0: continue
+                inside = sum(_parity(tr, w, d) for d in _DIRS) >= 2
+                if not inside and dist >= skin: continue
+                t = np.array(loc + nrm*skin) - W[k]
+                if not fixed[k] or np.dot(t, t) > np.dot(req[k], req[k]):
+                    req[k] = t; fixed[k] = True
+        if not fixed.any(): break
+        d = req.copy()
+        for _ in range(iters):
+            acc = np.zeros_like(d); np.add.at(acc, E[:,0], d[E[:,1]])
+            d = 0.5*d + 0.5*acc/np.maximum(deg, 1)
+            d[sa] = d[sb] = 0.5*(d[sa] + d[sb])
+            d[fixed] = req[fixed]
+        W2 = W + d
+        Mi = np.linalg.inv(M); L = W2 @ Mi[:3,:3].T + Mi[:3,3]
+        o.data.vertices.foreach_set("co", L.ravel()); o.data.update(); bpy.context.view_layer.update()
+    W, M = _world_verts(o); moved = 0
+    for tr in trees:
+        for k in range(len(W)):
+            w = Vector(W[k])
+            loc, nrm, _, dist = tr.find_nearest(w, reach)
+            if loc is None or (w - loc).dot(nrm) > 0: continue
+            if sum(_parity(tr, w, d) for d in _DIRS) >= 2:
+                W[k] = np.array(loc + nrm*skin); moved += 1
+    if moved:
+        Mi = np.linalg.inv(M); L = W @ Mi[:3,:3].T + Mi[:3,3]
+        o.data.vertices.foreach_set("co", L.ravel()); o.data.update(); bpy.context.view_layer.update()
 
 def clamp_to(o, radius_at, z_top, z_floor=None, inset=0.0006, above=None):
     mw = o.matrix_world; inv = mw.inverted()
@@ -382,6 +476,18 @@ RIM_TUCK = float(os.environ.get('RIM_TUCK', '0.30'))
 CUP_ZB = float(os.environ.get('CUP_H', '46')) - 1.3
 def cup_inner(zl, th=0.0): return (36.0 + 4.9*min(zl/mm, CUP_ZB)/CUP_ZB - 0.45)*mm
 
+PRESS = float(os.environ.get('PRESS', '0.002'))
+G_IN = float(os.environ.get('G_IN', '0.15'))
+G_OUT = float(os.environ.get('G_OUT', '0.3'))
+S2X, S2Y, S3X, S3Y = [float(v) for v in os.environ.get('CUPXY', '0.45,0.30,-0.30,-0.02').split(',')]
+SUPPORT = float(os.environ.get('SUPPORT', '50'))
+SUPPORT_CONE = float(os.environ.get('SUPPORT_CONE', '60'))
+CORE = float(os.environ.get('CORE', '0'))
+UPCAP = float(os.environ.get('UPCAP', '0.35'))
+BLUR = float(os.environ.get('BLUR', '2.5'))
+FALLOFF = float(os.environ.get('FALLOFF', '0.9'))
+SKIN_CLEAR = 0.0005
+
 def place(container, kinds, x, seeds=None, solo_lift=None):
     global cx_, cy_
     rng = random.Random(len(kinds)*7 + int(x*1000))
@@ -394,7 +500,7 @@ def place(container, kinds, x, seeds=None, solo_lift=None):
         sz1 = 1.13 if len(kinds) == 1 else 1.04
         base1 = CUP_FLOOR + 0.53*r*sz1 - 1.0*mm
         base = CUP_FLOOR + lift*0.9 + 3.0*mm
-        centers = [Vector((0, 0, base1)), Vector((0.45*r, 0.30*r, base + 1.12*r)), Vector((-0.22*r, -0.20*r, base + 1.85*r))]
+        centers = [Vector((0, 0, base1)), Vector((S2X*r, S2Y*r, base + 1.12*r)), Vector((S3X*r, S3Y*r, base + 1.85*r))]
         fn = cup_inner; ztop = (CUP_ZB - 0.2)*mm; zfl = CUP_FLOOR
         def above_fn(zw):
             return cup_inner(ztop) - 0.0010 - RIM_TUCK*(zw - ztop)
@@ -436,14 +542,23 @@ def place(container, kinds, x, seeds=None, solo_lift=None):
             bpy.context.view_layer.update()
         if i > 0: so.scale = (0.92, 0.92, 0.97); bpy.context.view_layer.update()
         if container == "cup" and i == 0: so.scale = (s1, s1, sz1); bpy.context.view_layer.update()
-        if prev is not None: drape_over(so, prev, 0.80*r)
-        if prev is not None: push_smooth(so, prev)
-        clamp_to(so, fn, ztop, zfl, above=(above_fn if container == 'cup' else None))
-        if prev is not None: push_out(so, prev, passes=8)
+        above = above_fn if container == 'cup' else None
+        if made:
+            clamp_to(so, fn, ztop, zfl, above=above)
+            drop = settle(so, made, PRESS, CORE*r, SUPPORT if container == 'cup' else SUPPORT_CONE)
+            conform(so, made, G_IN*r, G_OUT*r, FALLOFF*r, UPCAP*r, blur_mm=BLUR)
+            conform(so, made, G_IN*r, G_OUT*r, FALLOFF*r, UPCAP*r, blur_mm=0.6)
+            print(f"SETTLE {container}{len(kinds)} slot{i+1}: drop {drop*1000:.1f}mm")
+        clamp_to(so, fn, ztop, zfl, above=above)
+        if made: soft_push(so, made, SKIN_CLEAR)
+        if made:
+            conform(so, made, G_IN*r, G_OUT*r, FALLOFF*r, UPCAP*r, blur_mm=0.3)
+            soft_push(so, made, SKIN_CLEAR, rounds=2)
         if container == "cup":
             clamp_to(so, fn, ztop, zfl, above=above_fn)
-            if prev is not None: push_out(so, prev, passes=8)
+            if made: soft_push(so, made, SKIN_CLEAR, rounds=2)
             clamp_to(so, fn, ztop, zfl, above=above_fn)
+        if made: contact_report(so, made, f"{container}{len(kinds)} slot{i+1}")
         prev = so; made.append(so)
     return made
 
