@@ -2,7 +2,8 @@
 //   set -a; . ~/.config/techclub-icecream/secrets.env; set +a
 //   node scripts/smoke.mjs [--offline]                                   # production
 //   BOOTH_URL=https://techclub-icecream-staging.adamxu.workers.dev BOOTH_TOKEN=$STAGING_BOOTH_TOKEN \
-//     STAFF_TOKEN=$STAGING_STAFF_TOKEN node scripts/smoke.mjs            # staging
+//     STAFF_TOKEN=$STAGING_STAFF_TOKEN node scripts/smoke.mjs --checkout # staging
+// --checkout creates a real (unpaid) Square order through /v1/checkout; leave it off for production.
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 
@@ -10,6 +11,7 @@ const base = (process.env.BOOTH_URL ?? "https://techclub-icecream.adamxu.workers
 const kioskToken = process.env.BOOTH_TOKEN;
 const staffToken = process.env.STAFF_TOKEN;
 const waitForOffline = process.argv.includes("--offline");
+const tryCheckout = process.argv.includes("--checkout");
 if (!kioskToken || !staffToken) {
   console.error("Set BOOTH_TOKEN and STAFF_TOKEN");
   process.exit(2);
@@ -178,14 +180,58 @@ await step("logs", async () => {
   check("log retry deduplicated", again.json?.duplicates === 2, JSON.stringify(again.json));
 });
 
+const receiptToken = randomUUID().replace(/-/g, "").slice(0, 24);
+
+await step("square", async () => {
+  const status = await http("/v1/square/status", { token: staffToken, device: staffDevice });
+  check("square status for staff", status.status === 200 && typeof status.json?.environment === "string", `${status.json?.environment}, source ${status.json?.source}`);
+  check("square status refused to the kiosk", (await http("/v1/square/status", { token: kioskToken, device: kioskDevice })).status === 403);
+  const credentials = await http("/v1/square/credentials", { token: kioskToken, device: kioskDevice });
+  if (credentials.status === 503 && credentials.json?.error?.code === "not_configured") {
+    console.log("SKIP  square credentials (not configured on this server)");
+    return;
+  }
+  check("square credentials for the kiosk", credentials.status === 200 && !!credentials.json?.accessToken && !!credentials.json?.locationId, `${credentials.json?.source}, ${credentials.json?.locationId}`);
+  if (!tryCheckout) return;
+  const cart = {
+    id: randomUUID(), receiptToken, orderNumber: 0, customerName: "Smoke Test", sourceName: "Smoke test", quotedCents: 1100,
+    locationId: credentials.json.locationId,
+    items: [{ vessel: "cone", flavors: ["vanilla", "chocolate"], toppings: ["sprinkles"] }, { vessel: "cup", flavors: ["cookies"] }],
+  };
+  const started = Date.now();
+  const first = await http("/v1/checkout", { token: kioskToken, device: kioskDevice, body: cart });
+  check("checkout created a Square order", first.status === 200 && first.json?.status === "created" && !!first.json?.squareOrderId,
+    `${Date.now() - started} ms, ${first.json?.totalCents ?? JSON.stringify(first.json)} cents, catalog ${first.json?.usedCatalog}`);
+  check("checkout priced like the kiosk", first.json?.expectedSubtotalCents === 1100 && first.json?.priceMatches === true, first.json?.catalogError ?? "");
+  const again = await http("/v1/checkout", { token: kioskToken, device: kioskDevice, body: cart });
+  check("checkout retry replays the same order", again.json?.status === "duplicate" && again.json?.squareOrderId === first.json?.squareOrderId);
+  const receipt = await fetch(`${base}/r/${receiptToken}`);
+  check("receipt page knows the checkout", receipt.status === 200);
+});
+
+await step("staff session and dashboard", async () => {
+  const session = await http("/v1/staff/session", { body: { pin: staffToken } });
+  check("staff session issued", session.status === 200 && session.json?.token?.startsWith("st1."));
+  const stats = await http("/v1/stats", { token: session.json?.token, device: staffDevice });
+  check("stats with a staff session", stats.status === 200 && typeof stats.json?.orders === "number", `${stats.json?.orders} orders in 24 h`);
+  check("dashboard page served", (await fetch(`${base}/dashboard`)).status === 200);
+});
+
 await step("orders", async () => {
   const order = {
     id: randomUUID(), orderNumber: 0, squareOrderId: `SIM-${run}`, squarePaymentId: `SIM-${run}`, customerName: "Smoke Test",
     totalCents: 700, subtotalCents: 700, taxCents: 0, card: "Simulated", simulated: true, paidAt: new Date().toISOString(),
-    appVersion: `smoke ${run}`, items: [{ vessel: "cup", flavors: ["vanilla", "chocolate"] }],
+    appVersion: `smoke ${run}`, receiptToken, items: [{ vessel: "cup", flavors: ["vanilla", "chocolate"], toppings: ["whip"] }],
   };
   const r = await http("/v1/orders", { token: kioskToken, device: kioskDevice, body: { orders: [order] } });
   check("order stored", r.json?.results?.[0]?.status === "ok", JSON.stringify(r.json));
+  const fed = await staff.next("patch", (m) => m.change.kind === "order" && m.change.order.id === order.id);
+  check("staff got the order in the feed", fed.change.order.status === "paid" && fed.change.order.items[0].toppings[0] === "whip");
+  const statusID = randomUUID();
+  staff.send({ type: "action", action: { id: statusID, type: "setOrderStatus", orderId: order.id, status: "collected", by: "Smoke test" } });
+  check("setOrderStatus result", (await staff.next("result", (m) => m.id === statusID)).status === "ok");
+  const receipt = await fetch(`${base}/r/${receiptToken}`);
+  check("receipt page knows the paid order", receipt.status === 200 && (await receipt.text()).includes("Paid"));
   const twice = await http("/v1/orders", { token: kioskToken, device: kioskDevice, body: { orders: [order, { ...order, id: randomUUID() }] } });
   check("order retry and same payment are duplicates", twice.json?.results?.every((x) => x.status === "duplicate"), JSON.stringify(twice.json));
   const listed = await http("/v1/orders", { token: staffToken, device: staffDevice });
