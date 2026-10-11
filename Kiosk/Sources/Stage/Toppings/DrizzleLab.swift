@@ -5,7 +5,8 @@ import UIKit
 /// Lab-only: `-kioskToppingLab chocolate|caramel` drizzles the current item on a stand-in surface built from its
 /// scoops, then cycles: resurface onto a taller cream-like dome, back, remove, repeat with a new seed.
 /// `-kioskToppingLabFreeze <s>` holds the cycle at that time, `-kioskToppingLabCream YES` starts on the dome,
-/// `-kioskToppingLabSeed N`, `-kioskToppingLabYaw <rad>` stops the spin at a fixed yaw.
+/// `-kioskToppingLabSeed N`, `-kioskToppingLabYaw <rad>` stops the spin at a fixed yaw, `-kioskToppingLabBench YES`
+/// logs the update cost of an offscreen replay.
 @MainActor
 final class DrizzleLab {
     let style: DrizzleStyle
@@ -58,6 +59,7 @@ final class DrizzleLab {
             start = stage.now + 0.4
             last = -1
             stage.log(String(format: "DrizzleLab: surface apex %.1f mm radius %.1f mm", surface.apex.y * 1000, surface.radius * 1000))
+            if UserDefaults.standard.bool(forKey: "kioskToppingLabBench") { bench(stage, on: surface, cream: creamSurface) }
         }
         guard let start, let scoops, let cream else { return }
         var clock = stage.now - start
@@ -112,6 +114,35 @@ final class DrizzleLab {
             self.layer = nil
         }
         last = clock
+    }
+}
+
+extension DrizzleLab {
+    /// Replays the lab cycle offscreen at 60 fps for a few seeds and logs the update cost of each phase.
+    func bench(_ stage: Stage, on scoops: LabSurface, cream: LabSurface) {
+        var phases: [String: [Double]] = [:]
+        for round in 0..<6 {
+            let layer = DrizzleLayer(style: style)
+            layer.apply(onto: scoops, seed: seed &+ UInt64(round % 3), animated: true, now: 0)
+            var frame = 0
+            while !layer.isFinished, frame < 1000 {
+                let now = Double(frame) / 60
+                if frame == 330 { layer.resurface(to: cream, duration: 0.7, now: now) }
+                if frame == 480 { layer.resurface(to: scoops, duration: 0.7, now: now) }
+                if frame == 630 { layer.remove(now: now) }
+                let began = CACurrentMediaTime()
+                layer.update(now: now)
+                let cost = CACurrentMediaTime() - began
+                if round >= 3, cost > 0.00002 { phases[frame < 330 ? "pour" : frame < 630 ? "resurface" : "remove", default: []].append(cost) }
+                frame += 1
+            }
+        }
+        for (phase, values) in phases.sorted(by: { $0.key < $1.key }) + [("all", phases.values.flatMap { $0 })] {
+            let sorted = values.sorted()
+            stage.log(String(format: "DrizzleLab: bench %@ over %d frames: mean %.3f ms, p90 %.3f ms",
+                             phase, sorted.count, sorted.reduce(0, +) / Double(max(sorted.count, 1)) * 1000,
+                             sorted.isEmpty ? 0 : sorted[Int(Double(sorted.count - 1) * 0.9)] * 1000))
+        }
     }
 }
 
