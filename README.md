@@ -32,7 +32,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
 4. **Your order**: *View Order* grows the tray's glass into a sheet over the builder; each item's 3D model rides up from its tray slot into its row, with edit (pencil) and remove (trash) buttons. Below are the total and *Check Out*. *Keep ordering*, or pulling the sheet down, folds it back into the tray with the items riding back into their slots, revealing a fresh builder that was set up while the sheet covered it.
 5. **Name**: the name becomes the Square order's ticket name and pickup recipient.
 6. **Payment**: generates a checkout id and an unguessable receipt token on the kiosk, asks the backend to create the Square order (3.5 s budget, then the kiosk does it itself, and skips the backend for a minute), or creates a Square order from the catalog on the device (one line per scoop, priced by its position in the whole order, plus one line per waffle cone; taxes auto-applied by Square), then `startPayment` for Square's total with Square's default payment screen. Once a card touches the reader, Square's own screens take over (PIN, processing, declines, low gift card balances, card read errors, with retry or cancel). On failure the customer returns to their order and an alert explains in plain words what happened and what to do (copy lives in `PaymentProblem.swift`; the technical error goes to the log); a cancel just returns them to it.
-7. **Confirmation**: an itemized receipt of what Square charged, a prompt to photograph it, and *New Order*. Returns to the attract screen after 10 s without a touch.
+7. **Confirmation**: an itemized receipt of what Square charged, a QR code to the digital receipt page ("Scan for your receipt"), and *New Order*. Returns to the attract screen after 10 s without a touch.
 
 Pricing: scoops are priced by their position in the whole order: the first is $4, the second $3, and every one after that $2 (so 1 → $4, 2 → $7, 3 → $9). Waffle cones are $1.50 each.
 
@@ -104,7 +104,7 @@ Each feature lives in its own module and exports its routes; `src/index.ts` only
 | `orders.ts`, `logs.ts` | `/v1/orders`, `/v1/logs` |
 | `oauth.ts`, `square.ts`, `catalog.ts` | `/v1/square/*`: OAuth, status, refresh, revoke, kiosk credentials; Square HTTP; catalog cache |
 | `checkout.ts`, `pricing.ts` | `/v1/checkout`: server-priced Square order creation |
-| `receipts.ts` | `/r/<token>` (placeholder) |
+| `receipts.ts` | `/r/<token>`, the public receipt page |
 | `stats.ts` | `/v1/stats` |
 | `dashboard.ts`, `session.ts` | `/dashboard` (placeholder), PIN sign-in, staff sessions (`/v1/staff/session`) |
 | `http.ts` | Errors, auth (bearer and cookie), body parsing, retries |
@@ -174,7 +174,7 @@ pnpm chaos                 # staging: drops, half-open sockets, a redeploy, repl
 
 - Production needs the one-time Square OAuth connection above. Until then the kiosk uses the token baked into its bundle, which Square doesn't allow for production.
 - `MockReaderUI` is linked into every build. Remove it from the target before shipping.
-- Buyers must be offered a digital or printed receipt (EMV requirement). The confirmation screen shows an itemized receipt and suggests a photo. Every order has a receipt token and `/r/<token>` is routed, but the receipt page and QR code aren't built yet.
+- Digital receipts (the EMV requirement that buyers are offered one): the confirmation screen shows a QR code to `/r/<token>`, a mobile receipt page with items, tax, total, card and a Square receipt link. The QR code needs the backend URL (`BOOTH_URL`); without it the screen falls back to suggesting a photo. If the backend is down at payment time, the page shows "your receipt will appear shortly" until the order uploads (the kiosk retries). Not yet tried on a physical iPad with a real card.
 - Lock the iPad to the app with Guided Access (Settings → Accessibility).
 - The terms only allow attended use: the kiosk must be within staff line of sight and inaccessible outside business hours.
 

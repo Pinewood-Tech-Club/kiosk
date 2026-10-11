@@ -408,23 +408,69 @@ describe("checkout", () => {
 });
 
 describe("receipts, dashboard and staff sessions", () => {
-  it("serves the receipt placeholder for a known token only", async () => {
-    mockSquare();
+  it("renders the receipt page, a pending page for unsynced tokens, and 404 for malformed ones", async () => {
+    mockSquare({
+      "/v2/payments/PAY1": () => ({ body: { payment: { id: "PAY1", receipt_url: "https://squareup.com/receipt/preview/PAY1" } } }),
+    });
     await connectSquare();
     const body = cart();
-    expect((await call(`/r/${body.receiptToken}`)).status).toBe(404);
-    expect((await call("/r/not-a-token!")).status).toBe(404);
+    const unknown = await call(`/r/${randomReceipt()}`);
+    expect(unknown.status).toBe(200);
+    expect(unknown.body).toContain("Your receipt will appear shortly");
+    expect(unknown.body).toContain('http-equiv="refresh"');
+    expect(unknown.headers.get("X-Robots-Tag")).toContain("noindex");
+    expect(unknown.body).toContain('name="robots" content="noindex');
+
+    const bad = await call("/r/not-a-token!");
+    expect(bad.status).toBe(404);
+    expect(bad.body).toContain("Receipt not found");
+    expect((await call("/r/short")).status).toBe(404);
+
     await call("/v1/checkout", { token: KIOSK, json: body });
     const pending = await call(`/r/${body.receiptToken}`);
     expect(pending.status).toBe(200);
-    expect(pending.body).toContain("Payment pending");
+    expect(pending.body).toContain("Your receipt will appear shortly");
+
+    const paidAt = Date.UTC(2026, 11, 5, 21, 2, 0);
     await call("/v1/orders", {
       token: KIOSK,
-      json: { orders: [{ id: body.id, orderNumber: 12, totalCents: 1100, receiptToken: body.receiptToken, items: body.items, paidAt: new Date().toISOString() }] },
+      json: {
+        orders: [{
+          id: body.id, orderNumber: 12, customerName: "Alex <b>", totalCents: 1100, subtotalCents: 1100, taxCents: 0,
+          squarePaymentId: "PAY1", card: "Visa 4242", receiptToken: body.receiptToken, items: body.items,
+          paidAt: new Date(paidAt).toISOString(),
+        }],
+      },
     });
     const paid = await call(`/r/${body.receiptToken}`);
-    expect(paid.body).toContain("Order #12");
-    expect(paid.body).toContain("Paid");
+    expect(paid.status).toBe(200);
+    expect(paid.headers.get("X-Robots-Tag")).toContain("noindex");
+    expect(paid.body).not.toContain('http-equiv="refresh"');
+    expect(paid.body).toContain("Tech Club Ice Cream");
+    expect(paid.body).toContain("Order 12");
+    expect(paid.body).toContain("Alex &lt;b&gt;");
+    expect(paid.body).toContain("Waffle Cone");
+    expect(paid.body).toContain("Vanilla, Chocolate");
+    expect(paid.body).toContain("Whipped Cream");
+    expect(paid.body).toContain("$11.00");
+    expect(paid.body).toContain("Visa 4242");
+    expect(paid.body).toContain("December 5, 2026 at 1:02");
+    expect(paid.body).toContain("https://squareup.com/receipt/preview/PAY1");
+  });
+
+  it("renders the receipt without a Square link when Square can't be reached", async () => {
+    mockSquare();
+    const id = `rc-${crypto.randomUUID()}`;
+    const receiptToken = randomReceipt();
+    await call("/v1/orders", {
+      token: KIOSK,
+      json: { orders: [{ id, totalCents: 400, squarePaymentId: `P-${id}`, receiptToken, items: [{ vessel: "cup", flavors: ["cookies"] }], paidAt: new Date().toISOString() }] },
+    });
+    const page = await call(`/r/${receiptToken}`);
+    expect(page.status).toBe(200);
+    expect(page.body).toContain("Cookies &amp; Cream");
+    expect(page.body).toContain("$4.00");
+    expect(page.body).not.toContain("View Square receipt");
   });
 
   it("signs staff in with the PIN and keeps the cookie same-origin", async () => {
