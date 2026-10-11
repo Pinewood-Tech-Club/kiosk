@@ -10,6 +10,14 @@ final class AppModel {
     struct Notice: Equatable {
         let title: String
         let details: [String]
+
+        var message: String {
+            details
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { $0.last.map { ".!?".contains($0) } == true ? $0 : $0 + "." }
+                .joined(separator: " ")
+        }
     }
 
     /// Where to go once the item being edited has been put back.
@@ -512,7 +520,6 @@ final class AppModel {
                 notice = Notice(title: title, details: details)
                 backToSummary()
             case .canceled:
-                notice = Notice(title: "Payment canceled", details: ["Your order is still here."])
                 backToSummary()
             }
         }

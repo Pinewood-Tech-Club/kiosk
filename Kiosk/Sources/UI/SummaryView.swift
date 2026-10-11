@@ -32,19 +32,6 @@ struct SummaryView: View {
                 .foregroundStyle(Theme.ink)
                 .position(x: Layout.midX, y: Layout.backButtonCenter.y)
 
-            if let notice = app.notice {
-                HStack(spacing: 10) {
-                    LucideIcon(name: "circle-alert", size: 20)
-                    Text(([notice.title] + notice.details).joined(separator: " "))
-                        .lineLimit(2)
-                }
-                .font(Theme.serif(19, .medium))
-                .foregroundStyle(Theme.accentDeep)
-                .frame(maxWidth: 820)
-                .position(x: Layout.midX, y: Layout.summaryListRect.minY - 26)
-                .transition(.opacity)
-            }
-
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(Array(quote.lines.enumerated()), id: \.element.id) { index, line in
@@ -71,7 +58,15 @@ struct SummaryView: View {
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
         .animation(.easeInOut(duration: 0.35), value: quote.lines.map(\.id))
-        .animation(.easeInOut(duration: 0.3), value: app.notice)
+        .alert(app.notice?.title ?? "", isPresented: noticeBinding, presenting: app.notice) { _ in
+            Button("OK") {}
+        } message: { notice in
+            Text(notice.message)
+        }
+    }
+
+    private var noticeBinding: Binding<Bool> {
+        Binding(get: { app.notice != nil }, set: { if !$0 { app.notice = nil } })
     }
 
     private func checkout(_ quote: OrderQuote) -> some View {
