@@ -303,6 +303,16 @@ struct ScriptRunner {
                 await wait(dwells[(round + 3) % dwells.count])
                 log("name round \(round)")
             }
+        case "vessel-spam":
+            for gap in [0.5, 0.3, 0.6, 0.2, 0.45, 0.25, 0.7, 0.15] {
+                await select(app.current.vessel == .cup ? .cone : .cup)
+                try? await Task.sleep(for: .seconds(gap))
+            }
+            await wait(4)
+            let issues = app.stage.consistencyIssues(current: app.current, items: app.items, editingID: app.editingID, showsCards: true)
+            log(issues.isEmpty ? "vessel-spam consistent" : "vessel-spam FAIL: " + issues.joined(separator: "; "))
+        case "stress", "stress-tray":
+            await StressRunner(app: app, includeTray: script == "stress-tray").run()
         case "tray-remove":
             await wait(0.8)
             if let target = app.items.dropFirst().first {
@@ -347,5 +357,153 @@ struct ScriptRunner {
             log("unknown script \(script)")
         }
         log("end \(script)")
+    }
+}
+
+/// Rapid random taps that a customer could make, then a consistency check once the scene settles.
+@MainActor
+struct StressRunner {
+    let app: AppModel
+    let includeTray: Bool
+
+    private struct SplitMix {
+        var state: UInt64
+        mutating func next() -> UInt64 {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            return z ^ (z >> 31)
+        }
+        mutating func unit() -> Double { Double(next() >> 11) / Double(1 << 53) }
+        mutating func pick<T>(_ values: [T]) -> T { values[Int(next() % UInt64(values.count))] }
+    }
+
+    private func log(_ message: String) { app.square.record("Stress: \(message)") }
+
+    private func sleep(_ seconds: Double) async {
+        try? await Task.sleep(for: .seconds(seconds))
+    }
+
+    private var cardsVisible: Bool { app.mode == .customize && !app.itemInFlight && app.confirmation == nil }
+
+    func run() async {
+        let defaults = UserDefaults.standard
+        let seed = defaults.object(forKey: "kioskSeed") != nil ? UInt64(defaults.integer(forKey: "kioskSeed")) : UInt64(Date().timeIntervalSince1970)
+        let rounds = defaults.object(forKey: "kioskStressRounds") != nil ? defaults.integer(forKey: "kioskStressRounds") : 20
+        var rng = SplitMix(state: seed)
+        log("seed \(seed), \(rounds) rounds, tray \(includeTray)")
+        var failures = 0
+        var actions = 0
+        for round in 0..<rounds {
+            let burst = 6 + Int(rng.next() % 30)
+            var trace: [String] = []
+            for _ in 0..<burst {
+                if let action = await act(&rng) {
+                    trace.append(action)
+                    actions += 1
+                }
+                let r = rng.unit()
+                await sleep(r < 0.6 ? 0.02 + rng.unit() * 0.13 : (r < 0.9 ? 0.15 + rng.unit() * 0.45 : 0.6 + rng.unit() * 0.9))
+            }
+            var waited = 0.0
+            while !app.stage.isSettled, waited < 10 {
+                await sleep(0.1)
+                waited += 0.1
+            }
+            await sleep(0.1)
+            let issues = check(settled: app.stage.isSettled)
+            if issues.isEmpty {
+                log("round \(round) OK: \(state)")
+            } else {
+                failures += 1
+                log("round \(round) FAIL after [\(trace.joined(separator: " "))]: \(issues.joined(separator: "; "))")
+            }
+        }
+        log("done: \(rounds - failures)/\(rounds) rounds consistent, \(actions) actions, seed \(seed)")
+    }
+
+    private var state: String {
+        let current = app.mode == .summary ? "summary" : "\(app.current.vessel.rawValue):\(app.current.flavors.map(\.rawValue).joined(separator: ","))"
+        return "\(app.step.title.lowercased()) \(current) tray \(app.items.count)\(app.isEditing ? " editing" : "")"
+    }
+
+    private func check(settled: Bool) -> [String] {
+        var issues = settled ? [] : ["never settled (\(app.stage.activeAnimationCount) tweens, \(app.stage.morphingCount) morphing)"]
+        issues += app.stage.consistencyIssues(current: app.mode == .summary ? nil : app.current, items: app.items,
+                                              editingID: app.editingID, showsCards: app.mode == .customize)
+        return issues
+    }
+
+    private func tap(_ card: CardKey, action: () -> Void) async {
+        app.setPressed(card, true)
+        await sleep(0.04 + Double.random(in: 0...0.06))
+        app.setPressed(card, false)
+        action()
+    }
+
+    private func act(_ rng: inout SplitMix) async -> String? {
+        if app.confirmation != nil {
+            if let confirmation = app.confirmation, rng.unit() < 0.5 { app.confirm(confirmation) } else { app.confirmation = nil }
+            return "confirm"
+        }
+        if app.mode == .summary {
+            if rng.unit() < 0.6 { app.backToBuilder(); return "back" }
+            if let item = app.items.randomElement() { app.tapTrayItem(item.id); return "edit" }
+            return nil
+        }
+        let r = rng.unit()
+        if includeTray, r < 0.18 {
+            switch rng.next() % 5 {
+            case 0:
+                guard app.canStartNewItem else { return nil }
+                app.startNewItem(); return "new"
+            case 1:
+                guard !app.items.isEmpty else { return nil }
+                let item = app.items[Int(rng.next() % UInt64(app.items.count))]
+                app.tapTrayItem(item.id); return "tray\(app.items.firstIndex { $0.id == item.id } ?? -1)"
+            case 2:
+                guard app.canViewOrder else { return nil }
+                app.viewOrder(); return "view"
+            case 3:
+                guard let id = app.editingID else { return nil }
+                app.delete(id); return "delete"
+            default:
+                guard app.isEditing, cardsVisible else { return nil }
+                app.finishEditing(then: .newItem); return "done"
+            }
+        }
+        guard cardsVisible else { return nil }
+        switch app.step {
+        case .vessel where r < 0.7:
+            let vessel: Vessel = rng.pick(Vessel.allCases)
+            await tap(.vessel(vessel)) { app.selectVessel(vessel) }
+            return vessel.rawValue
+        case .flavors where r < 0.45:
+            guard app.current.scoopCount < Pricing.maxScoopsPerItem else { return nil }
+            let flavor: Flavor = rng.pick(Flavor.allCases)
+            await tap(.flavor(flavor)) { app.addScoop(flavor) }
+            return "+" + flavor.rawValue
+        case .flavors where r < 0.7:
+            let present = Flavor.allCases.filter { app.count(of: $0) > 0 }
+            guard !present.isEmpty else { return nil }
+            let flavor: Flavor = rng.pick(present)
+            app.removeScoop(flavor)
+            return "-" + flavor.rawValue
+        default:
+            let s = rng.unit()
+            if s < 0.4 {
+                let target: BuilderStep = rng.pick(BuilderStep.allCases)
+                app.jumpToStep(target)
+                return "@" + target.title.lowercased()
+            } else if s < 0.7 {
+                app.goBack()
+                return "<"
+            } else {
+                if app.step == .toppings, !includeTray || app.isEditing { return nil }
+                app.goForward()
+                return ">"
+            }
+        }
     }
 }

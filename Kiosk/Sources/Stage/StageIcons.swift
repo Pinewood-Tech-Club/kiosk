@@ -30,7 +30,6 @@ extension Stage {
             rig.scaleMultiplier = iconShown[.vessel(vessel)] ?? 0
             rig.root.isEnabled = rig.scaleMultiplier > 0.001
             rig.modelScale = vesselIconAppear[vessel] ?? 1
-            rig.grounded = vesselIconShadow[vessel] ?? 1
             rig.apply()
         }
         for flavor in Flavor.allCases {
@@ -42,7 +41,6 @@ extension Stage {
             icon.holder.scale = .init(repeating: max(icon.baseScale * scale * shown, 1e-5))
             icon.holder.isEnabled = shown > 0.001
             icon.scaler.scale = .init(repeating: max(icon.appear, 1e-5))
-            icon.applyShadow()
         }
     }
 
@@ -69,11 +67,12 @@ extension Stage {
     /// Icons scale out and back in on the cards' fade curves (`.easeIn(0.18)` out, `.easeOut(0.26)` in
     /// after 0.16 s), shrinking toward their card's centre.
     private func refreshIconVisibility(animated: Bool) {
+        let vesselCardsShown = controlsVisible && step == .vessel
         for vessel in Vessel.allCases {
-            let visible = controlsVisible && step == .vessel
-            vesselIconTarget[vessel] = visible ? 1 : 0
-            setIconShown(.vessel(vessel), visible, animated: animated)
+            vesselIconTarget[vessel] = vesselCardsShown ? 1 : 0
+            setIconShown(.vessel(vessel), vesselCardsShown, animated: animated)
         }
+        if !vesselCardsShown { dismissOutgoingVessels() }
         for flavor in Flavor.allCases {
             setIconShown(.flavor(flavor), controlsVisible && step == .flavors, animated: animated)
         }
@@ -96,23 +95,6 @@ extension Stage {
         }
     }
 
-    func setVesselIconShadow(_ vessel: Vessel, to target: Float, duration: Double, delay: Double = 0) {
-        // A delayed change takes over when it starts, so a fade already running finishes first.
-        if delay <= 0 {
-            vesselIconShadowTweens[vessel]?.cancel()
-            vesselIconShadowTweens[vessel] = nil
-        }
-        if duration <= 0, delay <= 0 {
-            vesselIconShadow[vessel] = target
-            return
-        }
-        var from: Float = 0
-        vesselIconShadowTweens[vessel] = animate(delay: delay, duration: duration,
-                                                 onStart: { [unowned self] in from = vesselIconShadow[vessel] ?? 1 }) { [unowned self] p in
-            vesselIconShadow[vessel] = lerp(from, target, TimingCurve.swiftUIEaseInOut(p))
-        }
-    }
-
     func setVesselIconAppear(_ vessel: Vessel, to target: Float, duration: Double, delay: Double = 0,
                              curve: TimingCurve = .swiftUIEaseOut) {
         vesselIconAppearTweens[vessel]?.cancel()
@@ -128,28 +110,11 @@ extension Stage {
         }
     }
 
-    /// `shadowDuration` lets the contact shadow fade out after the scoop has already lifted off.
     func setFlavorIconAppear(_ flavor: Flavor, to target: Float, duration: Double, delay: Double = 0,
-                             curve: TimingCurve = .swiftUIEaseOut, shadowDuration: Double? = nil) {
+                             curve: TimingCurve = .swiftUIEaseOut) {
         guard let icon = flavorIcons[flavor] else { return }
         icon.appearTween?.cancel()
         icon.appearTween = nil
-        let shadowTime = shadowDuration ?? duration
-        if shadowTime <= 0, delay <= 0 {
-            icon.shadowTween?.cancel()
-            icon.shadowTween = nil
-            icon.shadowAmount = target
-        } else {
-            // A delayed fade takes over when it starts, so a fade already running finishes first.
-            if delay <= 0 { icon.shadowTween?.cancel() }
-            var from: Float = 0
-            icon.shadowTween = animate(delay: delay, duration: max(shadowTime, 0.0001), onStart: { [weak icon] in
-                guard let icon else { return }
-                from = icon.shadowAmount
-            }) { [weak icon] p in
-                icon?.shadowAmount = lerp(from, target, TimingCurve.swiftUIEaseInOut(p))
-            }
-        }
         if duration <= 0, delay <= 0 {
             icon.appear = target
             return
@@ -157,6 +122,16 @@ extension Stage {
         var from: Float = 0
         icon.appearTween = animate(delay: delay, duration: max(duration, 0.0001), onStart: { from = icon.appear }) { p in
             icon.appear = lerp(from, target, curve(p))
+        }
+    }
+
+    /// A vessel on its way back to a card that is no longer shown shrinks away where it is instead.
+    private func dismissOutgoingVessels() {
+        for vessel in Vessel.allCases where vessel != selectedVessel {
+            guard let rig = heroes[vessel] else { continue }
+            heroes[vessel] = nil
+            setVesselIconAppear(vessel, to: 1, duration: 0)
+            dismiss(rig, duration: 0.22)
         }
     }
 }

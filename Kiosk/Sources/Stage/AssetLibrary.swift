@@ -65,7 +65,6 @@ final class AssetLibrary {
     private(set) var placements = Placements.fallback
     private(set) var scoopMaterials: [[Flavor: PhysicallyBasedMaterial]] = []
     private(set) var environment: EnvironmentResource?
-    private(set) var shadowMaterial = UnlitMaterial(applyPostProcessToneMap: false)
     private(set) var report: [String] = []
     private(set) var contactLift: [String: Float] = [:]
     private var vesselPoints: [Vessel: [SIMD3<Float>]] = [:]
@@ -113,6 +112,12 @@ final class AssetLibrary {
     func vesselHalfWidth(_ vessel: Vessel) -> Float {
         guard let b = vesselBounds[vessel] else { return vessel == .cup ? 0.044 : 0.028 }
         return max(abs(b.min.x), abs(b.max.x), abs(b.min.z), abs(b.max.z))
+    }
+
+    func vesselSamplePoints(_ vessel: Vessel, limit: Int) -> [SIMD3<Float>] {
+        let points = vesselPoints[vessel] ?? []
+        let step = max(1, points.count / max(limit, 1))
+        return stride(from: 0, to: points.count, by: step).map { points[$0] }
     }
 
     func vesselTop(_ vessel: Vessel) -> Float {
@@ -219,14 +224,6 @@ final class AssetLibrary {
         }
 
         contactLift = await liftTask.value
-
-        if let image = Self.makeShadowImage(), let texture = try? await TextureResource(image: image, options: .init(semantic: .color)) {
-            var material = UnlitMaterial(applyPostProcessToneMap: false)
-            material.color = .init(tint: .white, texture: .init(texture))
-            material.blending = .transparent(opacity: .init(floatLiteral: 1))
-            material.writesDepth = false
-            shadowMaterial = material
-        }
     }
 
     private func url(named name: String) -> URL? { url(name) }
@@ -358,26 +355,5 @@ final class AssetLibrary {
             root.addChild(model)
             return root
         }
-    }
-
-    private static func makeShadowImage() -> CGImage? {
-        let size = 256
-        guard let context = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
-                                      space: CGColorSpaceCreateDeviceRGB(),
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        let stops = 24
-        var colors: [CGColor] = []
-        var locations: [CGFloat] = []
-        for i in 0...stops {
-            let x = CGFloat(i) / CGFloat(stops)
-            let alpha = 0.42 * exp(-pow(x * 2.1, 2))
-            colors.append(CGColor(red: 0.18, green: 0.11, blue: 0.07, alpha: alpha))
-            locations.append(x)
-        }
-        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: locations) else { return nil }
-        let center = CGPoint(x: size / 2, y: size / 2)
-        context.drawRadialGradient(gradient, startCenter: center, startRadius: 0, endCenter: center,
-                                   endRadius: CGFloat(size) / 2, options: [])
-        return context.makeImage()
     }
 }

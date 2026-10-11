@@ -5,6 +5,10 @@ import SwiftUI
 extension Stage {
     func updateHeroSpin(_ dt: Float) {
         guard let hero = heroes[selectedVessel], hero.motion == nil else { return }
+        if let framing = hero.framing {
+            hero.pose.position = framing.position
+            hero.pose.scale = framing.scale
+        }
         if isDragging {
             hero.apply()
             return
@@ -67,13 +71,11 @@ extension Stage {
 
     /// Interpolates every pose component from the rig's current pose to a live target, so the final
     /// frame equals the target exactly.
-    /// The rig's contact shadows shrink away as it lifts off (first ~12% of the flight) and grow back as it
-    /// lands (last ~12%), so no shadow ever travels through the air with it.
-    func flyRig(_ rig: ItemRig, duration: Double, delay: Double = 0, minSpin: Float, dip: Bool,
-                timing: TimingCurve, shadowAtStart: Bool = true, shadowAtEnd: Bool = true,
+    func flyRig(_ rig: ItemRig, duration: Double, delay: Double = 0, minSpin: Float, dip: Bool, timing: TimingCurve,
                 control: @escaping (SIMD3<Float>, SIMD3<Float>) -> SIMD3<Float>,
                 target: @escaping () -> RigPose, completion: @escaping () -> Void) {
         rig.motion?.cancel()
+        rig.flightGoal = nil
         var start = rig.pose
         var yawDelta: Float = 0
         var controlPoint = SIMD3<Float>.zero
@@ -82,6 +84,12 @@ extension Stage {
             let goal = target()
             yawDelta = forwardYawDelta(from: start.yaw, to: goal.yaw, minimum: minSpin)
             controlPoint = control(start.position, goal.position)
+            let endYaw = start.yaw + yawDelta
+            rig.flightGoal = {
+                var pose = target()
+                pose.yaw = endYaw
+                return pose
+            }
         }) { p in
             let goal = target()
             let e = timing(p)
@@ -97,58 +105,73 @@ extension Stage {
             rig.pose.pitch = lerp(start.pitch, goal.pitch, e)
             rig.pose.roll = lerp(start.roll, goal.roll, e)
             rig.pose.yaw = start.yaw + yawDelta * Ease.inOutCubic(p)
-            let leaving: Float = shadowAtStart ? 1 - Ease.inOutSine(Ease.segment(p, 0, 0.12)) : 0
-            let landing: Float = shadowAtEnd ? Ease.inOutSine(Ease.segment(p, 0.88, 1)) : 0
-            rig.grounded = max(leaving, landing)
             rig.apply()
         } completion: {
-            rig.grounded = shadowAtEnd ? 1 : 0
-            rig.apply()
             rig.motion = nil
+            rig.flightGoal = nil
             completion()
         }
     }
 
-    func flyHeroToCenter(_ rig: ItemRig, duration: Double, delay: Double = 0) {
+    /// `underScoops` is the quicker flight used while scoops are handed over: it rises into place from below and
+    /// in front, so the rim never sweeps sideways through the stack waiting above, and passes in front of the
+    /// outgoing vessel, which drops away behind.
+    func flyHeroToCenter(_ rig: ItemRig, duration: Double, delay: Double = 0, underScoops: Bool = false) {
         let vessel = rig.vessel
         let fromIcon = abs(rig.pose.roll - iconRestPose(vessel).roll) < 0.01
             && abs(rig.pose.scale - Self.iconScale(vessel)) < Self.iconScale(vessel) * 0.1
         let side: Float = Layout.vesselIconCenter(vessel).x > Layout.midX ? 1 : -1
-        flyRig(rig, duration: duration, delay: delay, minSpin: fromIcon ? 2 * .pi : .pi, dip: fromIcon,
-               timing: .flight, shadowAtStart: !fromIcon,
-               control: { p0, p1 in (p0 + p1) / 2 + SIMD3<Float>(side * 0.2, -0.03, 0.14) },
-               target: { [unowned self] in centerPose(vessel, yaw: rig.pose.yaw) }) { [weak self] in
+        flyRig(rig, duration: duration, delay: delay, minSpin: fromIcon && !underScoops ? 2 * .pi : .pi, dip: fromIcon,
+               timing: .flight,
+               control: { p0, p1 in
+                   underScoops
+                       ? SIMD3<Float>(p1.x, lerp(p0.y, p1.y, 0.35), 0.28)
+                       : (p0 + p1) / 2 + SIMD3<Float>(side * 0.2, -0.03, 0.14)
+               },
+               target: { [unowned self] in centerPose(rig, yaw: rig.pose.yaw) }) { [weak self] in
             guard let self, heroes[selectedVessel] === rig else { return }
             resumeSpin()
         }
     }
 
     /// Lands exactly on the icon's live pose (press included), then hands over to the icon in the same frame.
-    func flyHeroHome(_ rig: ItemRig, duration: Double, delay: Double = 0) {
+    /// `fromUnderScoops` drops straight down first, out from under scoops that are being lifted off it.
+    func flyHeroHome(_ rig: ItemRig, duration: Double, delay: Double = 0, fromUnderScoops: Bool = false) {
         let vessel = rig.vessel
         setVesselIconAppear(vessel, to: 0, duration: 0.2, delay: delay, curve: .swiftUIEaseIn)
         let side: Float = Layout.vesselIconCenter(vessel).x > Layout.midX ? 1 : -1
-        setVesselIconShadow(vessel, to: 0, duration: 0.2, delay: delay)
-        flyRig(rig, duration: duration, delay: delay, minSpin: 1.5 * .pi, dip: false, timing: .flight, shadowAtEnd: false,
-               control: { p0, p1 in (p0 + p1) / 2 + SIMD3<Float>(side * 0.17, 0.02, -0.1) },
+        flyRig(rig, duration: duration, delay: delay, minSpin: 1.5 * .pi, dip: false, timing: .flight,
+               control: { p0, p1 in
+                   fromUnderScoops
+                       ? SIMD3<Float>(p0.x, lerp(p0.y, p1.y, 0.75), -0.4)
+                       : (p0 + p1) / 2 + SIMD3<Float>(side * 0.17, 0.02, -0.1)
+               },
                target: { [unowned self] in iconPose(vessel) }) { [weak self] in
             guard let self else { return }
             if heroes[vessel] === rig { heroes[vessel] = nil }
-            setVesselIconShadow(vessel, to: 1, duration: 0.28)
+            setVesselIconAppear(vessel, to: 1, duration: 0)
             if (vesselIconTarget[vessel] ?? 0) > 0 {
-                setVesselIconAppear(vessel, to: 1, duration: 0)
                 updateIcons()
                 discard(rig)
             } else {
-                setVesselIconAppear(vessel, to: 1, duration: 0)
                 dismiss(rig)
             }
         }
     }
 
+    /// Removes a rig and the scoops that belong to it. Scoops merely attached to it on their way elsewhere are
+    /// handed to the world so they keep flying.
     func discard(_ rig: ItemRig) {
         rig.cancelMotions()
-        for scoop in rig.scoops { discard(scoop) }
+        rig.framingTween?.cancel()
+        rig.framingTween = nil
+        for actor in Array(liveScoops.values) where actor.rig === rig || actor.mount === rig {
+            if actor.rig === rig {
+                discard(actor)
+            } else {
+                detachToWorld(actor)
+            }
+        }
         rig.scoops.removeAll()
         rig.root.removeFromParent()
     }
@@ -171,7 +194,7 @@ extension Stage {
     func dismissCurrentHero() {
         guard let hero = heroes[selectedVessel] else { return }
         heroes[selectedVessel] = nil
-        for scoop in scoops where scoop.root.parent !== hero.body {
+        for scoop in scoops where scoop.mount !== hero {
             discard(scoop)
         }
         scoops.removeAll()
@@ -191,52 +214,62 @@ extension Stage {
 
     func presentNewItem(vessel: Vessel, delay: Double = 0) {
         selectedVessel = vessel
-        launchFromIcon(vessel, duration: 0.95, delay: delay)
+        let (rig, isNew) = heroRig(vessel)
+        reframe(rig, animated: !isNew)
+        launch(rig, isNew: isNew, duration: 0.95, delay: delay)
     }
 
-    func launchFromIcon(_ vessel: Vessel, duration: Double, delay: Double = 0) {
-        if let existing = heroes[vessel] {
-            flyHeroToCenter(existing, duration: duration, delay: delay)
-            setVesselIconAppear(vessel, to: 1, duration: 0.32, delay: delay + duration * 0.55)
-            return
-        }
+    /// The vessel's hero: the one still on its way home if there is one, otherwise a new rig waiting
+    /// (hidden) on the card icon.
+    private func heroRig(_ vessel: Vessel) -> (ItemRig, isNew: Bool) {
+        if let existing = heroes[vessel] { return (existing, false) }
         let rig = makeRig(vessel)
         rig.pose = iconPose(vessel)
-        rig.grounded = 0
         rig.apply()
         rig.root.isEnabled = false
         heroes[vessel] = rig
         root.addChild(rig.root)
+        return (rig, true)
+    }
+
+    private func launch(_ rig: ItemRig, isNew: Bool, duration: Double, delay: Double = 0, underScoops: Bool = false) {
+        let vessel = rig.vessel
+        guard isNew else {
+            flyHeroToCenter(rig, duration: duration, delay: delay, underScoops: underScoops)
+            setVesselIconAppear(vessel, to: 1, duration: 0.32, delay: delay + duration * 0.55)
+            return
+        }
         let takeOver = { [unowned self] in
             rig.pose = iconPose(vessel)
             rig.scaleMultiplier = vesselIconAppear[vessel] ?? 1
-            rig.grounded = 0
             rig.root.isEnabled = true
             rig.apply()
             setVesselIconAppear(vessel, to: 0, duration: 0)
             setVesselIconAppear(vessel, to: 1, duration: 0.32, delay: duration * 0.55)
-            setVesselIconShadow(vessel, to: 0, duration: 0.2)
-            setVesselIconShadow(vessel, to: 1, duration: 0.32, delay: duration * 0.55)
         }
         if delay <= 0 { takeOver() }
-        animate(delay: delay, duration: 0.2, onStart: delay > 0 ? takeOver : nil) { p in
+        rig.appearTween = animate(delay: delay, duration: 0.2, onStart: delay > 0 ? takeOver : nil) { p in
             rig.scaleMultiplier = lerp(rig.scaleMultiplier, 1, p)
         }
-        flyHeroToCenter(rig, duration: duration, delay: delay)
+        flyHeroToCenter(rig, duration: duration, delay: delay, underScoops: underScoops)
     }
+
+    static let transferDuration: Double = 0.62
 
     func swapVessel(to vessel: Vessel) {
         guard vessel != selectedVessel else { return }
         let old = selectedVessel
         selectedVessel = vessel
         isDragging = false
-        let duration = 1.0
-        launchFromIcon(vessel, duration: duration)
+        let carrying = !scoops.isEmpty
+        let duration = carrying ? Self.transferDuration : 1.0
+        let (incoming, isNew) = heroRig(vessel)
+        setOwner(scoops, incoming)
+        reframe(incoming, animated: !isNew)
+        launch(incoming, isNew: isNew, duration: carrying ? duration - 0.06 : duration, underScoops: carrying)
         if let outgoing = heroes[old] {
-            flyHeroHome(outgoing, duration: duration, delay: scoops.isEmpty ? 0 : 0.3)
+            flyHeroHome(outgoing, duration: carrying ? 0.75 : 1.0, fromUnderScoops: carrying)
         }
-        if let incoming = heroes[vessel] {
-            transferScoops(to: incoming, landingIn: duration)
-        }
+        if carrying { transferScoops(to: incoming, arrival: duration) }
     }
 }

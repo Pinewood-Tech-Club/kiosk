@@ -88,6 +88,7 @@ extension Stage {
 
     func updateTray(dt: Float) {
         summaryDrag.step(dt)
+        publishTrayTiles()
         for entry in tray {
             guard let rig = entry.rig else { continue }
             let edge: Float
@@ -128,6 +129,18 @@ extension Stage {
         }
     }
 
+    /// A tile for every item that is in the tray or on its way there; none while the order sheet is up.
+    private func publishTrayTiles() {
+        guard !summaryActive else {
+            trayTiles.update([])
+            return
+        }
+        trayTiles.update(tray.compactMap { entry in
+            let inTray = entry.mode == .tray || (entry.mode == .flying && !entry.flyingToSummary)
+            return inTray ? TrayTileModel.Tile(id: entry.id, x: trayCenterX(entry)) : nil
+        })
+    }
+
     func animateTrayScroll(to target: CGFloat, duration: Double = 0.5) {
         trayScrollTween?.cancel()
         let from = trayScroll
@@ -147,6 +160,7 @@ extension Stage {
     private func flyEntry(_ entry: TrayEntry, toSummary: Bool, delay: Double = 0, duration: Double = 0.9) {
         guard let rig = entry.rig else { return }
         entry.mode = .flying
+        entry.flyingToSummary = toSummary
         entry.lastEdge = -1
         rig.root.isEnabled = true
         if rig.scaleMultiplier < 1 {
@@ -208,6 +222,8 @@ extension Stage {
         selectedVessel = rig.vessel
         heroes[rig.vessel] = rig
         scoops = rig.scoops
+        rig.framing = nil
+        reframe(rig, animated: false)
         rig.appearTween?.cancel()
         rig.root.isEnabled = true
         if rig.scaleMultiplier < 1 {
@@ -365,9 +381,9 @@ extension Stage {
         }
         for icon in flavorIcons.values {
             icon.appear = 1
-            icon.shadowAmount = 1
             icon.appearTween = nil
         }
+        for actor in Array(liveScoops.values) { discard(actor) }
         controlsVisible = true
         setStep(.vessel, animated: false)
         updateIcons()
@@ -387,7 +403,8 @@ extension Stage {
         if let current, !summary {
             selectedVessel = current.vessel
             let rig = makeItemRig(current)
-            rig.pose = centerPose(current.vessel, yaw: 0.4)
+            reframe(rig, animated: false)
+            rig.pose = centerPose(rig, yaw: 0.4)
             rig.apply()
             heroes[current.vessel] = rig
             scoops = rig.scoops
@@ -408,7 +425,9 @@ extension Stage {
             let key = placementKey(index: index, count: item.flavors.count, vessel: item.vessel)
             let pose = assets!.scoopSet(slot).resolve(finalPoseName(item.vessel, key: key))
             let actor = ScoopActor(flavor: flavor, slot: slot, model: makeScoopModel(slot: slot, flavor: flavor, pose: pose), pose: pose)
+            liveScoops[ObjectIdentifier(actor)] = actor
             actor.rig = rig
+            actor.mount = rig
             actor.placementKey = key
             actor.state = .landed
             actor.root.transform = slotLocal(item.vessel, key: key, height: 0)

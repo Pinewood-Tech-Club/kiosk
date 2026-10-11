@@ -41,8 +41,13 @@ extension Entity {
     }
 }
 
+struct Framing: Equatable {
+    var position: SIMD3<Float>
+    var scale: Float
+}
+
 /// A vessel with its scoops.
-/// root (position, scale) → floor (pitch) → rolled (roll) → spun (yaw) → body (−pivot).
+/// root (position, scale) → floor (pitch) → rolled (roll, modelScale) → spun (yaw) → body (−pivot).
 @MainActor
 final class ItemRig {
     let vessel: Vessel
@@ -52,48 +57,33 @@ final class ItemRig {
     let spun = Entity()
     let body = Entity()
     let pivot: SIMD3<Float>
-    let floorShadow: ModelEntity?
-    let floorShadowFullRoll: Float
-    private let floorShadowScale: SIMD3<Float>
     var pose: RigPose
     var scaleMultiplier: Float = 1
+    /// Scales the model inside the rig (card icons hide this way when their item flies out).
+    var modelScale: Float = 1
     var scoops: [ScoopActor] = []
     var motion: Tween?
     var appearTween: Tween?
     var opacityTween: Tween?
     private(set) var opacity: Float = 1
-    private var shownShadowOpacity: Float = -1
-    private var shownBaseShadow: Float = -1
-    let baseShadow: ModelEntity?
-    private let baseShadowScale: SIMD3<Float>
-    /// 1 while the item rests on a surface, 0 in the air: its contact shadows shrink and grow with it.
-    var grounded: Float = 1
-    /// Scales the model but not its contact shadows (card icons hide this way while their shadow fades).
-    var modelScale: Float = 1
+    /// Where the rig sits at the center when it's the item being built; eased when its scoop count changes.
+    var framing: Framing?
+    var framingTarget: Framing?
+    var framingTween: Tween?
+    /// The pose the current flight ends on, so scoops can aim at where the rig will be rather than where it is.
+    var flightGoal: (() -> RigPose)?
 
-    init(vessel: Vessel, model: Entity, baseShadow: ModelEntity?, floorShadow: ModelEntity?, floorShadowFullRoll: Float,
-         pivot: SIMD3<Float>, pose: RigPose) {
+    init(vessel: Vessel, model: Entity, pivot: SIMD3<Float>, pose: RigPose) {
         self.vessel = vessel
         self.pivot = pivot
         self.pose = pose
-        self.floorShadow = floorShadow
-        self.floorShadowScale = floorShadow?.scale ?? .one
-        self.baseShadow = baseShadow
-        self.baseShadowScale = baseShadow?.scale ?? .one
-        self.floorShadowFullRoll = floorShadowFullRoll
         root.name = "rig-\(vessel.rawValue)"
         root.addChild(floor)
         floor.addChild(rolled)
-        if let floorShadow { floor.addChild(floorShadow) }
         rolled.addChild(spun)
         spun.addChild(body)
         body.position = -pivot
         body.addChild(model)
-        if let baseShadow {
-            // Under `floor` rather than the spinning body, so the model can be scaled separately from it.
-            baseShadow.position.y -= pivot.y
-            floor.addChild(baseShadow)
-        }
         apply()
     }
 
@@ -105,19 +95,16 @@ final class ItemRig {
         rolled.scale = .init(repeating: max(modelScale, 1e-5))
         rolled.isEnabled = modelScale > 0.001
         spun.orientation = simd_quatf(angle: pose.yaw, axis: [0, 1, 0])
-        if let floorShadow, floorShadowFullRoll != 0 {
-            let amount = min(Ease.clamp01(abs(pose.roll) / abs(floorShadowFullRoll)), grounded)
-            if abs(amount - shownShadowOpacity) > 0.004 {
-                shownShadowOpacity = amount
-                floorShadow.scale = floorShadowScale * max(amount, 1e-4)
-                floorShadow.isEnabled = amount > 0.002
-            }
-        }
-        if let baseShadow, abs(grounded - shownBaseShadow) > 0.004 {
-            shownBaseShadow = grounded
-            baseShadow.scale = baseShadowScale * max(grounded, 1e-4)
-            baseShadow.isEnabled = grounded > 0.002
-        }
+    }
+
+    /// World matrix `body` will have at `pose` once fully shown (same chain as `apply`).
+    func bodyMatrix(at pose: RigPose) -> simd_float4x4 {
+        let scale = max(pose.scale, 1e-5)
+        let rootMatrix = Transform(scale: .init(repeating: scale), rotation: simd_quatf(angle: pose.pitch, axis: [1, 0, 0]),
+                                   translation: pose.position).matrix
+        let rolledMatrix = Transform(scale: .one, rotation: simd_quatf(angle: pose.roll, axis: [0, 0, 1]), translation: .zero).matrix
+        let spunMatrix = Transform(scale: .one, rotation: simd_quatf(angle: pose.yaw, axis: [0, 1, 0]), translation: .zero).matrix
+        return rootMatrix * rolledMatrix * spunMatrix * Transform(translation: -pivot).matrix
     }
 
     func setOpacity(_ value: Float) {
@@ -128,6 +115,8 @@ final class ItemRig {
 
     func cancelMotions() {
         motion?.cancel()
+        motion = nil
+        flightGoal = nil
         appearTween?.cancel()
         opacityTween?.cancel()
     }
@@ -137,6 +126,7 @@ final class ItemRig {
 @MainActor
 final class ScoopActor {
     enum State { case flying, pressing, landed, leaving }
+    static let rootName = "scoop"
 
     let flavor: Flavor
     var slot: Int
@@ -150,7 +140,13 @@ final class ScoopActor {
     var morphDirty = false
     var motion: Tween?
     var relayout: Tween?
+    /// The item this scoop belongs to (or is flying to).
     weak var rig: ItemRig?
+    /// The rig whose body this scoop is attached to right now, if any. Differs from `rig` while it transfers.
+    weak var mount: ItemRig?
+    var isDiscarded = false
+    /// Flying in from its card as a new scoop: the item is framed with room for it above.
+    var isArriving = false
     var placementKey = "1"
     var state: State = .flying
     var pressHeight: Float = 0
@@ -160,6 +156,7 @@ final class ScoopActor {
         self.slot = slot
         self.model = model
         self.staticPose = pose
+        root.name = Self.rootName
         root.addChild(model)
     }
 
@@ -173,41 +170,25 @@ final class ScoopActor {
     }
 }
 
-/// holder (card position, press) → [scaler (hide / grow) → model, shadow]. The shadow fades rather than
-/// scales, so it lingers briefly when the scoop leaves and returns with it.
+/// holder (card position, press) → scaler (hide / grow) → model.
 @MainActor
 final class FlavorIcon {
     let flavor: Flavor
     let holder = Entity()
     let scaler = Entity()
     let model: ModelEntity
-    let shadow: ModelEntity
-    private let shadowScale: SIMD3<Float>
     var restPosition: SIMD3<Float> = .zero
     var restOrientation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
     var baseScale: Float = 1
     var appear: Float = 1
-    var shadowAmount: Float = 1
     var appearTween: Tween?
-    var shadowTween: Tween?
-    private var shownShadow: Float = -1
 
-    init(flavor: Flavor, model: ModelEntity, shadow: ModelEntity) {
+    init(flavor: Flavor, model: ModelEntity) {
         self.flavor = flavor
         self.model = model
-        self.shadow = shadow
-        self.shadowScale = shadow.scale
         holder.name = "flavor-\(flavor.rawValue)"
         holder.addChild(scaler)
         scaler.addChild(model)
-        holder.addChild(shadow)
-    }
-
-    func applyShadow() {
-        guard abs(shadowAmount - shownShadow) > 0.004 else { return }
-        shownShadow = shadowAmount
-        shadow.scale = shadowScale * max(shadowAmount, 1e-4)
-        shadow.isEnabled = shadowAmount > 0.002
     }
 }
 
@@ -220,6 +201,8 @@ final class TrayEntry {
     var index: Float
     var indexTween: Tween?
     var mode: Mode = .flying
+    /// Where a `.flying` entry is headed.
+    var flyingToSummary = false
     var contentTop: Float
     var contentRadius: Float
     var lastEdge: Float = -1

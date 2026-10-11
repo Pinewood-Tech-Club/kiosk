@@ -75,6 +75,8 @@ struct BuilderBackdrop: View {
                 .frame(width: sheet.width, height: sheet.height)
                 .position(x: sheet.midX, y: sheet.midY + (app.mode == .summary ? app.sheetDrag : 0))
 
+            TrayTiles(app: app)
+
 
             if app.mode == .summary {
                 SummaryView(app: app)

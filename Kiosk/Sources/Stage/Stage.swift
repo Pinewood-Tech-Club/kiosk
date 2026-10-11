@@ -58,7 +58,6 @@ final class Stage {
     /// frame for it (offset by the hidden status bar area), which doesn't match the drawable.
     let viewFrame = CGRect(origin: .zero, size: Layout.screen)
     var tweens: [Tween] = []
-    var shadowMesh: MeshResource?
     var morphing: [ScoopActor] = []
     var contactLift: [String: Float] = [:]
     var scoopModelPool: [ScoopModelKey: [ModelEntity]] = [:]
@@ -66,9 +65,7 @@ final class Stage {
     var vesselIcons: [Vessel: ItemRig] = [:]
     var vesselIconAppear: [Vessel: Float] = [.cup: 1, .cone: 1]
     var vesselIconAppearTweens: [Vessel: Tween] = [:]
-    var vesselIconShadow: [Vessel: Float] = [.cup: 1, .cone: 1]
-    var vesselIconShadowTweens: [Vessel: Tween] = [:]
-    /// Step visibility of the card icons (with their shadows), as a scale: models are never faded.
+    /// Step visibility of the card icons, as a scale: models are never faded.
     var iconShown: [CardKey: Float] = [:]
     var iconShownTweens: [CardKey: Tween] = [:]
     var iconShownTargets: [CardKey: Float] = [:]
@@ -77,7 +74,12 @@ final class Stage {
     var vesselIconTarget: [Vessel: Float] = [.cup: 0, .cone: 0]
     var heroes: [Vessel: ItemRig] = [:]
     var scoops: [ScoopActor] = []
+    /// Every scoop that hasn't been discarded, wherever it is.
+    var liveScoops: [ObjectIdentifier: ScoopActor] = [:]
+    /// Projected extents of each vessel with 0–3 scoops, for framing the item at the center.
+    var contentExtents: [String: ContentExtents] = [:]
     var tray: [TrayEntry] = []
+    let trayTiles = TrayTileModel()
     var step: BuilderStep = .vessel
     var controlsVisible = true
 
@@ -132,7 +134,7 @@ final class Stage {
         guard !isBuilt else { return }
         self.assets = assets
         contactLift = assets.contactLift
-        shadowMesh = MeshResource.generatePlane(width: 1, depth: 1)
+        measureContent()
 
         configureScene(root: root, camera: camera, ibl: iblEntity)
 
@@ -155,6 +157,7 @@ final class Stage {
         updateIcons()
         log("Contact lifts (mm): " + contactLift.sorted { $0.key < $1.key }
             .map { "\($0.key)=\(String(format: "%.1f", $0.value * 1000))" }.joined(separator: " "))
+        log(framingReport())
         log(approachReport())
     }
 
@@ -170,14 +173,11 @@ final class Stage {
             ibl.orientation = simd_quatf(angle: .pi, axis: [0, 1, 0])
         }
         root.addChild(ibl)
-        for (intensity, position, shadow) in [(Float(2400), SIMD3<Float>(-1.3, 1.6, 2.2), true),
-                                              (700, [1.9, 0.35, 1.4], false),
-                                              (1500, [0.35, 1.5, -2.2], false)] {
+        for (intensity, position) in [(Float(2400), SIMD3<Float>(-1.3, 1.6, 2.2)),
+                                      (700, [1.9, 0.35, 1.4]),
+                                      (1500, [0.35, 1.5, -2.2])] {
             let light = Entity()
             light.components.set(DirectionalLightComponent(color: .white, intensity: intensity))
-            if shadow {
-                light.components.set(DirectionalLightComponent.Shadow(maximumDistance: 5, depthBias: 2))
-            }
             light.look(at: .zero, from: position, relativeTo: nil)
             root.addChild(light)
         }
@@ -267,12 +267,13 @@ final class Stage {
     var activeAnimationCount: Int { tweens.count }
     var morphingCount: Int { morphing.count }
 
-    static func mainScale(_ vessel: Vessel) -> Float { vessel == .cup ? 3.9 : 2.35 }
-    static func iconScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.75 : 1.18 }
-    static let flavorIconScale: Float = 2.1
+    static func maxHeroScale(_ vessel: Vessel) -> Float { vessel == .cup ? 3.6 : 2.9 }
+    static func iconScale(_ vessel: Vessel) -> Float { vessel == .cup ? 1.5 : 1.02 }
+    static let flavorIconScale: Float = 1.82
 
-    func centerPose(_ vessel: Vessel, yaw: Float) -> RigPose {
-        RigPose(position: world(Layout.mainPivot(vessel)), scale: Self.mainScale(vessel), pitch: Self.preferredPitch, yaw: yaw)
+    func centerPose(_ rig: ItemRig, yaw: Float) -> RigPose {
+        let framing = rig.framing ?? heroFraming(rig.vessel, count: rig.scoops.count)
+        return RigPose(position: framing.position, scale: framing.scale, pitch: Self.preferredPitch, yaw: yaw)
     }
 
     func iconRestPose(_ vessel: Vessel) -> RigPose {
@@ -303,34 +304,12 @@ final class Stage {
         return (p, scale)
     }
 
-    func makeShadow(width: Float, depth: Float, y: Float) -> ModelEntity? {
-        guard let assets, let shadowMesh else { return nil }
-        let shadow = ModelEntity(mesh: shadowMesh, materials: [assets.shadowMaterial])
-        shadow.scale = [width, 1, depth]
-        shadow.position.y = y
-        shadow.components.set(DynamicLightShadowComponent(castsShadow: false))
-        return shadow
-    }
-
     func makeRig(_ vessel: Vessel, ibl: Entity? = nil) -> ItemRig {
         let assets = assets!
         let model = assets.vessels[vessel]!.clone(recursive: true)
         applyLighting(model, ibl: ibl)
-        let pivot = assets.vesselPivot(vessel)
-        let rig: ItemRig
-        switch vessel {
-        case .cup:
-            rig = ItemRig(vessel: vessel, model: model, baseShadow: makeShadow(width: 0.15, depth: 0.15, y: -0.0012),
-                          floorShadow: nil, floorShadowFullRoll: 0, pivot: pivot,
-                          pose: RigPose(position: .zero, scale: 1, pitch: Self.preferredPitch, yaw: 0))
-        case .cone:
-            let radius = assets.vesselRadius(vessel, atHeight: pivot.y)
-            rig = ItemRig(vessel: vessel, model: model, baseShadow: nil,
-                          floorShadow: makeShadow(width: 0.17, depth: 0.06, y: -radius - 0.0015),
-                          floorShadowFullRoll: Self.coneIconRoll, pivot: pivot,
-                          pose: RigPose(position: .zero, scale: 1, pitch: Self.preferredPitch, yaw: 0))
-        }
-        return rig
+        return ItemRig(vessel: vessel, model: model, pivot: assets.vesselPivot(vessel),
+                       pose: RigPose(position: .zero, scale: 1, pitch: Self.preferredPitch, yaw: 0))
     }
 
     /// Scoop models come from a pool filled at launch, so a tap never allocates entities or components.
@@ -350,10 +329,12 @@ final class Stage {
     }
 
     func recycleScoopModel(_ entity: ModelEntity, slot: Int, flavor: Flavor) {
+        let key = ScoopModelKey(slot: slot, flavor: flavor)
+        guard scoopModelPool[key]?.contains(where: { $0 === entity }) != true else { return }
         entity.removeFromParent()
         entity.setOpacity(1)
         entity.components.remove(ModelSortGroupComponent.self)
-        scoopModelPool[ScoopModelKey(slot: slot, flavor: flavor), default: []].append(entity)
+        scoopModelPool[key, default: []].append(entity)
     }
 
     func fillScoopModelPool() {
@@ -379,10 +360,8 @@ final class Stage {
 
     private func makeFlavorIcon(_ flavor: Flavor) -> FlavorIcon {
         let model = makeScoopModel(slot: 1, flavor: flavor, pose: "icon")
-        let center = iconCenter(slot: 1)
-        model.position = -center
-        let shadow = makeShadow(width: 0.1, depth: 0.1, y: -center.y - 0.0008) ?? ModelEntity()
-        let icon = FlavorIcon(flavor: flavor, model: model, shadow: shadow)
+        model.position = -iconCenter(slot: 1)
+        let icon = FlavorIcon(flavor: flavor, model: model)
         icon.baseScale = Self.flavorIconScale
         icon.restPosition = world(Layout.flavorIconCenter(flavor))
         icon.restOrientation = simd_quatf(angle: 0.36, axis: [1, 0, 0]) * simd_quatf(angle: -0.25, axis: [0, 1, 0])
@@ -394,9 +373,10 @@ final class Stage {
         guard let assets else { return "" }
         var parts: [String] = []
         for vessel in Vessel.allCases {
-            let center = centerPose(vessel, yaw: 0)
             let pivot = assets.vesselPivot(vessel)
             for slot in 1...3 {
+                let framing = heroFraming(vessel, count: slot)
+                let center = RigPose(position: framing.position, scale: framing.scale, pitch: Self.preferredPitch, yaw: 0)
                 let key = placementKey(index: slot - 1, count: slot, vessel: vessel)
                 let base = assets.placements.placement(vessel, key: key).translation.y + liftHeight(vessel, key: key) + Self.approachClearance
                 let top = base + 0.0438
@@ -425,7 +405,7 @@ final class Stage {
                                            actual: screen(rig.root.position(relativeTo: nil))))
             }
             if let hero = heroes[vessel] {
-                markers.append(DebugMarker(id: "hero-\(vessel.rawValue)", expected: Layout.mainPivot(vessel),
+                markers.append(DebugMarker(id: "hero-\(vessel.rawValue)", expected: screen(centerPose(hero, yaw: 0).position),
                                            actual: screen(hero.root.position(relativeTo: nil))))
             }
         }
@@ -434,5 +414,121 @@ final class Stage {
                                        actual: screen(icon.holder.position(relativeTo: nil))))
         }
         return markers
+    }
+
+    struct ContentExtents {
+        var yMin: Float
+        var yMax: Float
+        var xHalf: Float
+        /// Top of the newest scoop's ball while it waits above its slot to settle.
+        var yApproach: Float = -.infinity
+    }
+
+    /// Measures the vessel plus its placed scoops, as seen at the hero's pitch from any yaw, relative to the pivot.
+    private func measureContent() {
+        guard let assets else { return }
+        let yaws = (0..<12).map { Float($0) / 12 * 2 * .pi }
+        let pitch = Self.preferredPitch
+        for vessel in Vessel.allCases {
+            let pivot = assets.vesselPivot(vessel)
+            var points = assets.vesselSamplePoints(vessel, limit: 6000)
+            for count in 0...3 {
+                if count > 0 {
+                    points = assets.vesselSamplePoints(vessel, limit: 6000)
+                    for index in 0..<count {
+                        let key = placementKey(index: index, count: count, vessel: vessel)
+                        let placement = assets.placements.placement(vessel, key: key)
+                        let pose = finalPoseName(vessel, key: key)
+                        points += assets.scoopSet(index + 1).data.positions(assets.scoopSet(index + 1).resolve(pose), stride: 8)
+                            .map { placement.rotation.act($0) + placement.translation }
+                    }
+                }
+                var ball: [SIMD3<Float>] = []
+                if count > 0 {
+                    let key = placementKey(index: count - 1, count: count, vessel: vessel)
+                    let w = Self.preSquish
+                    let slot = slotLocal(vessel, key: key, height: liftHeight(vessel, key: key) * (1 - w) + Self.approachClearance)
+                    let set = assets.scoopSet(count)
+                    let round = set.data.positions("ball", stride: 8)
+                    let placed = set.data.positions(set.resolve(finalPoseName(vessel, key: key)), stride: 8)
+                    ball = zip(round, placed).map { slot.rotation.act($0 * (1 - w) + $1 * w) + slot.translation }
+                }
+                var extents = ContentExtents(yMin: .infinity, yMax: -.infinity, xHalf: 0)
+                for yaw in yaws {
+                    let c = cos(yaw), s = sin(yaw)
+                    func project(_ p: SIMD3<Float>) -> (x: Float, y: Float) {
+                        let z = -s * p.x + c * p.z
+                        return (c * p.x + s * p.z, (p.y - pivot.y) * cos(pitch) - z * sin(pitch))
+                    }
+                    for p in points {
+                        let (x, y) = project(p)
+                        extents.yMin = min(extents.yMin, y)
+                        extents.yMax = max(extents.yMax, y)
+                        extents.xHalf = max(extents.xHalf, abs(x))
+                    }
+                    for p in ball { extents.yApproach = max(extents.yApproach, project(p).y) }
+                }
+                contentExtents["\(vessel.rawValue)\(count)"] = extents
+            }
+        }
+    }
+
+    /// Fits the item into the band between the title and the cards, centered, never larger than the vessel's
+    /// hero scale. While a new scoop is arriving, the band also has to hold the ball waiting above its slot, so
+    /// the item eases back a little and settles in again once the scoop has landed.
+    func heroFraming(_ vessel: Vessel, count: Int, arriving: Bool = false) -> Framing {
+        let band = Layout.heroBand
+        guard let e = contentExtents["\(vessel.rawValue)\(min(count, 3))"] else {
+            return Framing(position: world(CGPoint(x: band.midX, y: band.midY)), scale: Self.maxHeroScale(vessel))
+        }
+        let tightScale = min(Self.maxHeroScale(vessel), Float(band.height) * 0.001 / (e.yMax - e.yMin),
+                             Float(band.width) * 0.001 / (2 * e.xHalf))
+        var position = world(CGPoint(x: band.midX, y: band.midY))
+        position.y -= (e.yMin + e.yMax) / 2 * tightScale
+        guard arriving, e.yApproach > e.yMax else { return Framing(position: position, scale: tightScale) }
+        // Keep the vessel's base where it is when there's room; only pull back as far as the ball needs.
+        let bottom = world(CGPoint(x: band.midX, y: band.maxY)).y
+        let top = world(CGPoint(x: band.midX, y: Self.flightCeilingY)).y
+        let base = position.y + e.yMin * tightScale
+        let scale = min(tightScale, (top - base) / (e.yApproach - e.yMin), (top - bottom) / (e.yApproach - e.yMin))
+        let lowest = max(bottom, base)
+        return Framing(position: [position.x, lowest - e.yMin * scale, position.z], scale: scale)
+    }
+
+    /// Eases the hero to the framing for its current scoop count.
+    func reframe(_ rig: ItemRig, animated: Bool = true) {
+        let target = heroFraming(rig.vessel, count: rig.scoops.count, arriving: rig.scoops.contains { $0.isArriving })
+        guard target != rig.framingTarget || rig.framing == nil else { return }
+        rig.framingTarget = target
+        rig.framingTween?.cancel()
+        rig.framingTween = nil
+        guard animated, let from = rig.framing else {
+            rig.framing = target
+            return
+        }
+        rig.framingTween = animate(duration: 0.6) { p in
+            let e = TimingCurve.swiftUIEaseInOut(p)
+            rig.framing = Framing(position: simd_mix(from.position, target.position, .init(repeating: e)),
+                                  scale: lerp(from.scale, target.scale, e))
+        } completion: {
+            rig.framingTween = nil
+        }
+    }
+
+    func framingReport() -> String {
+        var parts: [String] = []
+        for vessel in Vessel.allCases {
+            for count in 0...3 {
+                let f = heroFraming(vessel, count: count)
+                let a = heroFraming(vessel, count: count, arriving: true)
+                guard let e = contentExtents["\(vessel.rawValue)\(count)"] else { continue }
+                let top = screen(f.position + [0, e.yMax * f.scale, 0]).y
+                let bottom = screen(f.position + [0, e.yMin * f.scale, 0]).y
+                let ball = count > 0 ? screen(a.position + [0, e.yApproach * a.scale, 0]).y : 0
+                parts.append(String(format: "%@%d scale %.2f y %.0f-%.0f (arriving %.2f, ball top %.0f)",
+                                    vessel.rawValue, count, f.scale, top, bottom, a.scale, ball))
+            }
+        }
+        return "Hero framing: " + parts.joined(separator: ", ")
     }
 }

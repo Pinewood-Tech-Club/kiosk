@@ -21,14 +21,19 @@ struct StageView: View {
 /// Clips the tray's 3D minis to the tray's item area the way a scroll view clips its content. Only the
 /// tray's horizontal band is clipped, so items fly into and out of the tray from above unclipped.
 struct TrayClip: Shape {
+    /// The part of the tray the minis (and their tiles) scroll within.
+    static var itemsArea: CGRect {
+        let glass = Layout.trayGlassRect
+        return CGRect(x: Layout.trayItemsRect.minX, y: glass.minY, width: glass.maxX - Layout.trayItemsRect.minX, height: glass.height)
+    }
+
+    static let itemsShape = UnevenRoundedRectangle(cornerRadii: .init(bottomTrailing: 40, topTrailing: 40), style: .continuous)
+
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
         let glass = Layout.trayGlassRect
         path.addRect(CGRect(x: rect.minX, y: glass.minY, width: rect.width, height: rect.maxY - glass.minY))
-        let items = CGRect(x: Layout.trayItemsRect.minX, y: glass.minY, width: glass.maxX - Layout.trayItemsRect.minX,
-                           height: glass.height)
-        path.addPath(UnevenRoundedRectangle(cornerRadii: .init(bottomTrailing: 40, topTrailing: 40), style: .continuous)
-            .path(in: items))
+        path.addPath(Self.itemsShape.path(in: Self.itemsArea))
         return path
     }
 }

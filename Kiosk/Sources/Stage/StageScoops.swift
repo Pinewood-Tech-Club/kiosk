@@ -75,15 +75,18 @@ extension Stage {
         case restack
     }
 
-    static let approachClearance: Float = 0.008
+    static let approachClearance: Float = 0.004
+    /// How far a new scoop has already squashed toward its placed shape when it reaches the point above its slot.
+    /// The press bound lets it wait correspondingly lower, which keeps the top scoop's arrival under the title.
+    static let preSquish: Float = 0.5
     static let minimumLift: Float = 0.004
     static let pressDuration: Double = 0.4
     /// Settling curve for the press; starts at 1.2× linear speed so the flight can hand over without a kink.
     static let pressCurve = TimingCurve(0.3, 0.36, 0.42, 1)
     static let pressStartSlope: Float = 1.2
     static let maxArrivalSlope: Float = 2.2
-    /// Screen y (points) below the builder header; a flying scoop's top must stay under it.
-    static let flightCeilingY: CGFloat = 288
+    /// Screen y (points) below the builder title; a flying scoop's top must stay under it.
+    static let flightCeilingY: CGFloat = 244
 
     func liftHeight(_ vessel: Vessel, key: String) -> Float {
         max(contactLift["\(vessel.rawValue):\(key)"] ?? 0.02, Self.minimumLift)
@@ -113,19 +116,42 @@ extension Stage {
         return placementKey(index: index, count: rig.scoops.count, vessel: rig.vessel)
     }
 
-    func approachTransform(_ actor: ScoopActor, on rig: ItemRig) -> Transform {
-        let key = liveKey(actor, on: rig)
-        return slotWorld(rig, key: key, height: liftHeight(rig.vessel, key: key) + Self.approachClearance)
+    /// How far the scoop beneath this one is still above its own slot. Placements are defined against the
+    /// landed scoops below, so while the one beneath settles, this one rides on it instead of sinking into it.
+    func stackLift(below actor: ScoopActor, on rig: ItemRig) -> Float {
+        guard let index = rig.scoops.firstIndex(where: { $0 === actor }), index > 0 else { return 0 }
+        let lower = rig.scoops[index - 1]
+        return lower.state == .pressing && lower.mount === rig ? lower.pressHeight : 0
+    }
+
+    func approachHeight(_ actor: ScoopActor, on rig: ItemRig, squish: Float = 0) -> Float {
+        liftHeight(rig.vessel, key: liveKey(actor, on: rig)) * (1 - squish) + Self.approachClearance + stackLift(below: actor, on: rig)
+    }
+
+    func approachTransform(_ actor: ScoopActor, on rig: ItemRig, squish: Float = 0) -> Transform {
+        slotWorld(rig, key: liveKey(actor, on: rig), height: approachHeight(actor, on: rig, squish: squish))
     }
 
     func detachToWorld(_ actor: ScoopActor) {
         let matrix = actor.root.transformMatrix(relativeTo: nil)
         root.addChild(actor.root)
         actor.root.transform = Transform(matrix: matrix)
+        actor.mount = nil
     }
 
     func after(_ delay: Double, _ action: @escaping () -> Void) -> Tween {
         animate(delay: delay, duration: 0.0001, phase: .attachments, onStart: action) { _ in }
+    }
+
+    /// Makes `rig` the only owner of `actors`, in that order. Ownership changes immediately; where each scoop
+    /// is attached (`mount`) only changes when its motion gets there.
+    func setOwner(_ actors: [ScoopActor], _ rig: ItemRig) {
+        for actor in actors {
+            if let previous = actor.rig, previous !== rig { previous.scoops.removeAll { $0 === actor } }
+            for other in heroes.values where other !== rig { other.scoops.removeAll { $0 === actor } }
+            actor.rig = rig
+        }
+        rig.scoops = actors
     }
 
     /// Half-width of the vessel and its scoops on screen plus a ball's radius, so paths can go around it.
@@ -139,7 +165,7 @@ extension Stage {
     private func clearTop(_ rig: ItemRig, excluding actor: ScoopActor) -> Float {
         guard let assets else { return 0 }
         var top = assets.vesselTop(rig.vessel)
-        for scoop in rig.scoops where scoop !== actor && scoop.root.parent === rig.body {
+        for scoop in rig.scoops where scoop !== actor && scoop.mount === rig {
             let bounds = assets.scoopSet(scoop.slot).poseBounds(scoop.staticPose)
             top = max(top, scoop.root.transform.translation.y + bounds.max.y)
         }
@@ -152,6 +178,7 @@ extension Stage {
               flavorIcons[flavor] != nil else { return }
         let slot = scoops.count + 1
         let actor = ScoopActor(flavor: flavor, slot: slot, model: makeScoopModel(slot: slot, flavor: flavor, pose: "icon"), pose: "icon")
+        liveScoops[ObjectIdentifier(actor)] = actor
         let start = flavorIconModelTransform(flavor, slot: slot)
         let appear = flavorIcons[flavor]?.appear ?? 1
         actor.root.transform = Transform(scale: start.scale * appear, rotation: start.rotation, translation: start.translation)
@@ -159,8 +186,10 @@ extension Stage {
         scoops.append(actor)
         hero.scoops.append(actor)
         actor.rig = hero
+        actor.isArriving = true
+        reframe(hero)
 
-        setFlavorIconAppear(flavor, to: 0, duration: 0, shadowDuration: 0.12)
+        setFlavorIconAppear(flavor, to: 0, duration: 0)
         setFlavorIconAppear(flavor, to: 1, duration: 0.34, delay: 0.5)
         relayoutFirstScoop(on: hero, delay: 0)
 
@@ -172,70 +201,117 @@ extension Stage {
         guard index < scoops.count, let hero = heroes[selectedVessel] else { return }
         let actor = scoops.remove(at: index)
         hero.scoops.removeAll { $0 === actor }
+        actor.rig = nil
         let above = Array(scoops[index...])
         returnToIcon(actor, delay: above.isEmpty ? 0 : 0.06, sideways: !above.isEmpty)
         for (offset, upper) in above.enumerated() {
             restack(upper, on: hero, delay: Double(offset) * 0.05)
         }
+        reframe(hero)
         relayoutFirstScoop(on: hero, delay: 0.42)
     }
 
-    /// Lifts the scoops off as balls into a row above the center, holds them there while the new vessel
-    /// flies in beneath, then drops them onto it bottom-up.
-    func transferScoops(to rig: ItemRig, landingIn delay: Double) {
+    /// Hands the scoops to the incoming vessel as one stack: it lifts a little while the old vessel drops
+    /// away beneath it, reshapes for the new vessel in the air, and settles onto it as it rises into place.
+    func transferScoops(to rig: ItemRig, arrival: Double) {
+        setOwner(scoops, rig)
         for actor in scoops {
-            actor.rig?.scoops.removeAll { $0 === actor }
-        }
-        rig.scoops = scoops
-        guard let assets, !scoops.isEmpty else { return }
-        let center = centerPose(rig.vessel, yaw: 0)
-        let scale = Self.mainScale(rig.vessel)
-        let top = center.position.y + (assets.vesselTop(rig.vessel) - rig.pivot.y) * scale
-        let width: Float = 0.048 * scale
-        let descentStart = now + delay - 0.05
-        let count = Float(scoops.count)
-        for (index, actor) in scoops.enumerated() {
-            actor.cancelMotions()
-            let hoverPoint = SIMD3<Float>(center.position.x + (Float(index) - (count - 1) / 2) * width, top + 0.06, 0.06)
-            let land = { [unowned self] in
-                actor.motion = after(max(0, descentStart + Double(index) * 0.3 - now)) { [unowned self] in
-                    flyToSlot(actor, rig: rig, route: .restack)
-                }
-            }
-            let rise = { [unowned self] in hover(actor, to: hoverPoint, scale: scale, duration: 0.42, then: land) }
-            if actor.root.parent !== root, actor.state != .flying {
-                unpress(actor, then: rise)
-            } else {
-                rise()
-            }
+            actor.isArriving = false
+            transfer(actor, to: rig, duration: arrival)
         }
     }
 
-    private func hover(_ actor: ScoopActor, to point: SIMD3<Float>, scale: Float, duration: Double, then next: @escaping () -> Void) {
+    private func transfer(_ actor: ScoopActor, to rig: ItemRig, duration: Double) {
+        actor.cancelMotions()
         var start = Transform()
-        var toBall = false
+        var rise = SIMD3<Float>.zero
+        var origin: (rig: ItemRig, slot: Transform)?
+        var pose = ""
+        var reslotDone = false
+        let gap: Float = 0.004
+        let landing: Float = 0.012
         actor.motion = animate(duration: duration, phase: .attachments, onStart: { [unowned self] in
+            var up: SIMD3<Float> = [0, 1, 0]
+            if let mount = actor.mount, actor.root.parent === mount.body {
+                origin = (mount, slotLocal(mount.vessel, key: actor.placementKey, height: 0))
+                let column = actor.root.transformMatrix(relativeTo: nil).columns.1
+                up = simd_normalize(SIMD3(column.x, column.y, column.z))
+            }
             if actor.root.parent !== root { detachToWorld(actor) }
             actor.state = .flying
             start = actor.root.transform
-            toBall = actor.staticPose != "ball" || actor.morpher != nil
-            if toBall { beginMorph(actor, to: "ball") }
+            rise = up * 0.016 * start.scale.x
+            pose = finalPoseName(rig.vessel, key: liveKey(actor, on: rig))
+            beginMorph(actor, to: pose)
         }) { [unowned self] p in
-            let e = TimingCurve.standard(p)
-            let s0 = (start.scale.x + start.scale.y + start.scale.z) / 3
-            actor.root.transform = Transform(scale: .init(repeating: lerp(s0, scale, e)), rotation: start.rotation,
-                                             translation: simd_mix(start.translation, point, .init(repeating: e)))
-            if toBall { setMorphWeight(actor, e) }
+            let index = rig.scoops.firstIndex { $0 === actor } ?? 0
+            let key = liveKey(actor, on: rig)
+            let goal = transferGoal(actor, on: rig, key: key, height: gap * Float(index) * sin(.pi * p), progress: p)
+            let up = goal.rotation.act([0, 1, 0])
+            let e = Self.transferCurve(p)
+            let position = cubicBezier(start.translation, start.translation + rise,
+                                       goal.translation + up * landing * goal.scale.x, goal.translation, e)
+            let scale = lerp(start.scale.x, goal.scale.x, TimingCurve.standard(p))
+            actor.root.transform = Transform(scale: .init(repeating: max(scale, 1e-5)),
+                                             rotation: simd_slerp(start.rotation, goal.rotation, e), translation: position)
+            if !reslotDone, actor.slot != index + 1, p >= 0.15 {
+                reslotDone = true
+                reslot(actor, to: index + 1)
+                beginMorph(actor, to: pose)
+            }
+            // Reshapes only while clear of both vessels: no rounder than its height above the old slot allows, and
+            // fully in the new shape before it gets within `landing` of the new slot.
+            var w = Ease.inOutSine(Ease.segment(p, 0.15, 0.7))
+            if let origin, p < 0.5 {
+                w = min(w, Ease.clamp01(height(position, above: origin.slot, on: origin.rig) / landing))
+            }
+            if p > 0.5 {
+                w = max(w, 1 - Ease.clamp01(height(position, above: slotLocal(rig.vessel, key: key, height: 0), on: rig) / landing))
+            }
+            setMorphWeight(actor, w)
         } completion: { [weak self] in
-            if toBall { self?.endMorph(actor) }
-            actor.motion = nil
-            next()
+            guard let self else { return }
+            let index = rig.scoops.firstIndex { $0 === actor } ?? 0
+            if actor.slot != index + 1 { reslot(actor, to: index + 1) }
+            let key = liveKey(actor, on: rig)
+            if actor.morpher == nil || actor.morphTo != finalPoseName(rig.vessel, key: key) {
+                beginMorph(actor, to: finalPoseName(rig.vessel, key: key))
+            }
+            setMorphWeight(actor, 1)
+            endMorph(actor)
+            rig.body.addChild(actor.root)
+            actor.mount = rig
+            actor.placementKey = key
+            actor.pressHeight = 0
+            actor.state = .pressing
+            settle(actor, on: rig, key: key)
         }
+    }
+
+    /// Lifts off gently, keeps moving, and eases onto the new vessel.
+    static let transferCurve = TimingCurve(0.45, 0, 0.25, 1)
+
+    private func height(_ position: SIMD3<Float>, above slot: Transform, on rig: ItemRig) -> Float {
+        let local = simd_inverse(rig.body.transformMatrix(relativeTo: nil)) * SIMD4<Float>(position, 1)
+        return simd_dot(SIMD3(local.x, local.y, local.z) - slot.translation, slot.rotation.act([0, 1, 0]))
+    }
+
+    /// The slot on the rig where it will be when its flight ends, handing over to the live rig by the end so
+    /// the scoop lands exactly on it.
+    private func transferGoal(_ actor: ScoopActor, on rig: ItemRig, key: String, height: Float, progress p: Float) -> Transform {
+        let local = slotLocal(rig.vessel, key: key, height: height)
+        let live = Transform(matrix: rig.body.transformMatrix(relativeTo: nil) * local.matrix)
+        guard let goalPose = rig.flightGoal?() else { return live }
+        let predicted = Transform(matrix: rig.bodyMatrix(at: goalPose) * local.matrix)
+        let w = Ease.inOutSine(Ease.segment(p, 0.55, 1))
+        return Transform(scale: simd_mix(predicted.scale, live.scale, .init(repeating: w)),
+                         rotation: simd_slerp(predicted.rotation, live.rotation, w),
+                         translation: simd_mix(predicted.translation, live.translation, .init(repeating: w)))
     }
 
     private func restack(_ actor: ScoopActor, on rig: ItemRig, delay: Double) {
         actor.cancelMotions()
-        if actor.root.parent !== root, actor.state != .flying {
+        if actor.mount != nil, actor.state != .flying {
             unpress(actor) { [unowned self] in
                 hover(actor, rise: 0.03, duration: 0.22) { [unowned self] in
                     flyToSlot(actor, rig: rig, route: .restack, delay: delay)
@@ -248,7 +324,7 @@ extension Stage {
 
     /// Lifts a placed scoop off its slot: the exact reverse of the press, so every vertex retraces its path.
     func unpress(_ actor: ScoopActor, then next: @escaping () -> Void) {
-        guard let rig = actor.rig, actor.root.parent === rig.body else {
+        guard let rig = actor.mount, actor.root.parent === rig.body else {
             next()
             return
         }
@@ -275,7 +351,7 @@ extension Stage {
     }
 
     private func hover(_ actor: ScoopActor, rise: Float, duration: Double, then next: @escaping () -> Void) {
-        guard let rig = actor.rig, actor.root.parent === rig.body else {
+        guard let rig = actor.mount, actor.root.parent === rig.body else {
             next()
             return
         }
@@ -302,25 +378,26 @@ extension Stage {
         var morphToBall = false
         var morphDone = false
         var reslotDone = false
+        var squishing = false
         let dip: Bool
         let spin: Float
         let duration: Double
+        let squish: Float
         switch route {
         case .fromIcon:
-            dip = true; spin = 1; duration = 0.62
+            dip = true; spin = 1; duration = 0.62; squish = Self.preSquish
         case .restack:
-            dip = false; spin = 0; duration = 0.42
+            dip = false; spin = 0; duration = 0.42; squish = 0
         }
 
         actor.motion = animate(delay: delay, duration: duration, phase: .attachments, onStart: { [unowned self] in
             if actor.root.parent !== root { detachToWorld(actor) }
-            actor.rig = rig
             actor.state = .flying
             start = actor.root.transform
             morphToBall = actor.staticPose != "ball" || actor.morpher != nil
             if morphToBall { beginMorph(actor, to: "ball") }
 
-            let goal = approachTransform(actor, on: rig)
+            let goal = approachTransform(actor, on: rig, squish: squish)
             let up = goal.rotation.act([0, 1, 0])
             let p0 = start.translation
             let pa = goal.translation
@@ -352,7 +429,7 @@ extension Stage {
                 timing = TimingCurve(0.42, 0, 0.6, 1 - 0.4 * endSlope)
             }
         }) { [unowned self] p in
-            let goal = approachTransform(actor, on: rig)
+            let goal = approachTransform(actor, on: rig, squish: squish)
             let e = timing(p)
             let position: SIMD3<Float>
             if let arc {
@@ -388,12 +465,36 @@ extension Stage {
                 reslotDone = true
                 reslot(actor, to: targetSlot)
             }
+            // The final stretch comes straight down the slot's axis; the squash rides on the same progress.
+            if squish > 0, p >= 0.72, actor.slot == targetSlot, morphDone || !morphToBall {
+                if !squishing {
+                    squishing = true
+                    if actor.morpher != nil { endMorph(actor) }
+                    beginMorph(actor, to: finalPoseName(rig.vessel, key: liveKey(actor, on: rig)))
+                }
+                setMorphWeight(actor, squish * Ease.inOutSine(Ease.segment(p, 0.72, 1)))
+            }
         } completion: { [weak self] in
             guard let self else { return }
             if actor.morpher != nil, actor.morphTo == "ball" { endMorph(actor) }
             let targetSlot = (rig.scoops.firstIndex { $0 === actor } ?? 0) + 1
             if actor.slot != targetSlot { reslot(actor, to: targetSlot) }
-            press(actor, onto: rig)
+            pressWhenClear(actor, onto: rig, squish: squishing ? squish : 0)
+        }
+    }
+
+    /// Placements assume the scoops beneath have landed; if one is still in the air, wait just above the slot.
+    private func pressWhenClear(_ actor: ScoopActor, onto rig: ItemRig, squish: Float) {
+        let index = rig.scoops.firstIndex { $0 === actor } ?? 0
+        guard rig.scoops.prefix(index).contains(where: { $0.state == .flying || $0.state == .leaving }) else {
+            press(actor, onto: rig, squish: squish)
+            return
+        }
+        actor.motion = animate(duration: 1.0 / 60, phase: .attachments) { [unowned self] _ in
+            let goal = approachTransform(actor, on: rig, squish: squish)
+            actor.root.transform = Transform(scale: goal.scale, rotation: goal.rotation, translation: goal.translation)
+        } completion: { [weak self] in
+            self?.pressWhenClear(actor, onto: rig, squish: squish)
         }
     }
 
@@ -401,32 +502,63 @@ extension Stage {
     /// shape and height arrive together. The morph is never behind `1 − h / contact`: that bound keeps every
     /// vertex on or above the straight line from "ball touching" to "placed", so nothing passes through the
     /// vessel or the scoops below. (With a shared curve it holds automatically; the `max` guards tuning.)
-    private func press(_ actor: ScoopActor, onto rig: ItemRig) {
+    /// Heights are measured from the scoop beneath while it is still settling (`stackLift`).
+    /// `squish` is how far the scoop already morphed toward the placed pose on its way in.
+    private func press(_ actor: ScoopActor, onto rig: ItemRig, duration: Double = Stage.pressDuration, squish: Float = 0) {
         let vessel = rig.vessel
         let key = liveKey(actor, on: rig)
         let pose = finalPoseName(vessel, key: key)
         let contact = liftHeight(vessel, key: key)
-        let startHeight = contact + Self.approachClearance
+        var base: Float = 0
+        if actor.morpher != nil, actor.morphTo == pose {
+            base = actor.morphWeight
+        } else {
+            beginMorph(actor, to: pose)
+        }
+        let startHeight = contact * (1 - (base > 0 ? squish : 0)) + Self.approachClearance
         rig.body.addChild(actor.root)
-        actor.root.transform = slotLocal(vessel, key: key, height: startHeight)
+        actor.mount = rig
         actor.placementKey = key
-        actor.pressHeight = startHeight
+        actor.pressHeight = startHeight + stackLift(below: actor, on: rig)
+        actor.root.transform = slotLocal(vessel, key: key, height: actor.pressHeight)
         actor.state = .pressing
-        beginMorph(actor, to: pose)
-        actor.motion = animate(duration: Self.pressDuration, phase: .attachments) { [unowned self] p in
+        actor.motion = animate(duration: duration, phase: .attachments) { [unowned self] p in
             let c = Self.pressCurve(p)
-            let h = startHeight * (1 - c)
+            let own = startHeight * (1 - c)
+            let h = own + stackLift(below: actor, on: rig)
             actor.pressHeight = h
             actor.root.transform = slotLocal(vessel, key: key, height: h)
-            setMorphWeight(actor, max(c, Ease.clamp01(1 - h / contact)))
+            setMorphWeight(actor, max(base + (1 - base) * c, Ease.clamp01(1 - own / contact)))
         } completion: { [weak self] in
             guard let self else { return }
             setMorphWeight(actor, 1)
             endMorph(actor)
-            actor.pressHeight = 0
-            actor.root.transform = slotLocal(vessel, key: key, height: 0)
-            actor.state = .landed
-            actor.motion = nil
+            settle(actor, on: rig, key: key)
+        }
+    }
+
+    /// Lands the pressed scoop, first riding the one beneath down if that one is still settling.
+    private func settle(_ actor: ScoopActor, on rig: ItemRig, key: String) {
+        let riding = stackLift(below: actor, on: rig)
+        if riding > 1e-5 {
+            actor.pressHeight = riding
+            actor.root.transform = slotLocal(rig.vessel, key: key, height: riding)
+            actor.motion = animate(duration: 1.0 / 60, phase: .attachments) { [unowned self] _ in
+                actor.pressHeight = stackLift(below: actor, on: rig)
+                actor.root.transform = slotLocal(rig.vessel, key: key, height: actor.pressHeight)
+            } completion: { [weak self] in
+                self?.settle(actor, on: rig, key: key)
+            }
+            return
+        }
+        actor.pressHeight = 0
+        actor.root.transform = slotLocal(rig.vessel, key: key, height: 0)
+        actor.state = .landed
+        actor.motion = nil
+        relayoutFirstScoop(on: rig, delay: 0)
+        if actor.isArriving {
+            actor.isArriving = false
+            if heroes.values.contains(where: { $0 === rig }) { reframe(rig) }
         }
     }
 
@@ -435,7 +567,7 @@ extension Stage {
         actor.cancelMotions()
         setFlavorIconAppear(flavor, to: 0, duration: 0.2, curve: .swiftUIEaseIn)
         let fly = { [unowned self] in flyHome(actor, delay: delay, sideways: sideways) }
-        if actor.root.parent !== root, actor.state != .flying {
+        if actor.mount != nil, actor.state != .flying {
             unpress(actor, then: fly)
         } else {
             fly()
@@ -452,7 +584,7 @@ extension Stage {
         var toIcon = false
         var reslotDone = false
         let duration = 0.78
-        let fromRig = actor.rig
+        let fromRig = actor.mount ?? heroes[selectedVessel]
         actor.motion = animate(delay: delay, duration: duration, phase: .attachments, onStart: { [unowned self] in
             let up = actor.root.transformMatrix(relativeTo: nil).columns.1
             if actor.root.parent !== root { detachToWorld(actor) }
@@ -503,36 +635,43 @@ extension Stage {
         } completion: { [weak self] in
             guard let self else { return }
             flavorIcons[flavor]?.appearTween?.cancel()
+            flavorIcons[flavor]?.appearTween = nil
             flavorIcons[flavor]?.appear = 1
-            flavorIcons[flavor]?.shadowAmount = 1
             updateIcons()
             discard(actor)
         }
     }
 
+    /// A lone cup scoop sits in its own `solo` placement; it moves to slot 1's when a second scoop joins and back
+    /// when it's alone again. The placement key only changes once the move has finished.
     func relayoutFirstScoop(on rig: ItemRig, delay: Double) {
-        guard rig.vessel == .cup, let first = rig.scoops.first, first.isLanded, first.slot == 1 else { return }
-        let key = placementKey(index: 0, count: rig.scoops.count, vessel: .cup)
-        guard key != first.placementKey else { return }
+        guard rig.vessel == .cup, let first = rig.scoops.first else { return }
+        let wanted = placementKey(index: 0, count: rig.scoops.count, vessel: .cup)
+        guard wanted != first.placementKey || first.relayout != nil else { return }
         first.relayout?.cancel()
-        let fromKey = first.placementKey
-        first.placementKey = key
+        first.relayout = nil
         var from = Transform()
+        var key = wanted
+        var active = false
         first.relayout = animate(delay: delay, duration: 0.32, phase: .attachments, onStart: { [unowned self] in
-            guard first.isLanded, first.root.parent === rig.body else { return }
+            key = placementKey(index: 0, count: rig.scoops.count, vessel: .cup)
+            guard rig.scoops.first === first, first.isLanded, first.slot == 1, first.mount === rig, first.motion == nil else { return }
+            active = true
             from = first.root.transform
-            if from.translation == .zero { from = slotLocal(.cup, key: fromKey, height: 0) }
             beginMorph(first, to: finalPoseName(.cup, key: key))
         }) { [unowned self] p in
-            guard first.isLanded, first.morpher != nil else { return }
+            guard active else { return }
             let e = Ease.inOutCubic(p)
             let to = slotLocal(.cup, key: key, height: 0)
             first.root.transform = Transform(scale: .one, rotation: simd_slerp(from.rotation, to.rotation, e),
                                              translation: simd_mix(from.translation, to.translation, .init(repeating: e)))
             setMorphWeight(first, e)
         } completion: { [weak self] in
-            if first.morpher != nil { self?.endMorph(first) }
             first.relayout = nil
+            guard let self, active else { return }
+            if first.morpher != nil { endMorph(first) }
+            first.placementKey = key
+            relayoutFirstScoop(on: rig, delay: 0)
         }
     }
 
@@ -553,6 +692,9 @@ extension Stage {
     }
 
     func discard(_ scoop: ScoopActor) {
+        guard !scoop.isDiscarded else { return }
+        scoop.isDiscarded = true
+        liveScoops[ObjectIdentifier(scoop)] = nil
         scoop.cancelMotions()
         if let morpher = scoop.morpher {
             assets?.scoopSet(scoop.slot).release(morpher)
@@ -561,6 +703,9 @@ extension Stage {
         morphing.removeAll { $0 === scoop }
         recycleScoopModel(scoop.model, slot: scoop.slot, flavor: scoop.flavor)
         scoop.root.removeFromParent()
+        scoop.rig?.scoops.removeAll { $0 === scoop }
+        scoop.rig = nil
+        scoop.mount = nil
     }
 
     func beginMorph(_ scoop: ScoopActor, to pose: String) {
