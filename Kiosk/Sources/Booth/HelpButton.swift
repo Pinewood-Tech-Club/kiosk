@@ -15,7 +15,7 @@ struct HelpButton: View {
                 if booth.helpBannerVisible {
                     Text("Someone's on the way")
                         .font(Theme.serif(18, .regular))
-                        .foregroundStyle(Theme.ink)
+                        .foregroundStyle(Theme.text)
                         .padding(.horizontal, 20)
                         .frame(height: 42)
                         .glassEffect(.regular, in: .capsule)

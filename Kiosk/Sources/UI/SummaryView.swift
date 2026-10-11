@@ -9,7 +9,7 @@ struct SummaryView: View {
         let quote = app.orderQuote
         ZStack(alignment: .top) {
             Capsule()
-                .fill(Theme.ink.opacity(0.22))
+                .fill(Theme.text.opacity(0.22))
                 .frame(width: 56, height: 6)
                 .position(x: Layout.midX, y: Layout.sheetRect.minY + 14)
 
@@ -29,7 +29,7 @@ struct SummaryView: View {
 
             Text("Your order")
                 .font(Theme.serif(40))
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(Theme.text)
                 .position(x: Layout.midX, y: Layout.backButtonCenter.y)
 
             ScrollView {
@@ -71,7 +71,7 @@ struct SummaryView: View {
 
     private func checkout(_ quote: OrderQuote) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Rectangle().fill(Theme.inkFaint).frame(height: 1)
+            Rectangle().fill(Theme.hairline).frame(height: 1)
             HStack(alignment: .firstTextBaseline) {
                 Text("Total").font(Theme.serif(32))
                 Spacer()
@@ -80,11 +80,11 @@ struct SummaryView: View {
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(quote.totalCents)))
             }
-            .foregroundStyle(Theme.ink)
+            .foregroundStyle(Theme.text)
             .padding(.top, 22)
             Text(contents(quote))
                 .font(Theme.serif(19, .regular))
-                .foregroundStyle(Theme.ink.opacity(0.65))
+                .foregroundStyle(Theme.text.opacity(0.65))
             Button { app.completeOrder() } label: {
                 Text("Check Out").frame(maxWidth: .infinity)
             }
@@ -115,16 +115,16 @@ private struct SummaryRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(line.item.vessel.title)
                     .font(Theme.serif(30))
-                    .foregroundStyle(Theme.ink)
+                    .foregroundStyle(Theme.text)
                 Text(line.item.flavors.map(\.title).joined(separator: " · "))
                     .font(Theme.serif(21, .regular))
-                    .foregroundStyle(Theme.ink.opacity(0.65))
+                    .foregroundStyle(Theme.text.opacity(0.65))
             }
             Spacer(minLength: 16)
             Text(line.totalCents.formattedAsUSD)
                 .font(Theme.serif(28, .medium))
                 .monospacedDigit()
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(Theme.text)
                 .padding(.trailing, 26)
             GlassIconButton(icon: "pencil", size: 52, iconSize: 20, action: edit)
                 .accessibilityLabel("Edit \(line.item.vessel.title)")
@@ -138,7 +138,7 @@ private struct SummaryRow: View {
         .onTapGesture(perform: edit)
         .overlay(alignment: .top) {
             if showsDivider {
-                Rectangle().fill(Theme.inkFaint).frame(height: 1).padding(.leading, 268).padding(.trailing, 40)
+                Rectangle().fill(Theme.hairline).frame(height: 1).padding(.leading, 268).padding(.trailing, 40)
             }
         }
     }

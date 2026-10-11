@@ -31,7 +31,7 @@ struct RootView: View {
 
     private var layers: some View {
         ZStack {
-            AmbientBackdrop()
+            Theme.background
 
             app.host.frame(width: 0, height: 0)
 
@@ -44,7 +44,7 @@ struct RootView: View {
             // Beneath the stage so each receipt row's live 3D item draws on the paper.
             if shows(.confirmation), let receipt = app.receipt {
                 ConfirmationView(app: app, receipt: receipt)
-                    .background(AmbientBackdrop())
+                    .background(Theme.background)
                     .transition(.identity)
             }
 
@@ -65,7 +65,7 @@ struct RootView: View {
 
             if shows(.name) {
                 NameEntryView(app: app)
-                    .background(AmbientBackdrop())
+                    .background(Theme.background)
                     .opacity(app.screen == .name ? 1 : 0)
                     .allowsHitTesting(app.screen == .name)
                     .transition(.opacity)

@@ -58,7 +58,6 @@ struct DebugBar: View {
         .padding(.top, 10)
         .padding(.trailing, 14)
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .environment(\.colorScheme, app.screen == .attract ? .dark : .light)
     }
 
     private var authText: String {

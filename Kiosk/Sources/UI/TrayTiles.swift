@@ -42,7 +42,7 @@ struct TrayTiles: View {
         ZStack(alignment: .topLeading) {
             ForEach(model.tiles) { tile in
                 RoundedRectangle(cornerRadius: Layout.trayTileRadius, style: .continuous)
-                    .fill(Theme.ink.opacity(0.055))
+                    .fill(Theme.text.opacity(0.055))
                     .frame(width: Layout.trayTileSize.width, height: Layout.trayTileSize.height)
                     .position(x: tile.x - area.minX, y: Layout.trayCenterY - area.minY)
                     .animation(nil, value: tile.x)

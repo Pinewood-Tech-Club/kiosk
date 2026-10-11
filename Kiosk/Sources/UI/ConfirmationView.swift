@@ -13,7 +13,7 @@ struct ConfirmationView: View {
             VStack(spacing: 14) {
                 HStack(spacing: 10) {
                     LucideIcon(name: "check", size: 16)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Theme.onText)
                         .frame(width: 28, height: 28)
                         .background(Theme.success, in: .circle)
                     Text("Paid")
@@ -22,13 +22,13 @@ struct ConfirmationView: View {
                 }
                 Text("Thank you, \(receipt.customerName).")
                     .font(Theme.serif(64))
-                    .foregroundStyle(Theme.ink)
+                    .foregroundStyle(Theme.text)
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
                 Text("We'll call your name when it's ready.")
                     .font(Theme.serif(24, .regular))
-                    .foregroundStyle(Theme.ink.opacity(0.7))
+                    .foregroundStyle(Theme.text.opacity(0.7))
             }
             .padding(.top, 76)
             .padding(.horizontal, 64)
@@ -45,7 +45,7 @@ struct ConfirmationView: View {
                 Text("Take a photo to keep this receipt.")
             }
             .font(Theme.serif(19, .regular))
-            .foregroundStyle(Theme.inkSecondary)
+            .foregroundStyle(Theme.textSecondary)
             .padding(.top, 20)
             .opacity(printed ? 1 : 0)
 
@@ -83,10 +83,10 @@ private struct Countdown: View {
     var body: some View {
         HStack(spacing: 9) {
             ZStack {
-                Circle().stroke(Theme.inkFaint, lineWidth: 2.5)
+                Circle().stroke(Theme.hairline, lineWidth: 2.5)
                 Circle()
                     .trim(from: 0, to: remaining / total)
-                    .stroke(Theme.ink.opacity(0.55), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .stroke(Theme.text.opacity(0.55), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: 0.25), value: remaining)
             }
@@ -94,7 +94,7 @@ private struct Countdown: View {
             Text("Starting over in \(Int(remaining.rounded(.up)))s")
                 .font(Theme.sans(16, .medium))
                 .monospacedDigit()
-                .foregroundStyle(Theme.inkSecondary)
+                .foregroundStyle(Theme.textSecondary)
         }
     }
 }
@@ -189,20 +189,20 @@ private struct ReceiptView: View {
             rule.padding(.vertical, 18)
             payment
         }
-        .foregroundStyle(Theme.ink)
+        .foregroundStyle(Theme.text)
         .padding(.horizontal, 40)
         .padding(.top, 34)
         .padding(.bottom, 40)
         .background {
             ReceiptShape()
-                .fill(Theme.card)
-                .shadow(color: Theme.cardShadow, radius: 24, y: 12)
+                .fill(Theme.surface)
+                .overlay { ReceiptShape().stroke(Theme.hairline, lineWidth: 1) }
         }
     }
 
     private var rule: some View {
         Line()
-            .stroke(Theme.ink.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+            .stroke(Theme.text.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
             .frame(height: 1)
     }
 
@@ -215,7 +215,7 @@ private struct ReceiptView: View {
                 .multilineTextAlignment(.center)
             Text(receipt.date.formatted(.dateTime.month(.wide).day().year().hour().minute()))
                 .font(Theme.sans(14))
-                .foregroundStyle(Theme.inkSecondary)
+                .foregroundStyle(Theme.textSecondary)
             HStack {
                 Text("Order \(receipt.orderNumber)")
                 Spacer()
@@ -245,12 +245,12 @@ private struct ReceiptView: View {
                             }
                             Text(entry.composition)
                                 .font(Theme.sans(14))
-                                .foregroundStyle(Theme.ink.opacity(0.78))
+                                .foregroundStyle(Theme.text.opacity(0.78))
                                 .fixedSize(horizontal: false, vertical: true)
                             if !entry.flavors.isEmpty {
                                 Text(entry.flavors)
                                     .font(Theme.serif(14, .regular))
-                                    .foregroundStyle(Theme.inkSecondary)
+                                    .foregroundStyle(Theme.textSecondary)
                             }
                         }
                     }
@@ -289,19 +289,19 @@ private struct ReceiptView: View {
             if receipt.isSimulated {
                 Text("Test mode · simulated payment")
                     .font(Theme.sans(13, .semibold))
-                    .foregroundStyle(Theme.accentDeep)
+                    .foregroundStyle(Theme.accent)
                     .padding(.top, 6)
             }
         }
         .font(.system(size: 12, design: .monospaced))
-        .foregroundStyle(Theme.inkSecondary)
+        .foregroundStyle(Theme.textSecondary)
         .textSelection(.enabled)
         .frame(maxWidth: .infinity)
     }
 
     private func amountRow(_ title: String, _ cents: Int) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title).font(Theme.sans(16)).foregroundStyle(Theme.inkSecondary)
+            Text(title).font(Theme.sans(16)).foregroundStyle(Theme.textSecondary)
             Spacer()
             Text(cents.formattedAsUSD).font(Theme.sans(16)).monospacedDigit()
         }
@@ -311,7 +311,7 @@ private struct ReceiptView: View {
 private struct Leader: View {
     var body: some View {
         Line()
-            .stroke(Theme.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [0.1, 5]))
+            .stroke(Theme.text.opacity(0.3), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [0.1, 5]))
             .frame(height: 1.2)
             .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 1 }
     }

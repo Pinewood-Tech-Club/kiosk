@@ -23,7 +23,7 @@ struct NameEntryView: View {
 
             Text("What's your name?")
                 .font(Theme.serif(64))
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(Theme.text)
 
             GlassEffectContainer(spacing: 40) {
                 VStack(spacing: 30) {
@@ -65,7 +65,7 @@ struct NameEntryView: View {
         Button { submit() } label: {
             HStack(spacing: 12) {
                 if app.isPaying {
-                    ProgressView().tint(.white)
+                    ProgressView().tint(Theme.onText)
                     Text(app.simulatePayment ? "Processing…" : "Preparing payment…")
                 } else {
                     Text("Continue to Payment")
@@ -126,8 +126,8 @@ private struct NameField: UIViewRepresentable {
         field.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
         field.font = UIFont(name: Theme.SerifWeight.medium.rawValue, size: 48)
         field.adjustsFontForContentSizeCategory = false
-        field.textColor = UIColor(Theme.ink)
-        field.tintColor = UIColor(Theme.accentDeep)
+        field.textColor = UIColor(Theme.text)
+        field.tintColor = UIColor(Theme.accent)
         field.textAlignment = .center
         field.borderStyle = .none
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)

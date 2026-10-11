@@ -56,11 +56,11 @@ private struct NotReadyNotice: View {
             Text("Please ask a staff member for help.")
                 .font(Theme.serif(24, .regular))
         }
-        .foregroundStyle(Theme.ink)
+        .foregroundStyle(Theme.text)
         .padding(.horizontal, 56)
         .padding(.vertical, 30)
         .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(Theme.background.opacity(0.78)).padding(2))
-        .glassEffect(.regular.tint(Theme.background), in: .rect(cornerRadius: 44))
+        .glassEffect(.regular, in: .rect(cornerRadius: 44))
     }
 }
 
@@ -137,7 +137,7 @@ struct RoleSetupView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Set up this iPad")
                 .font(Theme.serif(64))
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(Theme.text)
             Button { app.chooseKioskRole() } label: {
                 HStack(spacing: 14) {
                     Text("Start Kiosk")
@@ -149,11 +149,11 @@ struct RoleSetupView: View {
 
             Text("Order Queue and Stats are coming soon.")
                 .font(Theme.sans(17))
-                .foregroundStyle(Theme.inkSecondary)
+                .foregroundStyle(Theme.textSecondary)
                 .padding(.top, 40)
         }
         .frame(width: 720, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AmbientBackdrop())
+        .background(Theme.background)
     }
 }

@@ -38,6 +38,7 @@ struct KioskApp: App {
     var body: some SwiftUI.Scene {
         WindowGroup {
             RootView(app: app)
+                .preferredColorScheme(.dark)
         }
     }
 }

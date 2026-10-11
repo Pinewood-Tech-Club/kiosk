@@ -21,8 +21,8 @@ struct KioskGlassButtonStyle: PrimitiveButtonStyle {
     enum Kind {
         case primary
         case secondary
-        /// Cream prominent glass with ink text over a cream backing, legible over video even when the
-        /// system glass setting is at its clearest.
+        /// The primary look over a cream backing, so it stays legible over video even when the system glass
+        /// setting is at its clearest.
         case onMedia
     }
 
@@ -39,7 +39,7 @@ struct KioskGlassButtonStyle: PrimitiveButtonStyle {
         } label: {
             configuration.label
                 .font(Theme.serif(fontSize, kind == .secondary ? .medium : .semibold))
-                .foregroundStyle(kind == .primary ? Color.white : Theme.ink)
+                .foregroundStyle(kind == .secondary ? Theme.text : Theme.onText)
                 .padding(.horizontal, horizontalPadding)
                 .frame(minHeight: height - 2 * Self.verticalInset)
         }
@@ -48,11 +48,11 @@ struct KioskGlassButtonStyle: PrimitiveButtonStyle {
         .glassMorph(morph)
 
         switch kind {
-        case .primary: button.buttonStyle(.glassProminent).tint(Theme.ink)
+        case .primary: button.buttonStyle(.glassProminent).tint(Theme.text)
         case .secondary: button.buttonStyle(.glass)
         case .onMedia:
-            button.buttonStyle(.glassProminent).tint(Theme.background)
-                .background(Capsule().fill(Theme.background.opacity(0.78)).padding(2))
+            button.buttonStyle(.glassProminent).tint(Theme.text)
+                .background(Capsule().fill(Theme.text.opacity(0.78)).padding(2))
         }
     }
 
@@ -105,7 +105,7 @@ struct GlassIconButton: View {
     var body: some View {
         let button = Button(action: action) {
             LucideIcon(name: icon, size: iconSize)
-                .foregroundStyle(prominent ? Color.white : Theme.ink)
+                .foregroundStyle(prominent ? Theme.onText : Theme.text)
                 .frame(width: width.map { $0 - 2 * KioskGlassButtonStyle.horizontalInset } ?? size - 2 * KioskGlassButtonStyle.verticalInset,
                        height: size - 2 * KioskGlassButtonStyle.verticalInset)
         }
@@ -114,7 +114,7 @@ struct GlassIconButton: View {
         .glassMorph(morph)
 
         if prominent {
-            button.buttonStyle(.glassProminent).tint(Theme.ink)
+            button.buttonStyle(.glassProminent).tint(Theme.text)
         } else {
             button.buttonStyle(.glass)
         }
@@ -139,20 +139,20 @@ struct GlassViewOrderButton: View {
                         .opacity(0.82)
                 }
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(Theme.onText)
             .frame(width: size.width - 2 * KioskGlassButtonStyle.horizontalInset, height: size.height - 2 * KioskGlassButtonStyle.verticalInset)
             .animation(.snappy, value: totalCents)
         }
         .buttonStyle(.glassProminent)
         .buttonBorderShape(.roundedRectangle(radius: cornerRadius))
         .controlSize(.large)
-        .tint(Theme.ink)
+        .tint(Theme.text)
     }
 }
 
 /// The builder's step navigation: a native `UISegmentedControl`, so it keeps the system Liquid Glass
 /// interaction (press, lift the selection into a lens, slide it between steps, snap on release).
-/// Completed steps carry a check, the current one sits on the brown selection, and steps that can't be
+/// Completed steps carry a check, the current one sits on the cream selection, and steps that can't be
 /// reached yet are disabled; tapping one calls `onBlockedTap` so the screen can explain why.
 struct GlassStepSelector<Step: Hashable>: View {
     let steps: [Step]
@@ -198,10 +198,10 @@ private struct StepSegments: UIViewRepresentable {
 
     func makeUIView(context: Context) -> StepSegmentedControl {
         let control = StepSegmentedControl()
-        control.selectedSegmentTintColor = UIColor(Theme.ink)
-        control.setTitleTextAttributes(StepSegmentedControl.attributes(.medium, Theme.ink), for: .normal)
-        control.setTitleTextAttributes(StepSegmentedControl.attributes(.semibold, .white), for: .selected)
-        control.setTitleTextAttributes(StepSegmentedControl.attributes(.medium, Theme.ink.opacity(0.32)), for: .disabled)
+        control.selectedSegmentTintColor = UIColor(Theme.text)
+        control.setTitleTextAttributes(StepSegmentedControl.attributes(.medium, Theme.text), for: .normal)
+        control.setTitleTextAttributes(StepSegmentedControl.attributes(.semibold, Theme.onText), for: .selected)
+        control.setTitleTextAttributes(StepSegmentedControl.attributes(.medium, Theme.text.opacity(0.4)), for: .disabled)
         control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
 
         let blockedTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.blockedTap(_:)))
@@ -318,20 +318,20 @@ final class StepSegmentedControl: UISegmentedControl {
 }
 
 /// The tray of 3D minis: a glass well drawn beneath the RealityView so the minis render on it. Expanded,
-/// it becomes the order sheet and turns solid, so the order's text and glass buttons sit on paper rather
-/// than on glass.
+/// it becomes the order sheet and turns solid, so the order's text and glass buttons sit on an opaque
+/// surface rather than on glass.
 struct GlassTrayBackground: View {
     var cornerRadius: CGFloat = 40
-    /// 0 is the tray's clear glass, 1 the order sheet's opaque paper.
+    /// 0 is the tray's clear glass, 1 the order sheet's opaque surface.
     var fill: Double = 0
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         shape
-            .fill(Theme.background)
+            .fill(Theme.surface)
             .opacity(fill)
             .glassEffect(.regular, in: shape)
-            .shadow(color: Theme.cardShadow.opacity(fill), radius: 30, y: -6)
+            .overlay { shape.strokeBorder(Theme.hairline, lineWidth: 1).opacity(fill) }
     }
 }
 
@@ -343,7 +343,7 @@ extension View {
             .glassEffect(.regular.interactive(), in: shape)
             .glassMorph(morph)
             .overlay {
-                shape.strokeBorder(Theme.ink.opacity(isFocused ? 0.7 : 0), lineWidth: 2)
+                shape.strokeBorder(Theme.text.opacity(isFocused ? 0.7 : 0), lineWidth: 2)
                     .allowsHitTesting(false)
             }
             .animation(.easeInOut(duration: 0.2), value: isFocused)
