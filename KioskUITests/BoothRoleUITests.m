@@ -41,7 +41,7 @@
 
 - (NSDictionary *)kioskNamed:(NSString *)name {
     for (NSDictionary *kiosk in [self request:@"/v1/state" body:nil][@"kiosks"]) {
-        if ([kiosk[@"name"] isEqualToString:name]) return kiosk;
+        if ([kiosk[@"reportedName"] isEqual:name]) return kiosk;
     }
     return nil;
 }
@@ -85,6 +85,7 @@
     [app.buttons[@"Start Kiosk"] tap];
     NSDictionary *kiosk = [self waitForKioskNamed:name matching:^BOOL(NSDictionary *k) { return [k[@"online"] boolValue]; }];
     XCTAssertNotNil(kiosk, @"the kiosk never reached the booth after leaving staff mode");
+    if (![kiosk[@"open"] boolValue]) [self act:@{@"type": @"setKioskOpen", @"kiosk": kiosk[@"id"], @"open": @YES}];
     XCTAssertTrue([app.buttons[@"Begin Order"] waitForExistenceWithTimeout:60]);
     [self keepScreenshot:@"kiosk-after-exit"];
     [self act:@{@"type": @"removeKiosk", @"kiosk": kiosk[@"id"]}];
@@ -98,11 +99,13 @@
                             @"-kioskNoSquare", @"YES", @"-kioskName", name];
     [app launch];
 
-    XCTAssertTrue([app.buttons[@"Begin Order"] waitForExistenceWithTimeout:90]);
-    XCTAssertFalse(app.buttons[@"Log"].exists, @"the debug bar must be off by default");
     NSDictionary *kiosk = [self waitForKioskNamed:name matching:^BOOL(NSDictionary *k) { return [k[@"online"] boolValue]; }];
     XCTAssertNotNil(kiosk);
     NSString *kioskID = kiosk[@"id"];
+    if (![kiosk[@"open"] boolValue]) [self act:@{@"type": @"setKioskOpen", @"kiosk": kioskID, @"open": @YES}];
+    if ([kiosk[@"debug"] boolValue]) [self act:@{@"type": @"setKioskDebug", @"kiosk": kioskID, @"debug": @NO}];
+    XCTAssertTrue([app.buttons[@"Begin Order"] waitForExistenceWithTimeout:90]);
+    XCTAssertTrue([self waitForAbsence:app.buttons[@"Log"] timeout:20], @"the debug bar must be off unless staff turn it on");
 
     [self act:@{@"type": @"setKioskDebug", @"kiosk": kioskID, @"debug": @YES}];
     XCTAssertTrue([app.buttons[@"Log"] waitForExistenceWithTimeout:20]);
