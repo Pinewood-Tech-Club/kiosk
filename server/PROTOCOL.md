@@ -357,7 +357,7 @@ Clients that queue offline should keep only the newest unsent `setSoldOut`/`setS
 
 For a split order `squarePaymentId` is the card reader's payment and `card` reads like `Visa 4242 + Gift card 1234`; for a gift-card-only order `squarePaymentId` is the gift card payment. `giftCardCents` is an integer >= 0. The receipt page shows both tenders when `giftCardCents` > 0.
 
-`GET /v1/orders?since=<ms>&limit=<n>` (staff) lists orders paid since `since`, newest first, with the count and total of real (not simulated) orders. Each row also has `status`, `status_at` and `status_by`.
+`GET /v1/orders?since=<ms>&limit=<n>` (staff) lists orders paid since `since`, newest first (at most 2000), with the count and total of real (not simulated) orders. *(added)* `&device=<id>` lists only orders stored by that device. Each row also has `status`, `status_at` and `status_by`.
 
 ## Square credentials: `GET /v1/square/credentials` (kiosk) *(added)*
 

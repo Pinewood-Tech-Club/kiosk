@@ -959,6 +959,11 @@ describe("logs and orders", () => {
     const listed = await exports.default.fetch(`${BASE}/v1/orders`, { headers: headers(STAFF, "s") });
     const body = (await listed.json()) as { orders: { id: string }[] };
     expect(body.orders.filter((o) => ["o1", "o2", "o3"].includes(o.id)).map((o) => o.id).sort()).toEqual(["o1", "o2"]);
+
+    await post("/v1/orders", KIOSK, `${device}-other`, { orders: [order("o4", "PAY-4")] });
+    const mine = await exports.default.fetch(`${BASE}/v1/orders?device=${device}`, { headers: headers(STAFF, "s") });
+    const devices = ((await mine.json()) as { orders: { id: string; device: string }[] }).orders;
+    expect(devices.map((o) => o.id).sort()).toEqual(["o1", "o2"]);
   });
 
   it("drops logs past the retention window", async () => {

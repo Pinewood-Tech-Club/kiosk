@@ -92,14 +92,15 @@ async function feedable(env: Env, candidates: { order: Order; duplicate: boolean
 async function listOrders(url: URL, env: Env): Promise<Response> {
   const since = Number(url.searchParams.get("since") ?? "0") || 0;
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "500") || 500, 1), 2000);
+  const device = url.searchParams.get("device") || null;
   const { results } = await withRetry("D1", () =>
     env.DB.prepare(
       `SELECT id, order_number, square_order_id, square_payment_id, customer_name, total_cents, subtotal_cents, tax_cents,
               card, simulated, items, lines, paid_at, device, order_ref, status, status_at, status_by,
               gift_card_payment_id, gift_card_cents, gift_card_last4
-       FROM orders WHERE paid_at >= ? ORDER BY paid_at DESC LIMIT ?`,
+       FROM orders WHERE paid_at >= ?1 AND (?2 IS NULL OR device = ?2) ORDER BY paid_at DESC LIMIT ?3`,
     )
-      .bind(since, limit)
+      .bind(since, device, limit)
       .all<{ simulated: number; total_cents: number; items: string; lines: string | null }>(),
   );
   const orders = results.map((r) => ({ ...r, items: JSON.parse(r.items), lines: r.lines ? JSON.parse(r.lines) : null }));
