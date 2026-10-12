@@ -118,7 +118,7 @@ await step("websockets", async () => {
 });
 
 await step("heartbeat", async () => {
-  kiosk.send({ type: "heartbeat", t: Date.now(), screen: "attract" });
+  kiosk.send({ type: "heartbeat", t: Date.now(), screen: "attract", name: "Smoke kiosk" });
   const pong = await kiosk.next("pong");
   check("heartbeat answered with pong", typeof pong.rev === "number" && pong.t !== null);
 });
@@ -135,10 +135,33 @@ await step("health event", async () => {
   };
   const r = await http("/v1/events", { token: kioskToken, device: kioskDevice, body: { events: [event] } });
   check("health stored", r.json?.results?.[0]?.status === "ok", JSON.stringify(r.json?.results));
-  const k = await staff.next("patch", (m) => m.change.kind === "kiosk" && m.change.kiosk.health?.appVersion === `smoke ${run}`);
-  check("staff got the health patch", k.change.kiosk.health.readers[0].batteryPercent === 77);
+  const mine = (m) => m.change.kiosks?.find((k) => k.id === kioskDevice);
+  const k = await staff.next("patch", (m) => m.change.kind === "kiosks" && mine(m)?.health?.appVersion === `smoke ${run}`);
+  check("staff got the health patch", mine(k).health.readers[0].batteryPercent === 77);
   const stale = await http("/v1/events", { token: kioskToken, device: kioskDevice, body: { events: [{ ...event, id: randomUUID() }] } });
   check("a replayed seq is stale", stale.json?.results?.[0]?.status === "stale");
+});
+
+const kioskEntry = async () => (await http("/v1/state", { token: staffToken, device: staffDevice })).json?.kiosks?.find((k) => k.id === kioskDevice);
+const act = (action) => http("/v1/actions", { token: staffToken, device: staffDevice, body: { actions: [{ id: randomUUID(), by: "Smoke test", ...action }] } });
+
+await step("kiosk registry", async () => {
+  const entry = await kioskEntry();
+  check("the kiosk is in the registry", !!entry && entry.name === "Smoke kiosk" && entry.online, entry ? `${entry.name}, tag ${entry.tag}` : "missing");
+  await act({ type: "renameKiosk", kiosk: kioskDevice, name: `Smoke ${run}` });
+  check("staff renamed it", (await kioskEntry())?.name === `Smoke ${run}`);
+  await act({ type: "setKioskDebug", kiosk: kioskDevice, debug: true });
+  const debug = await kiosk.next("patch", (m) => m.change.kind === "kiosks" && m.change.kiosks.find((k) => k.id === kioskDevice)?.debug === true);
+  check("the kiosk saw its debug tools turned on", !!debug);
+  await act({ type: "setKioskDebug", kiosk: kioskDevice, debug: false });
+  const before = await http("/v1/state", { token: staffToken, device: staffDevice });
+  const others = before.json.kiosks.filter((k) => k.id !== kioskDevice);
+  await act({ type: "setKioskOpen", kiosk: kioskDevice, open: false });
+  const closed = await http("/v1/state", { token: staffToken, device: staffDevice });
+  const closedEntry = closed.json.kiosks.find((k) => k.id === kioskDevice);
+  check("closing one kiosk leaves the others alone", closedEntry?.open === false && others.every((o) => closed.json.kiosks.find((k) => k.id === o.id)?.open === o.open));
+  await act({ type: "setKioskOpen", kiosk: kioskDevice, open: true });
+  check("reopened", (await kioskEntry())?.open === true);
 });
 
 await step("help", async () => {
@@ -148,7 +171,7 @@ await step("help", async () => {
   const alertId = r.json?.results?.[0]?.alertId;
   check("help stored", r.json?.results?.[0]?.status === "ok" && !!alertId);
   const alert = await staff.next("patch", alertPatch((a) => a.id === alertId));
-  check("staff got the help alert", alert.change.alert.severity === "urgent", alert.change.alert.title);
+  check("staff got the help alert, naming the kiosk", alert.change.alert.severity === "urgent" && alert.change.alert.kioskId === kioskDevice && alert.change.alert.title.endsWith(`at Smoke ${run}`), alert.change.alert.title);
   const again = await http("/v1/events", { token: kioskToken, device: kioskDevice, body: { events: [help] } });
   check("help retry is a duplicate", again.json?.results?.[0]?.status === "duplicate" && again.json.results[0].alertId === alertId);
   const ackID = randomUUID();
@@ -247,8 +270,8 @@ if (waitForOffline) {
   await step("offline", async () => {
     kiosk.ws.close();
     const started = Date.now();
-    const alert = await staff.next("patch", alertPatch((a) => a.kind === "offline" && !a.resolvedAt), 60_000);
-    check("Kiosk offline raised after contact stopped", true, `${Math.round((Date.now() - started) / 1000)} s after disconnect`);
+    const alert = await staff.next("patch", alertPatch((a) => a.kind === "offline" && a.kioskId === kioskDevice && !a.resolvedAt), 60_000);
+    check("offline alert raised for this kiosk after contact stopped", true, `${alert.change.alert.title}, ${Math.round((Date.now() - started) / 1000)} s after disconnect`);
     const id = randomUUID();
     staff.send({ type: "action", action: { id, type: "ack", alertId: alert.change.alert.id, by: "Smoke test" } });
     await staff.next("result", (m) => m.id === id);
@@ -256,6 +279,10 @@ if (waitForOffline) {
 }
 
 kiosk.ws.close();
+await step("cleanup", async () => {
+  const removed = await act({ type: "removeKiosk", kiosk: kioskDevice });
+  check("smoke kiosk removed from the registry", removed.json?.results?.[0]?.status === "ok" && !(await kioskEntry()));
+});
 staff.ws.close();
 console.log(failures === 0 ? "\nAll checks passed" : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

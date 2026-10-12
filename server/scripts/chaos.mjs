@@ -22,6 +22,7 @@ const REDEPLOY = !process.argv.includes("--no-redeploy");
 const PORT = 8790 + Math.floor(Math.random() * 100) * 2;
 const PROXY = `http://127.0.0.1:${PORT}`;
 const RUN = `chaos-${Date.now().toString(36)}`;
+const KIOSK_DEVICE = `${RUN}-kiosk`;
 const DIR = join("/tmp", "booth-chaos", RUN);
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 if (!KIOSK_TOKEN || !STAFF_TOKEN) {
@@ -40,7 +41,7 @@ const jitter = (ms) => ms * (0.5 + Math.random());
 
 function applyChange(state, change) {
   if (change.kind === "flavors") state.flavors = change.flavors;
-  if (change.kind === "kiosk") state.kiosk = change.kiosk;
+  if (change.kind === "kiosks") state.kiosks = change.kiosks;
   if (change.kind === "alert") {
     const index = state.alerts.findIndex((a) => a.id === change.alert.id);
     if (index >= 0) state.alerts[index] = change.alert;
@@ -48,13 +49,15 @@ function applyChange(state, change) {
   }
 }
 
+const ownKiosk = (state) => state.kiosks?.find((k) => k.id === KIOSK_DEVICE);
+
 function comparable(state) {
   return {
     rev: state.rev,
     flavors: state.flavors,
     alerts: [...state.alerts].sort((a, b) => a.id.localeCompare(b.id)),
-    health: state.kiosk.health,
-    online: state.kiosk.online,
+    health: ownKiosk(state)?.health ?? null,
+    online: ownKiosk(state)?.online ?? null,
   };
 }
 
@@ -385,7 +388,7 @@ async function main() {
   log(`run ${RUN}: proxy ${PROXY} -> ${UPSTREAM}, outbox ${DIR}`);
   const proxy = startProxy({ upstream: UPSTREAM, port: PORT, log });
   const file = join(DIR, "outbox.json");
-  const device = `${RUN}-kiosk`;
+  const device = KIOSK_DEVICE;
   const kiosk = { current: new Kiosk({ device, file }) };
   const staff = new Staff();
   const scale = QUICK ? 0.4 : 1;
@@ -518,7 +521,7 @@ async function main() {
     },
     kiosk: { ...kiosk.current.stats, hub: kiosk.current.hub.stats, outboxLeft: kiosk.current.pending },
     staff: { ...staff.stats, hub: staff.hub.stats, pending: staff.pending.size },
-    convergence: { rev: truth.rev, kioskConverged, staffConverged, soldOutMatches, healthIsLatest: truth.kiosk.health?.appVersion === lastHealth },
+    convergence: { rev: truth.rev, kioskConverged, staffConverged, soldOutMatches, healthIsLatest: ownKiosk(truth)?.health?.appVersion === lastHealth },
   };
   const pass = missing.length === 0 && unexpected.length === 0 && duplicated === 0 && duplicatedPayments === 0
     && kioskConverged && staffConverged && soldOutMatches && report.convergence.healthIsLatest
@@ -528,6 +531,7 @@ async function main() {
   writeFileSync(join(DIR, "report.json"), JSON.stringify({ ...report, pass }, null, 2));
   kiosk.current.stop();
   staff.stop();
+  await api("/v1/actions", { token: STAFF_TOKEN, device: "chaos-verify", base: UPSTREAM, body: { actions: [{ id: randomUUID(), type: "removeKiosk", kiosk: device, by: "Chaos test" }] } });
   await proxy.close();
   process.exit(pass ? 0 : 1);
 }
