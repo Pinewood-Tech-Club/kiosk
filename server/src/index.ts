@@ -21,7 +21,8 @@ const core: Route[] = [
     method: "GET",
     path: "/v1/health",
     async handle({ request, env, url }) {
-      const base = { ok: true, service: SERVICE, protocol: PROTOCOL_VERSION, features: FEATURES, time: Date.now() };
+      const features = (await oauth.giftCardsUsable(env)) ? FEATURES : FEATURES.filter((f) => f !== "gift-cards");
+      const base = { ok: true, service: SERVICE, protocol: PROTOCOL_VERSION, features, time: Date.now() };
       if (url.searchParams.get("deep") !== "1") return json(base);
       await authenticate(request, env, ["kiosk", "staff"]);
       const [d1, booth] = await Promise.allSettled([env.DB.prepare("SELECT 1 AS one").first(), hub(env).check()]);

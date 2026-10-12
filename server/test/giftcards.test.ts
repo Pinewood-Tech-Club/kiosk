@@ -17,7 +17,7 @@ interface SquareCall {
   body: any;
 }
 
-type Handler = (body: any, call: SquareCall) => { status?: number; body: unknown };
+type Handler = (body: any, call: SquareCall) => { status?: number; body: unknown } | Promise<{ status?: number; body: unknown }>;
 
 let calls: SquareCall[] = [];
 let handlers: Record<string, Handler> = {};
@@ -47,7 +47,7 @@ function mockSquare(overrides: Record<string, Handler> = {}) {
     const cancel = /^\/v2\/payments\/([^/]+)\/cancel$/.exec(url.pathname);
     const handler = handlers[`${method} ${url.pathname}`] ?? (cancel ? handlers["POST /v2/payments/:id/cancel"] : undefined);
     if (!handler) return Response.json({ errors: [{ code: "NOT_FOUND", detail: "no mock" }] }, { status: 404 });
-    const result = handler(entry.body, entry);
+    const result = await handler(entry.body, entry);
     return Response.json(result.body, { status: result.status ?? 200 });
   });
 }
@@ -90,6 +90,27 @@ describe("gift card basics", () => {
   it("advertises the feature and requests the scope", () => {
     expect(FEATURES).toContain("gift-cards");
     expect(OAUTH_SCOPES).toContain("GIFTCARDS_READ");
+  });
+
+  it("advertises gift-cards on health only when the credentials can use them", async () => {
+    const features = async (overrides: Record<string, unknown>) => {
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(new Request(`${BASE}/v1/health`) as Request<unknown, IncomingRequestCfProperties>, { ...env, SQUARE_ACCESS_TOKEN: "", ...overrides } as Env, ctx);
+      await waitOnExecutionContext(ctx);
+      return ((await response.json()) as any).features as string[];
+    };
+    const store = (scopes: string) =>
+      env.DB.prepare(
+        `INSERT INTO square_tokens (environment, application_id, merchant_id, location_id, access_token, refresh_token, expires_at, scopes, obtained_at, refreshed_at)
+         VALUES (?, 'app', 'M1', 'LOC1', 'x', NULL, NULL, ?, 1, 1)`,
+      ).bind(env.SQUARE_ENVIRONMENT || "production", scopes).run();
+    expect(await features({})).not.toContain("gift-cards");
+    expect(await features({ SQUARE_ACCESS_TOKEN: "EAAA-static" })).toContain("gift-cards");
+    await store("ORDERS_WRITE PAYMENTS_WRITE");
+    expect(await features({ SQUARE_ACCESS_TOKEN: "EAAA-static" })).not.toContain("gift-cards");
+    await env.DB.prepare("DELETE FROM square_tokens").run();
+    await store(OAUTH_SCOPES.join(" "));
+    expect(await features({})).toContain("gift-cards");
   });
 
   it("normalizes scanned and typed numbers", () => {
@@ -141,6 +162,31 @@ describe("POST /v1/giftcards/lookup", () => {
 });
 
 describe("POST /v1/giftcards/charge", () => {
+  it("records a pending row before calling Square and drops it when Square refuses", async () => {
+    await seedCheckout();
+    let during: unknown = null;
+    mockSquare({
+      "POST /v2/payments": async () => {
+        during = await env.DB.prepare("SELECT status, payment_id, approved_cents, card_id FROM giftcard_payments WHERE idempotency_key = 'key-1'").first();
+        return squareError(400, "INSUFFICIENT_FUNDS");
+      },
+    });
+    const result = await call("/v1/giftcards/charge", { checkoutId: "chk-1", gan: GAN, idempotencyKey: "key-1" });
+    expect(during).toEqual({ status: "pending", payment_id: null, approved_cents: 900, card_id: "gftc:abc" });
+    expect(result.status).toBe(502);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM giftcard_payments").first()).toEqual({ n: 0 });
+  });
+
+  it("resumes a pending row on replay with the same amount and key", async () => {
+    await seedCheckout();
+    await env.DB.prepare("INSERT INTO giftcard_payments (payment_id, checkout_id, device, idempotency_key, gan_last4, approved_cents, status, created_at, updated_at, card_id) VALUES (NULL, 'chk-1', 'kiosk-a', 'key-1', '1234', 900, 'pending', ?, ?, 'gftc:abc')").bind(Date.now(), Date.now()).run();
+    mockSquare();
+    const result = await call("/v1/giftcards/charge", { checkoutId: "chk-1", gan: GAN, idempotencyKey: "key-1" });
+    expect(result.body).toEqual({ paymentId: "PAY-GIFT", approvedCents: 500, remainingCents: 400, last4: "1234" });
+    expect(callsTo("POST", "/v2/payments")[0].body.amount_money.amount).toBe(900);
+    expect((await giftRow("PAY-GIFT"))?.status).toBe("approved");
+  });
+
   it("holds a partial amount and records it, replaying on the same key", async () => {
     mockSquare();
     await seedCheckout();
@@ -292,13 +338,36 @@ describe("stale hold sweep", () => {
   it("cancels holds older than 15 minutes on the frequent cron only", async () => {
     mockSquare({ "POST /v2/payments/:id/cancel": () => ({ body: { payment: { status: "CANCELED" } } }) });
     const insert = (id: string, status: string, age: number) =>
-      env.DB.prepare("INSERT INTO giftcard_payments VALUES (?, 'chk-1', 'kiosk-a', ?, '1234', 100, ?, ?, ?)").bind(id, `k-${id}`, status, Date.now() - age, Date.now() - age);
+      env.DB.prepare("INSERT INTO giftcard_payments (payment_id, checkout_id, device, idempotency_key, gan_last4, approved_cents, status, created_at, updated_at, card_id) VALUES (?, 'chk-1', 'kiosk-a', ?, '1234', 100, ?, ?, ?, 'gftc:abc')").bind(id, `k-${id}`, status, Date.now() - age, Date.now() - age);
     await env.DB.batch([insert("OLD", "approved", 16 * 60_000), insert("NEW", "approved", 5 * 60_000), insert("DONE", "completed", 60 * 60_000)]);
     await scheduled("*/10 * * * *");
     expect(callsTo("POST", "/v2/payments/OLD/cancel")).toHaveLength(1);
     expect(calls.filter((c) => c.path.endsWith("/cancel"))).toHaveLength(1);
     expect((await giftRow("OLD"))?.status).toBe("canceled");
     expect((await giftRow("NEW"))?.status).toBe("approved");
+  });
+
+  it("settles stale pending rows by re-issuing the payment with its idempotency key", async () => {
+    await seedCheckout();
+    mockSquare({ "POST /v2/payments/:id/cancel": () => ({ body: { payment: { status: "CANCELED" } } }) });
+    await env.DB.prepare("INSERT INTO giftcard_payments (payment_id, checkout_id, device, idempotency_key, gan_last4, approved_cents, status, created_at, updated_at, card_id) VALUES (NULL, 'chk-1', 'kiosk-a', 'k-PEND', '1234', 900, 'pending', ?, ?, 'gftc:abc')").bind(Date.now() - 20 * 60_000, Date.now() - 20 * 60_000).run();
+    await scheduled("*/10 * * * *");
+    expect(callsTo("POST", "/v2/payments")[0].body).toMatchObject({ idempotency_key: "k-PEND", source_id: "gftc:abc", amount_money: { amount: 900 } });
+    expect(callsTo("POST", "/v2/payments/PAY-GIFT/cancel")).toHaveLength(1);
+    const row = await env.DB.prepare("SELECT payment_id, status FROM giftcard_payments WHERE idempotency_key = 'k-PEND'").first();
+    expect(row).toEqual({ payment_id: "PAY-GIFT", status: "canceled" });
+  });
+
+  it("marks a pending row dead when Square refuses the re-issued payment, and leaves it on outages", async () => {
+    await seedCheckout();
+    await env.DB.prepare("INSERT INTO giftcard_payments (payment_id, checkout_id, device, idempotency_key, gan_last4, approved_cents, status, created_at, updated_at, card_id) VALUES (NULL, 'chk-1', 'kiosk-a', 'k-PEND', '1234', 900, 'pending', ?, ?, 'gftc:abc')").bind(Date.now() - 20 * 60_000, Date.now() - 20 * 60_000).run();
+    const state = () => env.DB.prepare("SELECT status FROM giftcard_payments WHERE idempotency_key = 'k-PEND'").first<{ status: string }>();
+    mockSquare({ "POST /v2/payments": () => squareError(503, "SERVICE_UNAVAILABLE") });
+    await scheduled("*/10 * * * *");
+    expect((await state())?.status).toBe("pending");
+    mockSquare({ "POST /v2/payments": () => squareError(400, "ORDER_CLOSED") });
+    await scheduled("*/10 * * * *");
+    expect((await state())?.status).toBe("canceled");
   });
 });
 
