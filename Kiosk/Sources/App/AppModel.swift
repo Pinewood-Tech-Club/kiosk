@@ -264,8 +264,6 @@ final class AppModel {
         SHA256.hash(data: Data("kiosk-staff-pin:\(pin)".utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Checks the PIN on the iPad first (`KIOSK_STAFF_PIN`, or the last PIN the booth accepted), so it works without the
-    /// booth, then asks the booth.
     func unlockDebugBar(pin: String) async -> Bool {
         let entered = pin.trimmingCharacters(in: .whitespaces)
         guard !entered.isEmpty else { return false }
