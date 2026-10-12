@@ -99,9 +99,9 @@ enum JellyMaterial {
         float wrap = saturate(dot(n, key) * 0.5 + 0.5);
         float through = pow(saturate(dot(-n, back) * 0.6 + 0.4), 2.0) * (1.0 - 0.5 * thick);
         float3 tint = mix(pow(body, 0.7) * 1.1, pow(body, 1.25) * 0.9, thick);
-        float3 target = tint * (0.4 + 0.5 * wrap + 0.6 * through);
+        float3 target = tint * (0.4 + 0.5 * wrap + 0.6 * through) * (1.0 + 0.4 * light);
         float3 frost = haze * mix(float3(1.0), body, 0.6) * (0.4 + 0.6 * wrap) * (1.0 + 0.8 * light);
-        float shown = see * 0.8;
+        float shown = see * mix(0.8, 0.5, light * light);
         float3 filtered = mix(max(target - shown, 0.0), target * saturate(1.0 - shown / max(dot(target, float3(0.2126, 0.7152, 0.0722)), 0.01)), light * light);
         float3 emitted = filtered + frost;
 
