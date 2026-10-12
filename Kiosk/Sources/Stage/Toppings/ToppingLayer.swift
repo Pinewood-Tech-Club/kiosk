@@ -9,6 +9,15 @@ protocol ToppingSurface {
     var apex: SIMD3<Float> { get }
     /// Horizontal radius around the apex's axis that toppings may cover.
     var radius: Float { get }
+    /// A scattered piece that ends up below this has slid off the part of the item a customer sees.
+    var floor: Float { get }
+    /// 0 for firm ice cream to 1 for whipped cream, which holds a piece where it lands and lets it sink in a little.
+    func softness(x: Float, z: Float) -> Float
+}
+
+extension ToppingSurface {
+    var floor: Float { apex.y - 2.5 * radius }
+    func softness(x: Float, z: Float) -> Float { 0 }
 }
 
 /// One layer of toppings on an item. The stack is always scoops, whip, drizzle, scattered,
@@ -28,6 +37,28 @@ protocol ToppingLayer: AnyObject {
     var isFinished: Bool { get }
     /// The surface layers above this one should rest on, given the one beneath it.
     func surfaceAbove(_ below: ToppingSurface) -> ToppingSurface
+    /// `surfaceAbove` once the layer has finished growing (or, while it's being removed, without it).
+    func settledSurfaceAbove(_ below: ToppingSurface) -> ToppingSurface
+    /// The topping card icon's current position in `entity`'s parent space (rig body space); re-evaluate every
+    /// frame, the item spins and moves. Set only on layers applied from a tap.
+    var launchPoint: (() -> SIMD3<Float>)? { get set }
+    /// How long `apply(animated: true)` takes to reach its final shape; layers above resurface over the same time.
+    var growDuration: Double { get }
+    /// How long `remove` takes; layers above sink back over the same time.
+    var removeDuration: Double { get }
+    /// The card's icon, set alongside `launchPoint`. A layer that stores it drives the icon itself (`takeOut` when its
+    /// pieces leave the card, `putBack` once they're out, `react` for a squish); otherwise the stack drives it on tap.
+    var cardIcon: ToppingCardIcon? { get set }
+}
+
+extension ToppingLayer {
+    func settledSurfaceAbove(_ below: ToppingSurface) -> ToppingSurface { surfaceAbove(below) }
+    var growDuration: Double { 0.8 }
+    var removeDuration: Double { 0.4 }
+    var cardIcon: ToppingCardIcon? {
+        get { nil }
+        set {}
+    }
 }
 
 struct ToppingRandom: RandomNumberGenerator {
@@ -56,4 +87,7 @@ struct ScatterPiece {
 protocol ScatterKind {
     var count: Int { get }
     func makePieces(rng: inout ToppingRandom) -> [ScatterPiece]
+    /// A few pieces composed as the topping card's icon: real size (about 25 mm across), resting on y = 0, centered
+    /// on the Y axis, composed to be seen from the front (+Z) and a little above. Needs the stage's lighting applied.
+    func makeIconPile(rng: inout ToppingRandom) -> Entity
 }

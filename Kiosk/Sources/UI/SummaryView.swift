@@ -95,11 +95,15 @@ struct SummaryView: View {
     }
 
     private func contents(_ quote: OrderQuote) -> String {
-        var text = quote.scoopCount == 1 ? "1 scoop" : "\(quote.scoopCount) scoops"
+        var parts = [quote.scoopCount == 1 ? "1 scoop" : "\(quote.scoopCount) scoops"]
         if quote.coneCount > 0 {
-            text += quote.coneCount == 1 ? " and 1 waffle cone" : " and \(quote.coneCount) waffle cones"
+            parts.append(quote.coneCount == 1 ? "1 waffle cone" : "\(quote.coneCount) waffle cones")
         }
-        return text + ", before tax"
+        if quote.toppingCount > 0 {
+            parts.append(quote.toppingCount == 1 ? "1 topping" : "\(quote.toppingCount) toppings")
+        }
+        let list = parts.count > 1 ? parts.dropLast().joined(separator: ", ") + " and " + parts.last! : parts[0]
+        return list + ", before tax"
     }
 }
 
@@ -119,6 +123,13 @@ private struct SummaryRow: View {
                 Text(line.item.flavors.map(\.title).joined(separator: " · "))
                     .font(Theme.serif(21, .regular))
                     .foregroundStyle(Theme.text.opacity(0.65))
+                if !line.item.toppings.isEmpty {
+                    Text("Topped with " + line.item.toppingSummary)
+                        .font(Theme.serif(18, .regular))
+                        .foregroundStyle(Theme.text.opacity(0.65))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 16)
             Text(line.totalCents.formattedAsUSD)

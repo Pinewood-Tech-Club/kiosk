@@ -148,6 +148,7 @@ struct ReceiptItem: Identifiable {
     }
 
     var flavors: String { item.map { IceCreamItem.describe($0.flavors) } ?? "" }
+    var toppings: String { item?.toppingSummary ?? "" }
 
     /// Groups Square's charged lines by the item tag in each line's note ("#2 Cup: Chocolate"), so every
     /// amount is exactly what Square billed. If the lines can't be grouped that way, falls back to the
@@ -275,6 +276,12 @@ private struct ReceiptView: View {
                                 Text(entry.flavors)
                                     .font(Theme.serif(14, .regular))
                                     .foregroundStyle(Theme.textSecondary)
+                            }
+                            if !entry.toppings.isEmpty {
+                                Text("Topped with " + entry.toppings)
+                                    .font(Theme.serif(14, .regular))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }

@@ -9,6 +9,11 @@ extension Stage {
         case .flavor(.vanilla): 2
         case .flavor(.chocolate): 3
         case .flavor(.cookies): 4
+        case .topping(.whip): 5
+        case .topping(.chocolate): 6
+        case .topping(.gummies): 7
+        case .topping(.mms): 8
+        case .topping(.sprinkles): 9
         }
     }
 
@@ -42,6 +47,7 @@ extension Stage {
             icon.holder.isEnabled = shown > 0.001
             icon.scaler.scale = .init(repeating: max(icon.appear, 1e-5))
         }
+        updateToppingIcons()
     }
 
     /// World transform of the flavor icon's scoop as it sits in the card (ignoring hide/grow), where
@@ -75,6 +81,9 @@ extension Stage {
         if !vesselCardsShown { dismissOutgoingVessels() }
         for flavor in Flavor.allCases {
             setIconShown(.flavor(flavor), controlsVisible && step == .flavors, animated: animated)
+        }
+        for topping in Topping.allCases {
+            setIconShown(.topping(topping), controlsVisible && step == .toppings, animated: animated)
         }
     }
 

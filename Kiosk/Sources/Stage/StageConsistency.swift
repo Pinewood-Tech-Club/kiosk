@@ -3,7 +3,10 @@ import SwiftUI
 
 /// Checks, once every animation has finished, that the 3D scene shows exactly what the order says.
 extension Stage {
-    var isSettled: Bool { tweens.isEmpty && morphing.isEmpty && !isDragging && sheet.isSettled && sheetGrab == nil }
+    var isSettled: Bool {
+        tweens.isEmpty && morphing.isEmpty && !isDragging && sheet.isSettled && sheetGrab == nil
+            && detachedToppings.isEmpty && toppingStacks.allSatisfy(\.isIdle)
+    }
 
     func consistencyIssues(current: IceCreamItem?, items: [IceCreamItem], editingID: UUID?, showsCards: Bool) -> [String] {
         var issues: [String] = []
@@ -48,6 +51,13 @@ extension Stage {
             }
         }
 
+        func checkToppings(_ rig: ItemRig, item: IceCreamItem, label: String) {
+            let expected = item.flavors.isEmpty ? [] : Topping.stacked(item.toppings)
+            let shown = rig.toppings?.shownToppings ?? []
+            check(shown == expected, "\(label): shows toppings \(shown.map(\.rawValue)) but order has \(expected.map(\.rawValue))")
+            check(rig.toppings?.root.parent.map { $0 === rig.body } ?? true, "\(label): toppings not attached to its rig")
+        }
+
         func checkVisible(_ rig: ItemRig, label: String) {
             check(rig.root.parent === root, "\(label): not in the scene")
             check(rig.root.isEnabled && rig.rolled.isEnabled, "\(label): hidden")
@@ -63,6 +73,7 @@ extension Stage {
                 check(hero.vessel == current.vessel, "hero is a \(hero.vessel.rawValue)")
                 check(zip(hero.scoops, scoops).allSatisfy { $0 === $1 } && hero.scoops.count == scoops.count, "hero scoops differ from the stage's list")
                 checkScoops(hero, flavors: current.flavors, label: "hero")
+                checkToppings(hero, item: current, label: "hero")
                 let center = centerPose(hero, yaw: hero.pose.yaw)
                 check(near(hero.pose.position, center.position, 1e-3) && abs(hero.pose.scale - center.scale) < 1e-3,
                       "hero: not at its framed center pose")
@@ -90,6 +101,7 @@ extension Stage {
             check(rig.root.parent === root, "tray item \(entry.index): not in the scene")
             check(rig.motion == nil, "tray item \(entry.index): still moving")
             checkScoops(rig, flavors: item.flavors, label: "tray item \(Int(entry.index))")
+            checkToppings(rig, item: item, label: "tray item \(Int(entry.index))")
         }
 
         let scoopRootsInWorld = root.children.filter { $0.name == ScoopActor.rootName }
