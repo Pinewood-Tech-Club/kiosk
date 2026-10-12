@@ -79,7 +79,7 @@ final class Stage {
     var detachedToppings: [DetachedToppings] = []
     /// Height fields of the settled scoops per vessel and count ("cup2"), built once in the background.
     var scoopSurfaces: [String: ScoopSurface] = [:]
-    var pressSprings = [Spring1D](repeating: Spring1D(value: 0, response: Stage.pressResponse, dampingRatio: Stage.pressDamping), count: 10)
+    var pressSprings = [Spring1D](repeating: Spring1D(value: 0, response: Stage.pressResponse, dampingRatio: Stage.pressDamping), count: 11)
     var vesselIconTarget: [Vessel: Float] = [.cup: 0, .cone: 0]
     var heroes: [Vessel: ItemRig] = [:]
     /// Vessels no longer anyone's hero that scoops may still be leaving.

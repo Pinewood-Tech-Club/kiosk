@@ -11,9 +11,10 @@ extension Stage {
         case .flavor(.cookies): 4
         case .topping(.whip): 5
         case .topping(.chocolate): 6
-        case .topping(.gummies): 7
-        case .topping(.mms): 8
-        case .topping(.sprinkles): 9
+        case .topping(.caramel): 7
+        case .topping(.gummies): 8
+        case .topping(.mms): 9
+        case .topping(.sprinkles): 10
         }
     }
 

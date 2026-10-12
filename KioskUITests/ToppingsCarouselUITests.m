@@ -53,7 +53,7 @@ static const CGFloat kScreenWidth = 1032;
 
 - (void)testStartsAtTheFirstCardWithTheNextOnePeeking {
     XCTAssertEqualWithAccuracy(CGRectGetMinX([self card:@"whip"].frame), kMargin, 1);
-    CGFloat peek = CGRectGetMinX([self card:@"mms"].frame);
+    CGFloat peek = CGRectGetMinX([self card:@"gummies"].frame);
     XCTAssertEqualWithAccuracy(peek, kMargin + 3 * kPitch, 1);
     XCTAssertLessThan(peek, kScreenWidth, @"the fourth card should peek in from the right edge");
     XCTAssertEqualWithAccuracy(CGRectGetWidth([self card:@"whip"].frame), kCardWidth, 1);
