@@ -181,15 +181,14 @@ final class DrizzleLayer: ToppingLayer {
     }
 
     /// The topping card's icon: a glossy pool of syrup just poured, still rising where the stream lands, with rings
-    /// running out from there and the last thread of the pour stretching up from it. Real size, resting on y = 0.
+    /// running out from there. Real size, resting on y = 0.
     /// Needs the stage's lighting.
     static func makeIcon(style: DrizzleStyle = .chocolate, seed: UInt64 = 11) -> Entity {
         var rng = ToppingRandom(seed: seed)
         let root = Entity()
         root.name = "drizzle-icon"
         let pool = IconPool(rng: &rng)
-        for part in [pool.mesh(), IconThread(base: pool.height(0, 0)).mesh()] {
-            guard let mesh = try? MeshResource.generate(from: [part]) else { continue }
+        if let mesh = try? MeshResource.generate(from: [pool.mesh()]) {
             root.addChild(ModelEntity(mesh: mesh, materials: [style.iconMaterial]))
         }
         return root
@@ -356,54 +355,13 @@ private struct IconPool {
             }
         }
         for k in 0..<sides {
-            mesh.indices += [0, UInt32(1 + k), UInt32(1 + (k + 1) % sides)]
+            mesh.indices += [0, UInt32(1 + (k + 1) % sides), UInt32(1 + k)]
         }
         for i in 1..<rings {
             for k in 0..<sides {
                 let a = 1 + (i - 1) * sides + k, b = 1 + (i - 1) * sides + (k + 1) % sides
                 mesh.quad(a, b, a + sides, b + sides)
             }
-        }
-        return mesh.descriptor
-    }
-}
-
-/// The last of the stream, stretching up from the pool and swaying as it thins to a hair while the bottle lifts away.
-private struct IconThread {
-    let base: Float
-    let height: Float = 0.026
-
-    func mesh() -> MeshDescriptor {
-        var mesh = IconMesh()
-        let steps = 80, sides = 20
-        func radius(_ y: Float) -> Float {
-            let x = Ease.clamp01(y / height)
-            return 0.0007 * pow(1 - x, 1.3) + 0.00005 + 0.0009 * exp(-y / 0.0006)
-        }
-        func center(_ y: Float) -> SIMD3<Float> {
-            let x = y / height
-            return [0.0016 * sin(x * 3.6) * x, base - 0.0012 + y, -0.0006 * x * x]
-        }
-        for j in 0...steps {
-            let y = height * pow(Float(j) / Float(steps), 1.4)
-            let r = radius(y)
-            let slope = (radius(y + 0.00005) - radius(max(y - 0.00005, 0))) / 0.0001
-            for k in 0..<sides {
-                let angle = Float(k) / Float(sides) * 2 * .pi
-                let radial = SIMD3<Float>(cos(angle), 0, sin(angle))
-                mesh.add(center(y) + radial * r, radial - SIMD3<Float>(0, 1, 0) * slope, shade: 0.06 + 0.1 * (1 - y / height))
-            }
-        }
-        let tip = mesh.positions.count
-        mesh.add(center(height) + [0, 0.0001, 0], [0, 1, 0], shade: 0.06)
-        for j in 0..<steps {
-            for k in 0..<sides {
-                let a = j * sides + k, b = j * sides + (k + 1) % sides
-                mesh.quad(a, a + sides, b, b + sides)
-            }
-        }
-        for k in 0..<sides {
-            mesh.indices += [UInt32(steps * sides + k), UInt32(tip), UInt32(steps * sides + (k + 1) % sides)]
         }
         return mesh.descriptor
     }
