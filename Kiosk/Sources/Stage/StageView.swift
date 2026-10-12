@@ -12,7 +12,14 @@ struct StageView: View {
             content.renderingEffects.antialiasing = .multisample4X
             stage.attach(to: &content)
         }
-        .mask { TrayClip(isActive: clipsTray).fill(style: FillStyle(eoFill: true)) }
+        .mask {
+            ZStack {
+                StageClip(isActive: clipsTray).fill(style: FillStyle(eoFill: true))
+                CarouselEdgeFade()
+                    .frame(width: Layout.toppingCarouselRect.width, height: Layout.toppingCarouselRect.height)
+                    .position(x: Layout.toppingCarouselRect.midX, y: Layout.toppingCarouselRect.midY)
+            }
+        }
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .onAppear { HighFrameRate.shared.start() }
@@ -21,22 +28,27 @@ struct StageView: View {
 
 /// Clips the tray's 3D minis to the tray's item area the way a scroll view clips its content. Only the
 /// tray's horizontal band is clipped, so items fly into and out of the tray from above unclipped.
-struct TrayClip: Shape {
-    var isActive = true
-
+enum TrayClip {
     static var itemsArea: CGRect {
         let glass = Layout.trayGlassRect
         return CGRect(x: Layout.trayItemsRect.minX, y: glass.minY, width: glass.maxX - Layout.trayItemsRect.minX, height: glass.height)
     }
 
     static let itemsShape = UnevenRoundedRectangle(cornerRadii: .init(bottomTrailing: 40, topTrailing: 40), style: .continuous)
+}
+
+/// Where the stage may draw: everywhere but the tray's band (except its item area, see `TrayClip`) and the
+/// toppings carousel's band, which `CarouselEdgeFade` fills back in.
+struct StageClip: Shape {
+    var isActive = true
 
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
         guard isActive else { return path }
         let glass = Layout.trayGlassRect
         path.addRect(CGRect(x: rect.minX, y: glass.minY, width: rect.width, height: rect.maxY - glass.minY))
-        path.addPath(Self.itemsShape.path(in: Self.itemsArea))
+        path.addPath(TrayClip.itemsShape.path(in: TrayClip.itemsArea))
+        path.addRect(Layout.toppingCarouselRect)
         return path
     }
 }

@@ -24,6 +24,8 @@ struct DrizzleStyle {
                                       color: UIColor(red: 0.5, green: 0.21, blue: 0.04, alpha: 1),
                                       thinColor: UIColor(red: 0.86, green: 0.52, blue: 0.17, alpha: 1),
                                       width: 0.0068, viscosity: 0.75, gloss: 0.95, dripTendency: 0.5)
+
+    var iconLift: CGFloat { name == "chocolate" ? 0.22 : 0.08 }
 }
 
 extension DrizzleStyle {
@@ -32,7 +34,7 @@ extension DrizzleStyle {
     @MainActor var material: PhysicallyBasedMaterial {
         if let cached = Self.materials[name] { return cached }
         var material = PhysicallyBasedMaterial()
-        if let ramp = thicknessRamp() {
+        if let ramp = thicknessRamp(lift: 0) {
             material.baseColor = .init(texture: .init(ramp))
         } else {
             material.baseColor = .init(tint: color)
@@ -46,8 +48,28 @@ extension DrizzleStyle {
         return material
     }
 
-    /// Base color by the syrup's depth, read through the mesh's u coordinate.
-    @MainActor private func thicknessRamp() -> TextureResource? {
+    /// For the card icon: a little warmer in the body so it reads against the dark card, with a glassier reflection.
+    @MainActor var iconMaterial: PhysicallyBasedMaterial {
+        let key = name + "-icon"
+        if let cached = Self.materials[key] { return cached }
+        var material = PhysicallyBasedMaterial()
+        if let ramp = thicknessRamp(lift: iconLift) {
+            material.baseColor = .init(texture: .init(ramp))
+        } else {
+            material.baseColor = .init(tint: color)
+        }
+        material.metallic = .init(floatLiteral: 0)
+        material.roughness = .init(floatLiteral: 0.07)
+        material.specular = .init(floatLiteral: 0.5)
+        material.clearcoat = .init(floatLiteral: 1)
+        material.clearcoatRoughness = .init(floatLiteral: 0.01)
+        Self.materials[key] = material
+        return material
+    }
+
+    /// Base color by the syrup's depth, read through the mesh's u coordinate; `lift` moves the thick end toward the
+    /// thin color.
+    @MainActor private func thicknessRamp(lift: CGFloat) -> TextureResource? {
         var thin: (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
         var thick: (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
         thinColor.getRed(&thin.0, green: &thin.1, blue: &thin.2, alpha: &thin.3)
@@ -57,7 +79,8 @@ extension DrizzleStyle {
         for x in 0..<width {
             let t = CGFloat(smoothstep(0, 0.4, Float(x) / Float(width - 1)))
             for (c, (a, b)) in [(thin.0, thick.0), (thin.1, thick.1), (thin.2, thick.2)].enumerated() {
-                pixels[x * 4 + c] = UInt8(max(0, min(255, ((a + (b - a) * t) * 255).rounded())))
+                let body = b + (a - b) * lift
+                pixels[x * 4 + c] = UInt8(max(0, min(255, ((a + (body - a) * t) * 255).rounded())))
             }
         }
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),
@@ -85,6 +108,9 @@ final class DrizzleLayer: ToppingLayer {
     private var resting: Projection?
     private var shift: (from: Projection, to: Projection, start: Double, duration: Double)?
     private var pourStart: Double = -.infinity
+    private var angle: Float = 0
+    private weak var camera: Entity?
+    private var streamBounds: (SIMD3<Float>, SIMD3<Float>)?
     private var removeStart: Double?
     private var animationEnd: Double = -.infinity
     private var mesh: LowLevelMesh?
@@ -93,16 +119,31 @@ final class DrizzleLayer: ToppingLayer {
     private var settledRings = 0
     /// Once the pour has finished, resurfacing and draining only move vertices, so they blend two prebuilt meshes.
     private var blend: Blend?
+    /// Set before `apply` when toppings already sit where the syrup will go: the pour waits a beat so they can lift
+    /// clear first.
+    var underToppings = false
+    /// Set when the item has a second syrup: each ribbon is drawn a little thinner so both read as drizzles.
+    var partnered = false
+    private var pourDelay: Double = 0
 
     private static let ringSides = 10
     private static let floatsPerVertex = 8
     private static let capRings = 4
-    private static let dripRings = 15
+    private static let dripRings = 22
     private static let dripPathPoints = 28
-    private static let strandRings = 14
-    private static let streamLead: Double = 0.1
-    private static let streamCut: Double = 0.16
+    private static let strandRings = 22
+    private static let streamLead: Double = 0.12
+    private static let streamCut: Double = 0.14
+    /// Every drip has finished running this long after the pour.
+    private static let dripTail: Float = 0.1
+    /// Seconds the syrup takes to fall from the top of the screen, which sets how far the strand lags the hand.
+    private static let fallTime: Float = 0.025
+    /// World meters past the top edge of the screen that the strand starts, so its end is never seen.
+    private static let skyMargin: Float = 0.03
     private static let removeDuration: Double = 0.5
+    /// How long toppings above take to lift onto a syrup poured under them; the pour starts as they finish.
+    static let liftDuration: Double = 0.3
+    private static let liftLead: Double = 0.16
     private static let nozzleHeight: Float = 0.017
     nonisolated private static let crown: Float = 0.6
     /// Per vertex of the ribbon's cross-section: x across the width, height, its slope, and 1 on the top face.
@@ -124,10 +165,12 @@ final class DrizzleLayer: ToppingLayer {
         return table
     }()
 
-    var growDuration: Double { Self.streamLead + pourDuration }
+    var growDuration: Double { pourDelay + Self.streamLead + pourDuration }
+    /// How long layers above take to settle onto this one as it goes on.
+    var coverDuration: Double { underToppings ? Self.liftDuration : growDuration }
     var removeDuration: Double { Self.removeDuration }
-    private var pourDuration: Double { 2.0 + 0.4 * Double(style.viscosity) }
-    private var settleDuration: Float { 0.25 + 0.35 * style.viscosity }
+    private var pourDuration: Double { 0.86 + 0.16 * Double(style.viscosity) }
+    private var settleDuration: Float { 0.14 + 0.16 * style.viscosity }
     private var halfWidth: Float { style.width / 2 }
     private var lateralReach: Float { halfWidth * 1.6 }
 
@@ -137,27 +180,34 @@ final class DrizzleLayer: ToppingLayer {
         model.name = "drizzle-\(style.name)"
     }
 
-    /// A settled drizzle for the topping card's icon. The caller still applies the stage's lighting to it.
+    /// The topping card's icon: a glossy pool of syrup just poured, still rising where the stream lands, with rings
+    /// running out from there and the last thread of the pour stretching up from it. Real size, resting on y = 0.
+    /// Needs the stage's lighting.
     static func makeIcon(style: DrizzleStyle = .chocolate, seed: UInt64 = 11) -> Entity {
-        let layer = DrizzleLayer(style: style)
-        layer.apply(onto: IconPool(radius: 0.02, depth: 0.0022, seed: seed), seed: seed, animated: false, now: 0)
+        var rng = ToppingRandom(seed: seed)
         let root = Entity()
         root.name = "drizzle-icon"
-        root.addChild(layer.entity)
+        let pool = IconPool(rng: &rng)
+        for part in [pool.mesh(), IconThread(base: pool.height(0, 0)).mesh()] {
+            guard let mesh = try? MeshResource.generate(from: [part]) else { continue }
+            root.addChild(ModelEntity(mesh: mesh, materials: [style.iconMaterial]))
+        }
         return root
     }
 
     func apply(onto surface: ToppingSurface, seed: UInt64, animated: Bool, now: Double) {
         var rng = ToppingRandom(seed: seed)
-        path = Self.makePath(radius: max(surface.radius, 0.01), rng: &rng)
-        drips = makeDrips(rng: &rng)
+        let across = (surface as? DrizzleCoverSurface)?.angle
+        (path, angle) = Self.makePath(radius: max(surface.radius, 0.01), across: across, rng: &rng)
+        drips = makeDrips(second: across != nil, rng: &rng)
         resting = project(onto: surface)
         shift = nil
         removeStart = nil
         blend = nil
         isFinished = false
         settledRings = 0
-        pourStart = animated ? now : now - 100
+        pourDelay = animated && underToppings ? Self.liftLead : 0
+        pourStart = animated ? now + pourDelay : now - 100
         let lead = Self.streamLead, pour = pourDuration
         animationEnd = drips.reduce(pourStart + lead + pour + max(Self.streamCut, Double(settleDuration))) { end, drip in
             max(end, pourStart + lead + Double(path[drip.origin].time) * pour + Double(drip.delay + drip.duration))
@@ -232,41 +282,130 @@ final class DrizzleLayer: ToppingLayer {
             widths.append(a)
             heights.append(h * 0.92)
         }
-        return DrizzleCoverSurface(below: below, points: points, halfWidths: widths, heights: heights)
+        return DrizzleCoverSurface(below: below, points: points, halfWidths: widths, heights: heights, angle: angle)
     }
 }
 
-private struct IconPool: ToppingSurface {
-    let poolRadius: Float
-    let depth: Float
+private struct IconMesh {
+    var positions: [SIMD3<Float>] = []
+    var normals: [SIMD3<Float>] = []
+    var uvs: [SIMD2<Float>] = []
+    var indices: [UInt32] = []
+
+    mutating func add(_ p: SIMD3<Float>, _ n: SIMD3<Float>, shade: Float) {
+        positions.append(p)
+        normals.append(simd_normalize(n))
+        // Kept off the ends: the ramp texture repeats, so u = 1 samples a blend with the thin end.
+        uvs.append([0.02 + 0.96 * shade, 0.5])
+    }
+
+    mutating func quad(_ a: Int, _ b: Int, _ c: Int, _ d: Int) {
+        indices += [a, b, c, b, d, c].map(UInt32.init)
+    }
+
+    var descriptor: MeshDescriptor {
+        var descriptor = MeshDescriptor(name: "drizzle-icon")
+        descriptor.positions = MeshBuffer(positions)
+        descriptor.normals = MeshBuffer(normals)
+        descriptor.textureCoordinates = MeshBuffer(uvs)
+        descriptor.primitives = .triangles(indices)
+        return descriptor
+    }
+}
+
+/// A puddle with a rounded edge that thins to the warm color at its rim, a soft mound where the stream lands
+/// and rings running out from it.
+private struct IconPool {
+    let radius: Float = 0.0165
+    let depth: Float = 0.0016
     let phase: Float
 
-    init(radius: Float, depth: Float, seed: UInt64) {
-        poolRadius = radius
-        self.depth = depth
-        var rng = ToppingRandom(seed: seed)
+    init(rng: inout ToppingRandom) {
         phase = Float.random(in: 0..<(2 * .pi), using: &rng)
     }
 
-    var apex: SIMD3<Float> { [0, depth, 0] }
-    var radius: Float { poolRadius * 0.72 }
-
     func edge(_ angle: Float) -> Float {
-        poolRadius * (1 + 0.05 * sin(3 * angle + phase) + 0.03 * sin(5 * angle + 2 * phase))
+        radius * (1 + 0.06 * sin(3 * angle + phase) + 0.035 * sin(5 * angle + 2 * phase) + 0.02 * sin(9 * angle - phase))
     }
 
-    func height(_ x: Float, _ z: Float) -> Float {
-        let d = (x * x + z * z).squareRoot() / edge(atan2(z, x))
-        guard d < 1 else { return 0 }
-        return depth * (1 - pow(d, 8)).squareRoot()
+    func height(_ r: Float, _ angle: Float) -> Float {
+        let rho = min(r / edge(angle), 1)
+        let calm = 1 - pow(rho, 4)
+        let mound = 0.0021 * exp(-pow(r / 0.0034, 2))
+        let fold = 0.00055 * exp(-pow((r - 0.0042) / 0.0013, 2)) * (1 + 0.3 * sin(2 * angle + phase))
+        let rings = 0.00014 * sin((r - 0.0035) / 0.0026 * 2 * .pi) * smoothstep(0.003, 0.006, r) * exp(-r / 0.008)
+        return depth * (1 - pow(rho, 6)).squareRoot() + (mound + fold + rings) * calm
     }
 
-    func sample(x: Float, z: Float) -> (height: Float, normal: SIMD3<Float>)? {
-        guard x * x + z * z < 4 * poolRadius * poolRadius else { return nil }
-        let e: Float = 0.0003
-        let dx = height(x + e, z) - height(x - e, z)
-        let dz = height(x, z + e) - height(x, z - e)
-        return (height(x, z), simd_normalize(SIMD3(-dx, 2 * e, -dz)))
+    func mesh() -> MeshDescriptor {
+        var mesh = IconMesh()
+        let rings = 48, sides = 128
+        let e: Float = 0.00005
+        mesh.add([0, height(0, 0), 0], [0, 1, 0], shade: 1)
+        for i in 1...rings {
+            let x = Float(i) / Float(rings)
+            let rho = 1 - pow(1 - x, 1.7)
+            for k in 0..<sides {
+                let angle = Float(k) / Float(sides) * 2 * .pi
+                let r = rho * edge(angle)
+                let dr = (height(r + e, angle) - height(max(r - e, 0), angle)) / (2 * e)
+                let da = (height(r, angle + 0.002) - height(r, angle - 0.002)) / (0.004 * max(r, 1e-4))
+                let radial = SIMD3<Float>(cos(angle), 0, sin(angle)), tangent = SIMD3<Float>(-sin(angle), 0, cos(angle))
+                let normal = i == rings ? radial : SIMD3<Float>(0, 1, 0) - radial * dr - tangent * da
+                mesh.add(radial * r + [0, height(r, angle), 0], normal, shade: 0.03 + 0.97 * (1 - smoothstep(0.8, 1, rho)))
+            }
+        }
+        for k in 0..<sides {
+            mesh.indices += [0, UInt32(1 + k), UInt32(1 + (k + 1) % sides)]
+        }
+        for i in 1..<rings {
+            for k in 0..<sides {
+                let a = 1 + (i - 1) * sides + k, b = 1 + (i - 1) * sides + (k + 1) % sides
+                mesh.quad(a, b, a + sides, b + sides)
+            }
+        }
+        return mesh.descriptor
+    }
+}
+
+/// The last of the stream, stretching up from the pool and swaying as it thins to a hair while the bottle lifts away.
+private struct IconThread {
+    let base: Float
+    let height: Float = 0.026
+
+    func mesh() -> MeshDescriptor {
+        var mesh = IconMesh()
+        let steps = 80, sides = 20
+        func radius(_ y: Float) -> Float {
+            let x = Ease.clamp01(y / height)
+            return 0.0007 * pow(1 - x, 1.3) + 0.00005 + 0.0009 * exp(-y / 0.0006)
+        }
+        func center(_ y: Float) -> SIMD3<Float> {
+            let x = y / height
+            return [0.0016 * sin(x * 3.6) * x, base - 0.0012 + y, -0.0006 * x * x]
+        }
+        for j in 0...steps {
+            let y = height * pow(Float(j) / Float(steps), 1.4)
+            let r = radius(y)
+            let slope = (radius(y + 0.00005) - radius(max(y - 0.00005, 0))) / 0.0001
+            for k in 0..<sides {
+                let angle = Float(k) / Float(sides) * 2 * .pi
+                let radial = SIMD3<Float>(cos(angle), 0, sin(angle))
+                mesh.add(center(y) + radial * r, radial - SIMD3<Float>(0, 1, 0) * slope, shade: 0.06 + 0.1 * (1 - y / height))
+            }
+        }
+        let tip = mesh.positions.count
+        mesh.add(center(height) + [0, 0.0001, 0], [0, 1, 0], shade: 0.06)
+        for j in 0..<steps {
+            for k in 0..<sides {
+                let a = j * sides + k, b = j * sides + (k + 1) % sides
+                mesh.quad(a, a + sides, b, b + sides)
+            }
+        }
+        for k in 0..<sides {
+            mesh.indices += [UInt32(steps * sides + k), UInt32(tip), UInt32(steps * sides + (k + 1) % sides)]
+        }
+        return mesh.descriptor
     }
 }
 
@@ -316,14 +455,17 @@ private struct DrizzleCoverSurface: ToppingSurface {
     let points: [SIMD2<Float>]
     let halfWidths: [Float]
     let heights: [Float]
+    /// The main direction of the zigzag on top, so a second syrup can cross it.
+    let angle: Float
     private let cells: [SIMD2<Int32>: [Int32]]
     private static let cell: Float = 0.005
 
-    init(below: ToppingSurface, points: [SIMD2<Float>], halfWidths: [Float], heights: [Float]) {
+    init(below: ToppingSurface, points: [SIMD2<Float>], halfWidths: [Float], heights: [Float], angle: Float) {
         self.below = below
         self.points = points
         self.halfWidths = halfWidths
         self.heights = heights
+        self.angle = angle
         var cells: [SIMD2<Int32>: [Int32]] = [:]
         for (i, p) in points.enumerated() {
             cells[Self.key(p), default: []].append(Int32(i))
@@ -421,10 +563,13 @@ private extension DrizzleLayer {
         return passes.map { Pass(a: map($0.a), mid: map($0.mid), b: map($0.b), pace: $0.pace) }
     }
 
-    static func makePath(radius: Float, rng: inout ToppingRandom) -> [PathSample] {
-        let angle = Float.random(in: 0..<(2 * .pi), using: &rng)
-        let countA = Int.random(in: 4...5, using: &rng)
-        var passes = transformed(sweep(count: countA, span: countA == 5 ? 0.72 : 0.62, rng: &rng),
+    /// The samples, and the direction the main passes run along.
+    static func makePath(radius: Float, across: Float?, rng: inout ToppingRandom) -> ([PathSample], Float) {
+        var angle = Float.random(in: 0..<(2 * .pi), using: &rng)
+        if let across { angle = across + .pi / 2 + (angle / (2 * .pi) - 0.5) * 0.5 }
+        let countA = across == nil ? Int.random(in: 4...5, using: &rng) : Int.random(in: 3...4, using: &rng)
+        let spanA: Float = countA == 5 ? 0.72 : countA == 4 ? 0.62 : 0.5
+        var passes = transformed(sweep(count: countA, span: spanA, rng: &rng),
                                  flip: [Bool.random(using: &rng) ? 1 : -1, 1], angle: angle)
         let countB = Int.random(in: 2...3, using: &rng)
         let local = sweep(count: countB, span: countB == 3 ? 0.46 : 0.32, rng: &rng)
@@ -506,11 +651,12 @@ private extension DrizzleLayer {
             let tail = 1 - 0.4 * (1 - smoothstep(0, 12, last - Float(i)))
             samples[i].flow = min(max(pow(samples[i].flow, -0.5), 0.85), 1.3) * squeeze * dollop * tail
         }
-        return samples
+        return (samples, angle)
     }
 
-    /// Drips start where the hand turned past the rim, favoring the side that faces the camera at rest.
-    func makeDrips(rng: inout ToppingRandom) -> [DripSpec] {
+    /// A few long, thin drips start where the hand turned past the rim, favoring the side that faces the camera at
+    /// rest; a second syrup over the first adds only one or two.
+    func makeDrips(second: Bool, rng: inout ToppingRandom) -> [DripSpec] {
         let window = 10
         guard path.count > 2 * window + 1 else { return [] }
         var tips: [(index: Int, score: Float, angle: Float)] = []
@@ -527,7 +673,7 @@ private extension DrizzleLayer {
             tips.append((i, r + 0.35 * front + Float.random(in: 0...0.3, using: &rng), atan2(path[i].q.y, path[i].q.x)))
         }
         tips.sort { $0.score > $1.score }
-        let wanted = 3 + Int(Float.random(in: 0...0.999, using: &rng) * 4 * style.dripTendency)
+        let wanted = (second ? 1 : 2) + Int(Float.random(in: 0...0.999, using: &rng) * (second ? 2 : 3) * style.dripTendency)
         var chosen: [(index: Int, score: Float, angle: Float)] = []
         for tip in tips where chosen.count < wanted {
             let apart = chosen.allSatisfy { other in
@@ -538,13 +684,16 @@ private extension DrizzleLayer {
         }
         chosen.sort { $0.index < $1.index }
         let reach = 0.6 + 0.5 * style.dripTendency
-        let slow = 0.7 + 1.0 * style.viscosity
+        let slow = 0.25 + 0.3 * style.viscosity
+        let lead = Float(Self.streamLead), pour = Float(pourDuration)
         return chosen.map { tip in
-            let length = Float.random(in: 0.009...0.022, using: &rng) * reach
-            return DripSpec(origin: tip.index, length: length,
-                            delay: Float.random(in: 0.1...0.4, using: &rng),
-                            duration: slow * Float.random(in: 0.8...1.1, using: &rng) + length * 30,
-                            halfWidth: style.width * Float.random(in: 0.36...0.42, using: &rng),
+            let length = Float.random(in: 0.017...0.03, using: &rng) * reach
+            let delay = Float.random(in: 0.02...0.1, using: &rng)
+            let left = lead + pour + Self.dripTail - (lead + path[tip.index].time * pour + delay)
+            let duration = slow * Float.random(in: 0.8...1.1, using: &rng) + length * 8
+            return DripSpec(origin: tip.index, length: length, delay: delay,
+                            duration: max(0.22, min(duration, left)),
+                            halfWidth: style.width * Float.random(in: 0.17...0.21, using: &rng),
                             meander: Float.random(in: -0.2...0.2, using: &rng),
                             phase: Float.random(in: 0..<(2 * .pi), using: &rng))
         }
@@ -748,7 +897,7 @@ private extension DrizzleLayer {
             dir += SIMD2(-dir.y, dir.x) * drip.meander * sin(drip.phase + arc / 0.004)
             dir = simd_normalize(dir)
             let next = xz + dir * step * max(n.y, 0.12)
-            guard simd_length(next - center) < radius * 1.6, let hit = surface.sample(x: next.x, z: next.y),
+            guard simd_length(next - center) < radius * 2.6, let hit = surface.sample(x: next.x, z: next.y),
                   p.y - hit.height < 0.002 else { break }
             let q = SIMD3<Float>(next.x, hit.height, next.y)
             arc += simd_length(q - p)
@@ -802,14 +951,14 @@ private extension DrizzleLayer {
         let upright = smoothstep(0.1, 0.65, n.y)
         let fresh = 1 - smoothstep(0, settleDuration, age)
         let spread = (1 + 0.15 * flat + 0.3 * pool) * (0.62 + 0.38 * upright)
-        let a = min(halfWidth * path[i].flow * spread, halfWidth * 1.6) * (1 - 0.32 * fresh)
+        let a = min(halfWidth * path[i].flow * spread, halfWidth * 1.6) * (1 - 0.32 * fresh) * (partnered ? 0.78 : 1)
         let settled = 0.32 + 0.16 * style.viscosity
         let ratio = (settled + (0.85 - settled) * fresh) * (1 + 0.1 * pool) * (0.85 + 0.15 * upright)
         return (a, a * ratio)
     }
 
     func makeMesh() {
-        let rings = (path.count + 2 * Self.capRings + 2) + drips.count * (Self.dripRings + 1) + (Self.strandRings + 1 + Self.capRings)
+        let rings = (path.count + 2 * Self.capRings + 2) + drips.count * (Self.dripRings + 1) + (Self.strandRings + 1 + 2 * Self.capRings)
         let vertexCount = rings * Self.ringSides
         let indexCount = rings * Self.ringSides * 6
         let attributes: [LowLevelMesh.Attribute] = [
@@ -841,6 +990,8 @@ private extension DrizzleLayer {
         /// Tilts normals along the strip where its width changes (caps, the drip's bulb).
         var lean: Float = 0
         var round = false
+        /// Base color coordinate of a round ring: low is the thin, warm color.
+        var shade: Float = 0.3
     }
 
     func emit(_ ring: Ring) {
@@ -869,7 +1020,7 @@ private extension DrizzleLayer {
                     let c = t[2 * k], s = t[2 * k + 1], r = a * scale
                     nx = sx * c + ux * s; ny = sy * c + uy * s; nz = sz * c + uz * s
                     px = cx + nx * r; py = cy + ny * r; pz = cz + nz * r
-                    u = 0.3
+                    u = ring.shade
                 } else {
                     let x = t[4 * k], a = x >= 0 ? right : left, l = x * a
                     let lift = (tilt + 0.5 * bend * l) * l
@@ -979,7 +1130,8 @@ private extension DrizzleLayer {
         }
         let geometry = projection(at: now)
         fill(geometry, now: now, drain: drain)
-        upload(lower: geometry.lower, upper: geometry.upper)
+        let stream = streamBounds ?? (geometry.lower, geometry.upper)
+        upload(lower: simd_min(geometry.lower, stream.0), upper: simd_max(geometry.upper, stream.1))
     }
 
     func upload(lower: SIMD3<Float>, upper: SIMD3<Float>) {
@@ -996,6 +1148,7 @@ private extension DrizzleLayer {
 
     func fill(_ geometry: Projection, now: Double, drain: Float) {
         guard let scratch else { return }
+        streamBounds = nil
         let clock = Float(min(now, removeStart ?? now) - pourStart)
         let lead = Float(Self.streamLead), pour = Float(pourDuration)
         let hand = (clock - lead) / pour
@@ -1073,15 +1226,20 @@ private extension DrizzleLayer {
             let grow = 1 - pow(1 - x, 2.2)
             let length = route.length * grow
             let base = profile(drip.origin, normal: geometry.normals[drip.origin], pool: 0, age: .infinity).0
-            var bulb = drip.halfWidth * (1.15 + 0.3 * grow)
-            bulb = min(bulb, length / 2)
-            let bulbCenter = length - bulb
+            let neckLength = max(0.35 * length, 0.004)
+            let bead = min(drip.halfWidth * (1.12 + 0.14 * grow), 0.25 * length)
+            let beadCenter = length - 1.15 * bead
+            func core(_ s: Float) -> Float {
+                let neck = drip.halfWidth + (base * 0.85 - drip.halfWidth) * (1 - smoothstep(0, neckLength, s))
+                return neck * (1 - 0.3 * s / max(length, 1e-4))
+            }
+            let coreAtBead = core(beadCenter)
             func width(_ s: Float) -> Float {
-                if s >= bulbCenter { return (max(0, bulb * bulb - (s - bulbCenter) * (s - bulbCenter))).squareRoot() }
-                let neck = base * 0.85 + (drip.halfWidth - base * 0.85) * smoothstep(0, 0.006, s)
-                let taper = neck * (1 - 0.15 * s / max(length, 1e-4))
-                let rise = s - bulbCenter
-                return max(taper, (max(0, bulb * bulb - rise * rise)).squareRoot())
+                if s >= beadCenter {
+                    let x = (s - beadCenter) / (1.15 * bead)
+                    return bead * max(0, 1 - x * x).squareRoot()
+                }
+                return core(s) + (bead - coreAtBead) * smoothstep(beadCenter - 3.5 * bead, beadCenter, s)
             }
             for j in 0...Self.dripRings {
                 let u = Float(j) / Float(Self.dripRings)
@@ -1093,7 +1251,8 @@ private extension DrizzleLayer {
                 let n = simd_normalize(route.normals[k] + (route.normals[k + 1] - route.normals[k]) * x)
                 let f = frame(route.points[k + 1] - route.points[k], n)
                 let a = width(s)
-                let h = a * (0.45 + 0.4 * smoothstep(0, 0.004, s))
+                let fullness = smoothstep(beadCenter - 2 * bead, beadCenter, s)
+                let h = a * (0.45 + 0.12 * smoothstep(0, 0.004, s) + 0.15 * fullness)
                 let epsilon: Float = 0.0001
                 let slope = (width(s + epsilon) - width(max(s - epsilon, 0))) / (2 * epsilon)
                 let center = p + n * (-(0.1 * h + 0.00012) - drain * h * 1.1)
@@ -1106,11 +1265,13 @@ private extension DrizzleLayer {
         if drain == 0 { emitStream(clock: clock, geometry: geometry, headIndex: headIndex, headPoint: headPoint) }
     }
 
-    /// The falling strand between the invisible bottle and where the syrup lands, while it pours.
+    /// The falling strand, from just above the top of the screen to where the syrup lands while it pours. It hangs
+    /// straight down in the world wherever the item is and however it's turned, follows the pour path the way a
+    /// stream from a moving bottle lags behind it, thins as it falls and pools a little where it lands. When the pour
+    /// ends it breaks off at the top and falls in.
     func emitStream(clock: Float, geometry: Projection, headIndex: Int, headPoint: SIMD3<Float>) {
         let lead = Float(Self.streamLead), pour = Float(pourDuration), cut = Float(Self.streamCut)
         guard clock > 0, clock < lead + pour + cut else { return }
-        let nozzleHeight = geometry.top + Self.nozzleHeight
         func handPoint(_ time: Float) -> SIMD3<Float> {
             let t = min(max(time, 0), 1)
             var i = 0
@@ -1121,39 +1282,92 @@ private extension DrizzleLayer {
             return geometry.points[i] + (geometry.points[i + 1] - geometry.points[i]) * x
         }
         let hand = (clock - lead) / pour
-        let landing = hand > 0 && headIndex >= 0 ? headPoint : geometry.points[0]
-        let above = handPoint(hand + 0.02)
-        var top = SIMD3<Float>(above.x, nozzleHeight, above.z)
-        var bottom = landing + geometry.normals[max(headIndex, 0)] * (halfWidth * 0.4)
-        var radius = halfWidth * 0.42
+        let normal = geometry.normals[max(headIndex, 0)]
+        let landing = (hand > 0 && headIndex >= 0 ? headPoint : geometry.points[0]) + normal * (halfWidth * 0.45)
+        let (height, up) = sky(above: landing) ?? (geometry.top + Self.nozzleHeight * 4 - landing.y, [0, 1, 0])
+        guard height > halfWidth else { return }
+
+        let thin = halfWidth * 0.24
+        var bottom: Float = -thin * 0.5, top = height, pool: Float = 0, taper: Float = 1
         if clock < lead {
-            let fall = Ease.inQuad(clock / lead)
-            bottom = top + (bottom - top) * fall
-        } else if clock > lead + pour {
+            bottom = height * (1 - Ease.inQuad(clock / lead))
+        } else if clock < lead + pour {
+            pool = smoothstep(0, 0.08, clock - lead)
+        } else {
             let x = Ease.clamp01((clock - lead - pour) / cut)
-            top = top + (bottom - top) * Ease.inQuad(x)
-            radius *= 1 - 0.5 * x
+            top = max(bottom + thin * 4, height * (1 - Ease.inQuad(x)))
+            pool = 1 - x
+            taper = 1 - 0.4 * x
         }
-        let axis = top - bottom
-        guard simd_length(axis) > 0.0005 else { return }
-        var reference = SIMD3<Float>(1, 0, 0)
-        if abs(simd_dot(simd_normalize(axis), reference)) > 0.9 { reference = [0, 0, 1] }
+        let lag = Self.fallTime / pour
+        let now = min(hand, 1)
+        func radius(_ z: Float) -> Float {
+            let s = Ease.clamp01(z / height)
+            return thin * taper * (1 + 0.7 * s.squareRoot()) + pool * halfWidth * 0.5 * exp(-max(z, 0) / (thin * 1.4))
+        }
+        func center(_ z: Float) -> SIMD3<Float> {
+            let b = handPoint(now + lag * pow(Ease.clamp01(z / height), 0.8))
+            return b - up * simd_dot(b - landing, up) + up * z
+        }
+
+        var reference = simd_cross(up, [1, 0, 0])
+        if simd_length(reference) < 0.1 { reference = simd_cross(up, [0, 0, 1]) }
+        var rings: [Ring] = []
+        var low = landing, high = landing
         for j in 0...Self.strandRings {
-            let s = Float(j) / Float(Self.strandRings)
-            let horizontal = s * s
-            let p = SIMD3<Float>(bottom.x + (top.x - bottom.x) * horizontal, bottom.y + axis.y * s,
-                                 bottom.z + (top.z - bottom.z) * horizontal)
-            let ds: Float = 1 / Float(Self.strandRings)
-            let tangent = SIMD3<Float>((top.x - bottom.x) * 2 * s * ds, axis.y * ds, (top.z - bottom.z) * 2 * s * ds)
-            let t = simd_normalize(tangent)
-            let side = simd_normalize(simd_cross(t, reference))
-            let up = simd_cross(side, t)
-            let r = radius * (0.62 + 0.38 * s)
-            let ring = Ring(center: p, side: side, up: up, along: t, a: max(r, 1e-5), h: max(r, 1e-5), round: true)
-            emit(ring)
-            if j == Self.strandRings { emitCap(from: ring, direction: 1) }
+            let u = Float(j) / Float(Self.strandRings)
+            let z = bottom + (top - bottom) * pow(u, 2.2)
+            let dz = max((top - bottom) * 0.002, 1e-5)
+            let p = center(z)
+            let tangent = simd_normalize(center(z + dz) - center(z - dz))
+            let side = simd_normalize(simd_cross(tangent, reference))
+            let r = radius(z)
+            let slope = (radius(z + dz) - radius(z - dz)) / (2 * dz)
+            rings.append(Ring(center: p, side: side, up: simd_cross(side, tangent), along: tangent, a: max(r, 1e-5), h: max(r, 1e-5),
+                              lean: -slope, round: true, shade: 0.14 + 0.3 * min(1, r / (halfWidth * 0.7))))
+            low = simd_min(low, p - r)
+            high = simd_max(high, p + r)
         }
-        stitch(rings: Self.strandRings + 1 + Self.capRings)
+        emitCap(from: rings[0], direction: -1)
+        for ring in rings { emit(ring) }
+        emitCap(from: rings[rings.count - 1], direction: 1)
+        stitch(rings: Self.strandRings + 1 + 2 * Self.capRings)
+        streamBounds = (low, high)
+    }
+
+    /// How far up from `point` a plumb line leaves the top of the stage camera's view (a little past the edge), and
+    /// which way is up, in this layer's space. Nil off the stage.
+    func sky(above point: SIMD3<Float>) -> (Float, SIMD3<Float>)? {
+        guard let camera = stageCamera(),
+              let fieldOfView = camera.components[PerspectiveCameraComponent.self]?.fieldOfViewInDegrees else { return nil }
+        let toWorld = model.transformMatrix(relativeTo: nil)
+        let toCamera = camera.transformMatrix(relativeTo: nil).inverse
+        let p = toCamera * (toWorld * SIMD4(point, 1))
+        let rising = toCamera * SIMD4<Float>(0, 1, 0, 0)
+        let slope = tan(fieldOfView * .pi / 360)
+        let approach = rising.y + rising.z * slope
+        guard approach > 1e-3 else { return nil }
+        let rise = (-p.z * slope - p.y) / approach + Self.skyMargin
+        let local = toWorld.inverse * SIMD4<Float>(0, 1, 0, 0)
+        let up = SIMD3(local.x, local.y, local.z)
+        let perMeter = simd_length(up)
+        guard rise > 0, perMeter > 1e-6 else { return nil }
+        return (rise * perMeter, up / perMeter)
+    }
+
+    func stageCamera() -> Entity? {
+        if let camera, camera.scene != nil { return camera }
+        var top: Entity = model
+        while let parent = top.parent { top = parent }
+        func search(_ entity: Entity) -> Entity? {
+            if entity.components.has(PerspectiveCameraComponent.self) { return entity }
+            for child in entity.children {
+                if let found = search(child) { return found }
+            }
+            return nil
+        }
+        camera = search(top)
+        return camera
     }
 }
 

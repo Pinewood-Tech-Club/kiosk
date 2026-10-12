@@ -77,6 +77,7 @@ final class AppModel {
     private(set) var pressedCards: Set<CardKey> = []
     /// The cards draw a flat glyph in each icon area until the stage draws its 3D icons there.
     private(set) var stageDrawsToppingIcons = false
+    var toppingsScroll = ScrollPosition(idType: Topping.self)
     var confirmation: Confirmation?
     var notice: Notice?
     var receipt: Receipt?
@@ -350,8 +351,8 @@ final class AppModel {
         stage.setPressed(card, pressed)
     }
 
-    func setToppingIconFrame(_ topping: Topping, _ frame: CGRect) {
-        stage.setToppingIconFrame(topping, frame)
+    func scrollToppings(to topping: Topping) {
+        toppingsScroll.scrollTo(x: Layout.toppingCarouselOffset(topping))
     }
 
     func selectVessel(_ vessel: Vessel) {
@@ -424,6 +425,10 @@ final class AppModel {
     }
 
     private func setStep(_ newStep: BuilderStep) {
+        if newStep == .toppings, step != .toppings {
+            toppingsScroll = ScrollPosition(idType: Topping.self)
+            stage.reportToppingScroll(0)
+        }
         step = newStep
         stage.setStep(newStep, animated: true)
     }
@@ -761,6 +766,12 @@ final class AppModel {
             default:
                 screen = .attract
                 startAttractShow()
+            }
+        }
+        if let topping = options.toppingsScroll {
+            Task {
+                try? await Task.sleep(for: .seconds(0.5))
+                scrollToppings(to: topping)
             }
         }
         if let script = options.script {

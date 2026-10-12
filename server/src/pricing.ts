@@ -7,6 +7,7 @@ export const FLAVOR_TITLES: Record<string, string> = { vanilla: "Vanilla", choco
 export const TOPPING_TITLES: Record<string, string> = {
   whip: "Whipped Cream",
   chocolate: "Chocolate Syrup",
+  caramel: "Caramel Syrup",
   gummies: "Gummy Bears",
   mms: "M&M's",
   sprinkles: "Sprinkles",

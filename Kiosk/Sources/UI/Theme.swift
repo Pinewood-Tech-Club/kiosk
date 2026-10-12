@@ -43,24 +43,20 @@ struct LucideIcon: View {
     }
 }
 
-/// Solid card behind a vessel or flavor; the 3D model renders on top of it, so keep it opaque, not glass.
+/// Solid card behind a vessel, flavor or topping; the 3D model renders on top of it, so keep it opaque, not glass.
 struct CardBackground: View {
     var highlighted = false
-    var filled = false
     var dimmed = false
-    var cornerRadius = Layout.cardCornerRadius
 
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(filled ? Theme.text : Theme.surface)
+        RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
+            .fill(Theme.surface)
             .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(highlighted ? Theme.text : Theme.hairline.opacity(filled ? 0 : 1),
-                                  lineWidth: highlighted ? 3 : 1)
+                RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
+                    .strokeBorder(highlighted ? Theme.text : Theme.hairline, lineWidth: highlighted ? 3 : 1)
             }
             .opacity(dimmed ? 0.55 : 1)
             .animation(.easeInOut(duration: 0.25), value: highlighted)
-            .animation(.easeInOut(duration: 0.2), value: filled)
             .animation(.easeInOut(duration: 0.25), value: dimmed)
     }
 }

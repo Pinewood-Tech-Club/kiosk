@@ -124,6 +124,11 @@ extension Stage {
     }
 
     func updateToppings() {
+        let started = CACurrentMediaTime()
+        defer {
+            let spent = CACurrentMediaTime() - started
+            if logsHitches, spent > 0.012 { log(String(format: "Toppings update took %.0f ms", spent * 1000)) }
+        }
         toppingStacks.removeAll { $0.rig == nil }
         for stack in toppingStacks {
             guard let rig = stack.rig else { continue }

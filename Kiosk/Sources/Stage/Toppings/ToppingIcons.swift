@@ -116,19 +116,22 @@ final class ToppingCardIcon {
 }
 
 extension Stage {
-    /// The topping cards report their icon frames (screen points) here, like the order receipt's cells.
-    func setToppingIconFrame(_ topping: Topping, _ frame: CGRect) {
-        toppingIconFrames[topping] = frame
+    func reportToppingScroll(_ offset: CGFloat) {
+        toppingScrollReported = offset
     }
 
-    func toppingIconFrame(_ topping: Topping) -> CGRect {
-        toppingIconFrames[topping] ?? Layout.toppingIconFrame(topping)
+    func latchToppingScroll() {
+        toppingScroll.update(toppingScrollReported)
+    }
+
+    func toppingCardFrame(_ topping: Topping) -> CGRect {
+        Layout.toppingCardFrame(topping).offsetBy(dx: -toppingScroll.offset, dy: 0)
     }
 
     func makeToppingIcons() {
         for topping in Topping.allCases {
             let icon = ToppingCardIcon(topping: topping, candy: assets?.candy)
-            if topping == .chocolate { icon.restOrientation = simd_quatf(angle: 1.0, axis: [1, 0, 0]) }
+            if topping.drizzleStyle != nil { icon.restOrientation = simd_quatf(angle: 0.85, axis: [1, 0, 0]) }
             applyLighting(icon.holder)
             toppingIcons[topping] = icon
             root.addChild(icon.holder)
@@ -136,16 +139,18 @@ extension Stage {
     }
 
     func toppingIconPlacement(_ topping: Topping) -> (position: SIMD3<Float>, scale: Float) {
-        let frame = toppingIconFrame(topping)
-        let center = CGPoint(x: frame.midX, y: frame.midY)
-        let (position, press) = pressed(world(center), card: .topping(topping), center: center)
-        return (position, Float(min(frame.width, frame.height)) * 0.001 * 0.82 * press)
+        let card = toppingCardFrame(topping)
+        let icon = Layout.toppingIconFrame(inCard: card)
+        let (position, press) = pressed(world(CGPoint(x: icon.midX, y: icon.midY)), card: .topping(topping),
+                                        center: CGPoint(x: card.midX, y: card.midY))
+        return (position, Float(min(icon.width, icon.height)) * 0.001 * 0.82 * press)
     }
 
     func updateToppingIcons() {
         for (topping, icon) in toppingIcons {
             let shown = iconShown[.topping(topping)] ?? 0
-            icon.holder.isEnabled = shown > 0.001
+            let card = toppingCardFrame(topping)
+            icon.holder.isEnabled = shown > 0.001 && card.maxX > viewFrame.minX && card.minX < viewFrame.maxX
             icon.update(now: now)
             guard icon.holder.isEnabled else { continue }
             let placement = toppingIconPlacement(topping)

@@ -209,6 +209,18 @@ describe("pricing", () => {
     expect(adHocTotal).toBe(q.totalCents);
   });
 
+  it("bills both syrups on one item as separate toppings, by name", () => {
+    const catalog = buildCatalog("TC", catalogItems());
+    const q = quote([item("cup", ["vanilla"], ["chocolate", "caramel", "gummies"])]);
+    expect(q.totalCents).toBe(550);
+    expect(catalogLineItems(q, catalog).filter((l) => l.catalog_object_id === "VT").map((l) => l.note)).toEqual([
+      "#1 Cup: Chocolate Syrup", "#1 Cup: Caramel Syrup", "#1 Cup: Gummy Bears",
+    ]);
+    expect(chargedLines(q).filter((l) => l.title === "Topping").map((l) => [l.detail, l.cents])).toEqual([
+      ["#1 Cup: Chocolate Syrup", 50], ["#1 Cup: Caramel Syrup", 50], ["#1 Cup: Gummy Bears", 50],
+    ]);
+  });
+
   it("rejects catalogs that are incomplete or priced differently", () => {
     expect(() => buildCatalog("TC", catalogItems(["V1", "V2", "V3", "VC"]))).toThrow(/missing item\(s\): Topping/);
     const expensive = buildCatalog("TC", catalogItems().map((i) => (i.id === "I-V3" ? { ...i, item_data: { ...i.item_data, variations: [{ ...i.item_data.variations[0], item_variation_data: { pricing_type: "FIXED_PRICING", price_money: { amount: 250 } } }] } } : i)));

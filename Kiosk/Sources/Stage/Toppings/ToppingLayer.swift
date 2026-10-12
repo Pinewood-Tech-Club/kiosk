@@ -2,7 +2,7 @@ import RealityKit
 import simd
 
 /// What a topping layer rests on, in the item rig's `body` space (meters, +Y up, vessel axis along Y).
-protocol ToppingSurface {
+protocol ToppingSurface: Sendable {
     /// Straight-down probe at (x, z): the top surface's height and outward normal, or nil off the edge.
     func sample(x: Float, z: Float) -> (height: Float, normal: SIMD3<Float>)?
     /// Highest point of the surface.

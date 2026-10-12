@@ -185,7 +185,7 @@ extension Stage {
         setToppings(show.item.toppings, itemID: show.item.id)
         let duration = switch topping {
         case .whip: 1.8
-        case .chocolate: 2.6
+        case .chocolate, .caramel: 2.6
         case .gummies, .mms, .sprinkles: 1.4
         }
         attractAfter(duration) { [unowned self] in attractAddToppings(target, swapAfter: swapAfter) }

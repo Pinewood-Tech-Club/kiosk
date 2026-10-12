@@ -39,7 +39,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (line) => console.log(`${((Date.now() - started) / 1000).toFixed(1).padStart(6)}s  ${line}`);
 const jitter = (ms) => ms * (0.5 + Math.random());
 
-const SUPPLY_KEYS = ["flavor:vanilla", "flavor:chocolate", "flavor:cookies", "vessel:cup", "vessel:cone", "topping:whip", "topping:chocolate", "topping:gummies", "topping:mms", "topping:sprinkles"];
+const SUPPLY_KEYS = ["flavor:vanilla", "flavor:chocolate", "flavor:cookies", "vessel:cup", "vessel:cone", "topping:whip", "topping:chocolate", "topping:caramel", "topping:gummies", "topping:mms", "topping:sprinkles"];
 
 function applyChange(state, change) {
   if (change.kind === "flavors") state.flavors = change.flavors;
