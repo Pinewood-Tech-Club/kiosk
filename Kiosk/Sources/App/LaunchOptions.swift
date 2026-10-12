@@ -294,6 +294,42 @@ struct ScriptRunner {
             await wait(3.0)
             app.viewOrder()
             await wait(4.0)
+        case "toppings-whip":
+            await openToppings()
+            await wait(1.5)
+            log("whip on")
+            await toggle(.whip)
+            await wait(4.0)
+            log("whip off")
+            await toggle(.whip)
+            await wait(3.0)
+            if app.current.toppings.contains(.chocolate) {
+                log("syrup off")
+                await toggle(.chocolate)
+                await wait(3.5)
+                log("syrup on")
+                await toggle(.chocolate)
+                await wait(4.0)
+            }
+            if app.current.toppings.contains(.sprinkles) {
+                await toggle(.sprinkles)
+                await wait(1.5)
+                log("whip under a toss")
+                await toggle(.sprinkles)
+                await wait(0.25)
+                app.toggleTopping(.whip)
+                await wait(3.0)
+            }
+        case "toppings-retoss":
+            await openToppings()
+            await wait(1.5)
+            for topping in [Topping.gummies, .mms, .sprinkles] where app.current.toppings.contains(topping) {
+                await toggle(topping)
+                await wait(1.5)
+                log("retoss \(topping.rawValue)")
+                await toggle(topping)
+                await wait(2.5)
+            }
         case "remove-middle":
             await wait(0.6)
             app.removeScoop(.chocolate)
