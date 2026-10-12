@@ -85,10 +85,26 @@ struct SummaryView: View {
             Text(contents(quote))
                 .font(Theme.serif(19, .regular))
                 .foregroundStyle(Theme.text.opacity(0.65))
-            Button { app.completeOrder() } label: {
-                Text("Check Out").frame(maxWidth: .infinity)
+            HStack(spacing: 20) {
+                Button { app.completeOrder(with: .card) } label: {
+                    HStack(spacing: 12) {
+                        LucideIcon(name: "credit-card", size: 30)
+                        Text("Pay with card")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassCTA(height: 88, fontSize: 30))
+                if app.giftCardsAvailable {
+                    Button { app.completeOrder(with: .giftCard) } label: {
+                        HStack(spacing: 12) {
+                            LucideIcon(name: "gift", size: 30)
+                            Text("Pay with gift card")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassSecondary(height: 88, fontSize: 30))
+                }
             }
-            .buttonStyle(.glassCTA(height: 88, fontSize: 30))
             .disabled(quote.isEmpty)
             .padding(.top, 26)
         }

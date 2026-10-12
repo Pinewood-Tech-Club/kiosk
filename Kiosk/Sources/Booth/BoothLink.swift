@@ -40,6 +40,8 @@ final class BoothLink {
     private(set) var debugEnabled: Bool
     private(set) var kioskName: String?
     private(set) var helpBannerVisible = false
+    private(set) var serverFeatures: Set<String> = []
+    @ObservationIgnored private(set) var api: BoothAPI?
     private(set) var assistActive = false
 
     @ObservationIgnored private weak var app: AppModel?
@@ -145,6 +147,7 @@ final class BoothLink {
         let deviceID = await outbox.device()
         self.deviceID = deviceID
         let api = BoothAPI(config: config, deviceID: deviceID)
+        self.api = api
         square?.attachBooth(api)
         await outbox.attach(api: api) { [weak self] message in
             Task { @MainActor in self?.log(message) }
@@ -235,6 +238,7 @@ final class BoothLink {
     private func connectionChanged(_ state: BoothConnection.ConnectionState) {
         connectionState = state
         guard state == .connected else { return }
+        Task { [weak self] in await self?.refreshFeatures() }
         lastSession = nil
         forceHealth = true
         lastUpload = .distantPast
@@ -243,6 +247,19 @@ final class BoothLink {
         Task {
             await outbox.kick(resetBackoff: true)
             await shipper?.resetBackoff()
+        }
+    }
+
+    private func refreshFeatures() async {
+        struct Health: Decodable { let features: [String]? }
+        guard let api else { return }
+        do {
+            let health: Health = try await api.get("/v1/health")
+            let features = Set(health.features ?? [])
+            if features != serverFeatures { log("Booth: server features " + features.sorted().joined(separator: ", ")) }
+            serverFeatures = features
+        } catch {
+            log("Booth: health check failed (\((error as? BoothError)?.summary ?? error.localizedDescription))")
         }
     }
 

@@ -58,8 +58,7 @@ final class SquareService: NSObject {
     @ObservationIgnored private let locationManager = CLLocationManager()
     @ObservationIgnored private var bluetoothManager: CBCentralManager?
     @ObservationIgnored private var paymentHandle: PaymentHandle?
-    @ObservationIgnored private var continuation: CheckedContinuation<PaymentResult, Never>?
-    @ObservationIgnored private var pending: (quote: OrderQuote, name: String, number: Int, checkout: CheckoutIdentity, order: SquareAPI.CreatedOrder)?
+    @ObservationIgnored private var continuation: CheckedContinuation<ReaderOutcome, Never>?
     #if canImport(MockReaderUI)
     @ObservationIgnored private var mockReader: MockReaderUI?
     #endif
@@ -331,19 +330,106 @@ final class SquareService: NSObject {
             record("WARNING: Square subtotal \((order.totalCents - order.taxCents).formattedAsUSD) differs from kiosk total \(quote.totalCents.formattedAsUSD)")
         }
 
-        return await withCheckedContinuation { continuation in
+        let outcome = await takeReaderPayment(amountCents: order.totalCents, orderID: order.id, referenceID: referenceID,
+                                              autocomplete: true, processingMode: isSandbox ? .onlineOnly : .autoDetect,
+                                              from: viewController)
+        switch outcome {
+        case .finished(let payment):
+            let tender = Self.tender(of: payment)
+            let total = Int(payment.totalMoney.amount)
+            return .succeeded(Receipt(
+                merchantName: merchantName, eventName: Config.eventName, date: Date(), orderNumber: orderNumber,
+                orderRef: checkout.orderRef, customerName: customerName, squareOrderID: payment.orderID ?? order.id,
+                paymentID: tender.paymentID, cardDescription: tender.card, lines: order.lines,
+                subtotalCents: total - order.taxCents, taxCents: order.taxCents, totalCents: total,
+                isSimulated: false, checkoutID: checkout.id, receiptToken: checkout.receiptToken
+            ))
+        case .failed(_, let error):
+            return paymentFailed(error)
+        case .canceled:
+            return .canceled
+        case .noHandle:
+            return .failed(.readerNotReady)
+        }
+    }
+
+    /// The server's copy of the checkout, for a gift card payment. Throws rather than falling back to an order created on
+    /// the device, because the server can only charge a gift card against a checkout it created.
+    @MainActor
+    func createServerOrder(quote: OrderQuote, customerName: String, orderNumber: Int,
+                           checkout: CheckoutIdentity) async throws -> SquareAPI.CreatedOrder {
+        guard credentials.current?.source == .booth, let api, let checkoutClient else {
+            throw GiftCardFailure.unavailable("Square credentials don't come from the booth server")
+        }
+        return try await checkoutClient.createServerOrder(quote: quote, customerName: customerName, orderNumber: orderNumber,
+                                                          checkout: checkout, locationID: api.locationID,
+                                                          sourceName: "\(Config.eventName) Kiosk")
+    }
+
+    /// Takes what a gift card left unpaid on the reader, as an approved payment on the same order that the booth server
+    /// then completes together with the gift card's.
+    @MainActor
+    func chargeRemainder(amountCents: Int, orderID: String, checkout: CheckoutIdentity,
+                         from viewController: UIViewController) async -> ReaderChargeResult {
+        guard phase == .idle else {
+            return .failed(refuseProblem(.stillFinishing, because: Self.alreadyInProgressReason), paymentID: nil)
+        }
+        guard api != nil else {
+            return .failed(refuseProblem(.needsStaff, because: Self.notConfiguredReason), paymentID: nil)
+        }
+        guard isAuthorized else {
+            authorize()
+            return .failed(refuseProblem(.needsStaff, because: Self.notAuthorizedReason + " (state: \(Self.describe(authorizationState)))"),
+                           paymentID: nil)
+        }
+        guard !readers.isEmpty else {
+            return .failed(refuseProblem(.readerNotReady, because: Self.noReaderReason), paymentID: nil)
+        }
+        if let problem = Self.displayProblem(viewController) {
+            return .failed(refuseProblem(.paymentsPaused, because: problem), paymentID: nil)
+        }
+        let outcome = await takeReaderPayment(amountCents: amountCents, orderID: orderID, referenceID: "kiosk-\(checkout.orderRef)",
+                                              autocomplete: false, processingMode: .onlineOnly, from: viewController)
+        switch outcome {
+        case .finished(let payment):
+            guard let online = payment as? OnlinePayment, let id = online.id else {
+                record("Reader payment for the rest finished without an online payment ID")
+                return .failed(.readerNotReady, paymentID: nil)
+            }
+            return .approved(paymentID: id, cardDescription: Self.tender(of: payment).card)
+        case .failed(let payment, let error):
+            guard case .failed(let problem) = paymentFailed(error) else { return .canceled }
+            return .failed(problem, paymentID: (payment as? OnlinePayment)?.id)
+        case .canceled:
+            return .canceled
+        case .noHandle:
+            return .failed(.readerNotReady, paymentID: nil)
+        }
+    }
+
+    private enum ReaderOutcome {
+        case finished(Payment)
+        case failed(Payment, Error)
+        case canceled
+        case noHandle
+    }
+
+    @MainActor
+    private func takeReaderPayment(amountCents: Int, orderID: String, referenceID: String, autocomplete: Bool,
+                                   processingMode: ProcessingMode, from viewController: UIViewController) async -> ReaderOutcome {
+        await withCheckedContinuation { continuation in
             self.continuation = continuation
-            self.pending = (quote, customerName, orderNumber, checkout, order)
             let parameters = PaymentParameters(
                 paymentAttemptID: UUID().uuidString,
-                amountMoney: Money(amount: UInt(order.totalCents), currency: .USD),
-                processingMode: isSandbox ? .onlineOnly : .autoDetect
+                amountMoney: Money(amount: UInt(amountCents), currency: .USD),
+                processingMode: processingMode
             )
-            parameters.orderID = order.id
+            parameters.orderID = orderID
             parameters.referenceID = referenceID
+            if !autocomplete { parameters.autocomplete = false }
 
             phase = .takingPayment
-            record("Calling startPayment for \(order.totalCents.formattedAsUSD)")
+            record("Calling startPayment for \(amountCents.formattedAsUSD)" + (autocomplete ? "" : " (approve only)"))
             paymentHandle = sdk.paymentManager.startPayment(
                 parameters,
                 promptParameters: PromptParameters(mode: .default, additionalMethods: AdditionalPaymentMethods([])),
@@ -352,9 +438,20 @@ final class SquareService: NSObject {
             )
             if paymentHandle == nil {
                 record("startPayment returned no handle")
-                finish(.failed(.readerNotReady))
+                finish(.noHandle)
             }
         }
+    }
+
+    private static func tender(of payment: Payment) -> (paymentID: String, card: String) {
+        if let online = payment as? OnlinePayment {
+            let card = online.cardDetails?.card.map { "\($0.cardBrand.description) •••• \($0.last4 ?? "????")" } ?? "Card"
+            return (online.id ?? "—", card)
+        }
+        if let offline = payment as? OfflinePayment {
+            return (offline.localID, "Card (offline)")
+        }
+        return ("—", "Card")
     }
 
     private static let alreadyInProgressReason = "A payment is already in progress"
@@ -365,8 +462,12 @@ final class SquareService: NSObject {
     private static let notFullScreenReason = "The kiosk isn't full screen (Split View or Slide Over)"
 
     private func refuse(_ problem: PaymentProblem, because reason: String) -> PaymentResult {
+        .failed(refuseProblem(problem, because: reason))
+    }
+
+    private func refuseProblem(_ problem: PaymentProblem, because reason: String) -> PaymentProblem {
         record("Refusing to charge: \(reason)")
-        return .failed(problem)
+        return problem
     }
 
     private func orderFailed(_ error: Error) -> PaymentResult {
@@ -448,10 +549,9 @@ final class SquareService: NSObject {
         return nil
     }
 
-    private func finish(_ result: PaymentResult) {
+    private func finish(_ result: ReaderOutcome) {
         paymentHandle = nil
         phase = .idle
-        pending = nil
         let continuation = continuation
         self.continuation = nil
         continuation?.resume(returning: result)
@@ -500,37 +600,20 @@ extension SquareService: PaymentManagerDelegate {
     }
 
     func paymentManager(_ paymentManager: PaymentManager, didFinish payment: Payment) {
-        var paymentID = "—"
-        var card = "Card"
         if let online = payment as? OnlinePayment {
-            paymentID = online.id ?? "—"
-            if let details = online.cardDetails?.card {
-                card = "\(details.cardBrand.description) •••• \(details.last4 ?? "????")"
-            }
-            record("Payment \(paymentID) \(online.status.description), \(card)")
+            record("Payment \(online.id ?? "—") \(online.status.description), \(Self.tender(of: payment).card)")
         } else if let offline = payment as? OfflinePayment {
-            paymentID = offline.localID
-            card = "Card (offline)"
-            record("Offline payment \(paymentID) \(offline.status.description)")
+            record("Offline payment \(offline.localID) \(offline.status.description)")
         }
-        let total = Int(payment.totalMoney.amount)
-        guard let pending else {
-            record("Payment \(paymentID) finished without a pending order")
-            finish(.failed(.paidWithoutOrder))
+        guard continuation != nil else {
+            record("Payment \(Self.tender(of: payment).paymentID) finished without a pending order")
             return
         }
-        let receipt = Receipt(
-            merchantName: merchantName, eventName: Config.eventName, date: Date(), orderNumber: pending.number,
-            orderRef: pending.checkout.orderRef, customerName: pending.name, squareOrderID: payment.orderID ?? pending.order.id, paymentID: paymentID,
-            cardDescription: card, lines: pending.order.lines,
-            subtotalCents: total - pending.order.taxCents, taxCents: pending.order.taxCents, totalCents: total,
-            isSimulated: false, checkoutID: pending.checkout.id, receiptToken: pending.checkout.receiptToken
-        )
-        finish(.succeeded(receipt))
+        finish(.finished(payment))
     }
 
     func paymentManager(_ paymentManager: PaymentManager, didFail payment: Payment, withError error: Error) {
-        finish(paymentFailed(error))
+        finish(.failed(payment, error))
     }
 
     func paymentManager(_ paymentManager: PaymentManager, didCancel payment: Payment) {

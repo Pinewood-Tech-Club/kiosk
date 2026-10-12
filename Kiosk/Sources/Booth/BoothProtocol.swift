@@ -588,6 +588,9 @@ struct BoothOrder: Codable, Equatable, Sendable {
     let receiptToken: String?
     let items: [Item]
     let lines: [Line]
+    let giftCardPaymentId: String?
+    let giftCardCents: Int?
+    let giftCardLast4: String?
 
     init(receipt: Receipt, quote: OrderQuote) {
         id = receipt.checkoutID
@@ -609,5 +612,8 @@ struct BoothOrder: Codable, Equatable, Sendable {
             Item(vessel: $0.item.vessel.rawValue, flavors: $0.item.flavors.map(\.rawValue), toppings: $0.item.toppings.map(\.rawValue))
         }
         lines = receipt.lines.map { Line(title: $0.title, detail: $0.detail, cents: $0.cents) }
+        giftCardPaymentId = receipt.giftCard?.paymentID
+        giftCardCents = receipt.giftCard?.cents
+        giftCardLast4 = receipt.giftCard?.last4
     }
 }

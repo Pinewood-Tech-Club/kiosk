@@ -306,6 +306,13 @@ private struct ReceiptView: View {
                 Text(receipt.totalCents.formattedAsUSD).font(Theme.serif(30, .bold)).monospacedDigit()
             }
             .padding(.top, 6)
+            if let gift = receipt.giftCard {
+                amountRow("Gift card •••• \(gift.last4)", gift.cents)
+                    .padding(.top, 6)
+                if receipt.cardCents > 0 {
+                    amountRow(receipt.cardDescription.components(separatedBy: " + ").first ?? "Card", receipt.cardCents)
+                }
+            }
         }
     }
 
@@ -316,6 +323,9 @@ private struct ReceiptView: View {
                 Text(receipt.merchantName).font(Theme.sans(13))
             }
             Text("Payment \(receipt.paymentID)")
+            if let gift = receipt.giftCard, gift.paymentID != receipt.paymentID {
+                Text("Gift card payment \(gift.paymentID)")
+            }
             Text("Square order \(receipt.squareOrderID)")
             if receipt.isSimulated {
                 Text("Test mode · simulated payment")

@@ -31,7 +31,7 @@ enum PaymentProblem: Equatable {
         case .cardDidNotGoThrough:
             ["Your card wasn't charged.", "Please try again, or use a different card."]
         case .timedOut:
-            ["Your card wasn't charged.", "Tap Check Out to try again."]
+            ["Your card wasn't charged.", "Tap Pay with card to try again."]
         case .offline, .readerNotReady, .paymentsPaused, .needsStaff:
             ["Your card wasn't charged.", "Your order is saved. Please ask a staff member for help."]
         case .stillFinishing:

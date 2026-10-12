@@ -79,6 +79,15 @@ struct RootView: View {
                     .zIndex(1)
             }
 
+            if shows(.name), let giftCard = app.giftCard {
+                GiftCardView(checkout: giftCard)
+                    .background(Theme.background)
+                    .opacity(app.screen == .name ? 1 : 0)
+                    .allowsHitTesting(app.screen == .name)
+                    .transition(.opacity)
+                    .zIndex(1.5)
+            }
+
             AttractView(app: app, isActive: app.screen == .attract)
                 .opacity(app.screen == .attract ? 1 : 0)
                 .allowsHitTesting(app.screen == .attract)

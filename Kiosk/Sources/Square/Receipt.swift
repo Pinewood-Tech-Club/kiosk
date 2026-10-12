@@ -1,5 +1,11 @@
 import Foundation
 
+struct GiftCardTender: Equatable, Sendable {
+    let paymentID: String
+    let cents: Int
+    let last4: String
+}
+
 struct Receipt: Sendable {
     struct Line: Identifiable, Sendable {
         let id = UUID()
@@ -26,6 +32,9 @@ struct Receipt: Sendable {
     let isSimulated: Bool
     let checkoutID: String
     let receiptToken: String
+    var giftCard: GiftCardTender? = nil
+
+    var cardCents: Int { totalCents - (giftCard?.cents ?? 0) }
 
     var receiptURL: URL? {
         BoothConfig.publicBaseURL?.appending(path: "r/\(receiptToken)")
