@@ -246,7 +246,7 @@ struct BuilderForeground: View {
             switch app.step {
             case .vessel: vesselCards.transition(stepFade)
             case .flavors: flavorCards.transition(stepFade)
-            case .toppings: EmptyView()
+            case .toppings: ToppingSoldOutVeils(app: app).transition(stepFade)
             }
 
             previousStepButton

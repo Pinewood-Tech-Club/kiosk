@@ -127,18 +127,67 @@ private struct ToppingCardFace: View {
     let topping: Topping
 
     var body: some View {
+        let soldOut = app.booth.isSoldOut(topping)
         ZStack {
-            CardBackground(highlighted: app.hasTopping(topping))
+            CardBackground(highlighted: app.hasTopping(topping), dimmed: soldOut)
             if !app.stageDrawsToppingIcons {
                 ToppingGlyph(topping: topping, size: Layout.toppingIconSize.height * 0.8)
                     .offset(y: Layout.toppingIconOffsetY)
             }
-            CardCaption(title: topping.title) {
-                Text("+\(topping.priceCents.formattedAsUSD)").monospacedDigit()
+            if !soldOut {
+                ToppingCaption(topping: topping, soldOut: false)
             }
         }
         .frame(width: Layout.cardSize.width, height: Layout.cardSize.height)
         .modifier(PressEffect(pressed: app.pressedCards.contains(.topping(topping))))
+    }
+}
+
+private struct ToppingCaption: View {
+    let topping: Topping
+    let soldOut: Bool
+
+    var body: some View {
+        CardCaption(title: topping.title) {
+            Text(soldOut ? "Sold out" : "+\(topping.priceCents.formattedAsUSD)")
+                .font(Theme.sans(18, soldOut ? .semibold : .medium))
+                .monospacedDigit()
+                .foregroundStyle(soldOut ? Theme.text : Theme.textSecondary)
+        }
+    }
+}
+
+/// The sold-out veil the vessel and flavor cards draw over their 3D icons. The carousel's faces sit beneath the
+/// stage, so this draws above it, at the same latched offset and edge fade, with the caption on top of the veil.
+struct ToppingSoldOutVeils: View {
+    let app: AppModel
+
+    var body: some View {
+        let band = Layout.toppingCarouselRect
+        HStack(spacing: Layout.cardSpacing) {
+            ForEach(Topping.allCases) { topping in
+                let soldOut = app.booth.isSoldOut(topping)
+                ZStack {
+                    if soldOut {
+                        ToppingCaption(topping: topping, soldOut: true)
+                            .background {
+                                RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
+                                    .fill(Theme.background.opacity(0.7))
+                            }
+                            .transition(.opacity)
+                    }
+                }
+                .frame(width: Layout.cardSize.width, height: Layout.cardSize.height)
+                .modifier(PressEffect(pressed: app.pressedCards.contains(.topping(topping))))
+                .animation(.easeInOut(duration: 0.25), value: soldOut)
+            }
+        }
+        .fixedSize()
+        .offset(x: Layout.toppingCarouselMargin - app.stage.toppingScroll.offset)
+        .frame(width: band.width, height: band.height, alignment: .leading)
+        .mask { CarouselEdgeFade() }
+        .position(x: band.midX, y: band.midY)
+        .allowsHitTesting(false)
     }
 }
 
@@ -148,6 +197,7 @@ private struct ToppingCardButton: View {
 
     var body: some View {
         let selected = app.hasTopping(topping)
+        let soldOut = app.booth.isSoldOut(topping)
         let price = "+\(topping.priceCents.formattedAsUSD)"
         Button { app.toggleTopping(topping) } label: {
             Color.clear
@@ -155,8 +205,9 @@ private struct ToppingCardButton: View {
                 .contentShape(.rect(cornerRadius: Layout.cardCornerRadius))
         }
         .buttonStyle(CardPressStyle { app.setPressed(.topping(topping), $0) })
+        .disabled(soldOut && !selected)
         .accessibilityLabel(topping.title)
-        .accessibilityValue(selected ? "Added" : price)
+        .accessibilityValue(selected ? "Added" : soldOut ? "Sold out" : price)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("topping-\(topping.rawValue)")
     }
