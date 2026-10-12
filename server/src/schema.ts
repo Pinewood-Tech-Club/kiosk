@@ -11,6 +11,8 @@ export const FlavorId = z.string().regex(/^[a-z0-9_-]{1,32}$/);
 
 export const ToppingId = z.string().regex(/^[a-z0-9_-]{1,32}$/);
 export const ReceiptToken = z.string().regex(/^[A-Za-z0-9_-]{22,64}$/, "22 to 64 of A-Z a-z 0-9 _ -");
+export const OrderRef = z.string().regex(/^[A-Za-z0-9-]{1,24}$/, "1 to 24 of A-Z a-z 0-9 -");
+export const KioskName = text(40);
 
 export const ORDER_STATUSES = ["paid", "preparing", "ready", "collected", "canceled"] as const;
 export const OrderStatus = z.enum(ORDER_STATUSES);
@@ -45,6 +47,7 @@ export const KioskHealth = z.object({
   lastError: text(500).nullable().default(null),
   lastErrorAt: text(64).nullable().default(null),
   flavors: z.array(Flavor).min(1).max(24).optional(),
+  kioskName: KioskName.optional(),
 });
 export type KioskHealth = z.infer<typeof KioskHealth>;
 
@@ -63,7 +66,10 @@ export const Action = z.discriminatedUnion("type", [
   z.object({ id, type: z.literal("ack"), alertId: z.string().min(1).max(64), by: text(40).optional() }),
   z.object({ id, type: z.literal("setSoldOut"), flavor: FlavorId, soldOut: z.boolean(), by: text(40).optional() }),
   z.object({ id, type: z.literal("setOrderStatus"), orderId: id, status: OrderStatus, by: text(40).optional() }),
-  z.object({ id, type: z.literal("setKioskOpen"), open: z.boolean(), by: text(40).optional() }),
+  z.object({ id, type: z.literal("setKioskOpen"), open: z.boolean(), kiosk: DeviceId.optional(), by: text(40).optional() }),
+  z.object({ id, type: z.literal("renameKiosk"), kiosk: DeviceId, name: KioskName, by: text(40).optional() }),
+  z.object({ id, type: z.literal("setKioskDebug"), kiosk: DeviceId, debug: z.boolean(), by: text(40).optional() }),
+  z.object({ id, type: z.literal("removeKiosk"), kiosk: DeviceId, by: text(40).optional() }),
 ]);
 export type Action = z.infer<typeof Action>;
 
@@ -72,7 +78,7 @@ export const EventsBody = z.object({ events: z.array(z.unknown()).min(1).max(100
 export const ActionsBody = z.object({ actions: z.array(z.unknown()).min(1).max(50) });
 
 export const ClientMessage = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("heartbeat"), t: z.number().finite().optional(), screen: text(40).optional() }),
+  z.object({ type: z.literal("heartbeat"), t: z.number().finite().optional(), screen: text(40).optional(), name: KioskName.optional() }),
   z.object({ type: z.literal("ping"), t: z.number().finite().optional() }),
   z.object({ type: z.literal("sync") }),
   z.object({ type: z.literal("event"), event: z.unknown() }),
@@ -108,6 +114,7 @@ export const Order = z.object({
   paidAt: timestamp,
   appVersion: text(40).optional(),
   receiptToken: ReceiptToken.nullable().optional(),
+  orderRef: OrderRef.nullable().optional(),
   items: z
     .array(z.object({ vessel: text(20), flavors: z.array(text(32)).max(10), toppings: z.array(text(32)).max(20).optional() }))
     .min(1)
@@ -126,6 +133,7 @@ export const CheckoutBody = z.object({
   id,
   receiptToken: ReceiptToken,
   orderNumber: z.number().int().min(0).max(1_000_000_000).optional(),
+  orderRef: OrderRef.optional(),
   customerName: text(80).pipe(z.string().min(1)),
   sourceName: text(80).optional(),
   locationId: z.string().max(64).optional(),

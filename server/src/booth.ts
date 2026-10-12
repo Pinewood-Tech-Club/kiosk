@@ -1,7 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   DEFAULT_FLAVORS,
-  HELP_TITLES,
+  defaultKioskName,
+  helpTitle,
+  kioskTag,
   type Alert,
   type AlertKind,
   type ApiError,
@@ -9,6 +11,7 @@ import {
   type Change,
   type FlavorState,
   type ItemResult,
+  type KioskEntry,
   type KioskState,
   type OrderSummary,
   type KioskOpen,
@@ -30,6 +33,8 @@ const RETENTION_MS = 7 * 24 * 60 * 60_000;
 export const OPEN_ORDER_STATUSES: OrderStatus[] = ["paid", "preparing", "ready"];
 const RECENT_ORDERS_MS = 3 * 60 * 60_000;
 const MAX_FEED_ORDERS = 100;
+export const MAX_KIOSKS = 20;
+const SCHEMA_VERSION = 2;
 
 interface Attachment {
   role: Role;
@@ -55,8 +60,11 @@ interface AlertRow {
   acked_at: number | null;
   acked_by: string | null;
   resolved_at: number | null;
+  kiosk_id: string | null;
   [column: string]: SqlStorageValue;
 }
+
+type Conditions = Record<string, Record<string, number>>;
 
 const EMPTY_KIOSK: KioskState = {
   connected: false,
@@ -81,7 +89,23 @@ function toAlert(row: AlertRow): Alert {
     ackedAt: row.acked_at,
     ackedBy: row.acked_by,
     resolvedAt: row.resolved_at,
+    kioskId: row.kiosk_id ?? null,
   };
+}
+
+function cleanName(raw: string | null | undefined): string | null {
+  const name = (raw ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+  return name || null;
+}
+
+function displayName(entry: Pick<KioskEntry, "id" | "customName" | "reportedName">): string {
+  return entry.customName ?? entry.reportedName ?? defaultKioskName(entry.id);
+}
+
+function legacyKiosk(entry: KioskEntry | undefined): KioskState {
+  if (!entry) return { ...EMPTY_KIOSK };
+  const { connected, online, lastSeenAt, screen, health, healthAt } = entry;
+  return { connected, online, lastSeenAt, screen, health, healthAt };
 }
 
 function rejected(id: string, code: string, message: string): ItemResult {
@@ -123,7 +147,7 @@ export function healthConditions(health: KioskHealth | null): Map<string, Condit
   const ipad = health.deviceBattery;
   if (ipad && ipad.percent >= 0 && ipad.percent <= LOW_BATTERY_PERCENT && !ipad.charging) {
     conditions.set("health:ipad-battery", {
-      title: `Kiosk iPad battery low (${Math.round(ipad.percent)}%)`,
+      title: `iPad battery low (${Math.round(ipad.percent)}%)`,
       detail: "Plug the kiosk iPad in.",
     });
   }
@@ -185,7 +209,25 @@ export class Booth extends DurableObject<Env> {
           updated_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS orders_feed_paid ON orders_feed (paid_at);
+        CREATE TABLE IF NOT EXISTS kiosks (
+          id TEXT PRIMARY KEY,
+          data TEXT NOT NULL,
+          first_seen INTEGER NOT NULL
+        );
       `);
+      if ((this.getMeta<number>("schema") ?? 1) < SCHEMA_VERSION) this.migrate(Date.now());
+    });
+  }
+
+  /** Version 2 keeps one entry per kiosk device. The single-kiosk state and its alerts can't be attributed to a device. */
+  private migrate(now: number) {
+    this.transaction(() => {
+      this.sql.exec("ALTER TABLE alerts ADD COLUMN kiosk_id TEXT");
+      for (const row of this.sql.exec<AlertRow>("SELECT * FROM alerts WHERE kind IN ('offline', 'health') AND resolved_at IS NULL").toArray()) {
+        this.updateAlert(row.id, { resolved_at: now }, now);
+      }
+      for (const key of ["kiosk", "kioskOpen", "conditions"]) this.sql.exec("DELETE FROM meta WHERE key = ?", key);
+      this.putMeta("schema", SCHEMA_VERSION);
     });
   }
 
@@ -206,8 +248,10 @@ export class Booth extends DurableObject<Env> {
     if (role === "kiosk") {
       // Restart the health grace periods: a relaunching app briefly reports no reader, and that must not
       // count against the time it was away.
-      this.putMeta("conditions", {});
-      this.kioskContact(now, { connected: true });
+      const conditions = this.getMeta<Conditions>("conditions") ?? {};
+      delete conditions[device];
+      this.putMeta("conditions", conditions);
+      this.kioskContact(device, now, { connected: true });
       await this.evaluate(now);
     }
     this.flushPatches();
@@ -275,7 +319,11 @@ export class Booth extends DurableObject<Env> {
       case "heartbeat":
       case "ping":
         if (role === "kiosk") {
-          this.kioskContact(now, { connected: true, screen: msg.type === "heartbeat" ? msg.screen : undefined });
+          this.kioskContact(device, now, {
+            connected: true,
+            screen: msg.type === "heartbeat" ? msg.screen : undefined,
+            name: msg.type === "heartbeat" ? msg.name : undefined,
+          });
           await this.evaluate(now);
         }
         this.send(ws, {
@@ -283,7 +331,7 @@ export class Booth extends DurableObject<Env> {
           t: msg.t ?? null,
           rev: this.rev(),
           serverTime: now,
-          kioskLastSeenAt: this.kiosk().lastSeenAt,
+          kioskLastSeenAt: role === "kiosk" ? this.kioskEntry(device)?.lastSeenAt ?? null : this.lastKioskContact(),
         });
         break;
       case "sync":
@@ -324,9 +372,11 @@ export class Booth extends DurableObject<Env> {
     this.flood.delete(ws);
     const attachment = ws.deserializeAttachment() as Attachment | null;
     if (attachment?.role !== "kiosk") return;
-    const others = this.ctx.getWebSockets("kiosk").filter((s) => s !== ws && s.readyState === WebSocket.OPEN);
-    if (others.length === 0 && this.kiosk().connected) {
-      this.setKiosk({ ...this.kiosk(), connected: false });
+    const others = this.ctx.getWebSockets(`device:${attachment.device}`).filter((s) => s !== ws && s.readyState === WebSocket.OPEN);
+    const entry = this.kioskEntry(attachment.device);
+    if (others.length === 0 && entry?.connected) {
+      this.putKiosk({ ...entry, connected: false });
+      this.commitKiosks();
     }
   }
 
@@ -341,10 +391,10 @@ export class Booth extends DurableObject<Env> {
   }
 
   /** Any authenticated kiosk upload proves the kiosk is alive, even when its websocket can't connect. */
-  async noteKioskContact(): Promise<void> {
+  async noteKioskContact(device: string): Promise<void> {
     const now = Date.now();
     try {
-      this.kioskContact(now, {});
+      this.kioskContact(device, now, {});
       await this.evaluate(now);
     } finally {
       this.flushPatches();
@@ -392,6 +442,7 @@ export class Booth extends DurableObject<Env> {
 
   private async ingest(device: string, items: unknown[], now: number): Promise<{ results: ItemResult[]; rev: number }> {
     const results: ItemResult[] = [];
+    this.kioskContact(device, now, {});
     for (const item of items) {
       const parsed = Event.safeParse(item);
       if (!parsed.success) {
@@ -406,7 +457,7 @@ export class Booth extends DurableObject<Env> {
       }
       const result = this.transaction(() => {
         const outcome = event.type === "help"
-          ? this.help(event.reason, event.message, now)
+          ? this.help(device, event.reason, event.message, now)
           : this.health(device, event.seq, event.health, now);
         const stored: ItemResult = { id: event.id, ...outcome };
         this.sql.exec("INSERT INTO processed (device, id, result, at) VALUES (?, ?, ?, ?)", device, event.id, JSON.stringify(stored), now);
@@ -414,7 +465,6 @@ export class Booth extends DurableObject<Env> {
       });
       results.push(result);
     }
-    this.kioskContact(now, {});
     await this.evaluate(now);
     return { results, rev: this.rev() };
   }
@@ -434,13 +484,17 @@ export class Booth extends DurableObject<Env> {
         continue;
       }
       const result = this.transaction(() => {
-        const error = action.type === "ack"
-          ? this.ack(action.alertId, action.by ?? null, now)
-          : action.type === "setSoldOut"
-            ? this.setSoldOut(action.flavor, action.soldOut, action.by ?? null, now)
-            : action.type === "setKioskOpen"
-              ? this.setKioskOpen(action.open, action.by ?? null, now)
-              : this.setOrderStatus(action.orderId, action.status, action.by ?? null, now);
+        const by = action.by ?? null;
+        let error: ApiError | null;
+        switch (action.type) {
+          case "ack": error = this.ack(action.alertId, by, now); break;
+          case "setSoldOut": error = this.setSoldOut(action.flavor, action.soldOut, by, now); break;
+          case "setKioskOpen": error = this.setKioskOpen(action.kiosk ?? null, action.open, by, now); break;
+          case "renameKiosk": error = this.renameKiosk(action.kiosk, action.name, now); break;
+          case "setKioskDebug": error = this.setKioskDebug(action.kiosk, action.debug); break;
+          case "removeKiosk": error = this.removeKiosk(action.kiosk, now); break;
+          case "setOrderStatus": error = this.setOrderStatus(action.orderId, action.status, by, now); break;
+        }
         const stored: ItemResult = error ? { id: action.id, status: "rejected", error } : { id: action.id, status: "ok" };
         this.sql.exec("INSERT INTO processed (device, id, result, at) VALUES (?, ?, ?, ?)", device, action.id, JSON.stringify(stored), now);
         return stored;
@@ -457,9 +511,10 @@ export class Booth extends DurableObject<Env> {
 
   // MARK: State changes
 
-  private help(reason: HelpReason, message: string | undefined, now: number): Omit<ItemResult, "id"> {
-    const key = `help:${reason}`;
-    const detail = message?.trim() || "From the kiosk.";
+  private help(device: string, reason: HelpReason, message: string | undefined, now: number): Omit<ItemResult, "id"> {
+    const key = `help:${reason}:${device}`;
+    const name = this.kioskEntry(device)?.name ?? defaultKioskName(device);
+    const detail = message?.trim() || `From ${name}.`;
     const recent = this.sql
       .exec<AlertRow>(
         "SELECT * FROM alerts WHERE key = ? AND acked_at IS NULL AND resolved_at IS NULL AND updated_at > ? ORDER BY updated_at DESC LIMIT 1",
@@ -469,7 +524,7 @@ export class Booth extends DurableObject<Env> {
       .toArray()[0];
     const alert = recent
       ? this.updateAlert(recent.id, { count: recent.count + 1, detail }, now)
-      : this.createAlert({ key, kind: "help", severity: "urgent", title: HELP_TITLES[reason], detail }, now);
+      : this.createAlert({ key, kind: "help", severity: "urgent", title: helpTitle(reason, name), detail, kioskId: device }, now);
     return { status: "ok", alertId: alert.id };
   }
 
@@ -479,7 +534,11 @@ export class Booth extends DurableObject<Env> {
     seqs[device] = seq;
     this.putMeta("healthSeq", seqs);
     if (health.flavors) this.setFlavorList(health.flavors);
-    this.setKiosk({ ...this.kiosk(), health, healthAt: now, screen: health.screen || this.kiosk().screen });
+    const entry = this.kioskEntry(device) ?? this.newKiosk(device, now);
+    const reportedName = health.kioskName !== undefined ? cleanName(health.kioskName) : entry.reportedName;
+    const next: KioskEntry = { ...entry, health, healthAt: now, screen: health.screen || entry.screen, reportedName };
+    this.putKiosk({ ...next, name: displayName(next) });
+    this.commitKiosks();
     return { status: "ok" };
   }
 
@@ -538,77 +597,177 @@ export class Booth extends DurableObject<Env> {
     }
   }
 
-  private kioskContact(now: number, update: { connected?: boolean; screen?: string }) {
-    const kiosk = this.kiosk();
-    const next: KioskState = {
+  private newKiosk(device: string, now: number): KioskEntry {
+    return {
+      id: device, name: defaultKioskName(device), customName: null, reportedName: null, tag: kioskTag(device),
+      open: true, openChangedAt: null, openChangedBy: null, debug: false,
+      connected: false, online: false, lastSeenAt: null, firstSeenAt: now, screen: null, health: null, healthAt: null,
+    };
+  }
+
+  private kioskContact(device: string, now: number, update: { connected?: boolean; screen?: string; name?: string }) {
+    const existing = this.kioskEntry(device);
+    const kiosk = existing ?? this.newKiosk(device, now);
+    const reportedName = update.name !== undefined ? cleanName(update.name) : kiosk.reportedName;
+    const next: KioskEntry = {
       ...kiosk,
       lastSeenAt: now,
       online: true,
       connected: update.connected ?? kiosk.connected,
       screen: update.screen ?? kiosk.screen,
+      reportedName,
     };
-    const visible = next.online !== kiosk.online || next.connected !== kiosk.connected || next.screen !== kiosk.screen;
-    if (visible) {
-      this.setKiosk(next);
-    } else {
-      this.putMeta("kiosk", next);
-    }
+    next.name = displayName(next);
+    this.putKiosk(next);
+    const visible = !existing || next.online !== kiosk.online || next.connected !== kiosk.connected || next.screen !== kiosk.screen || next.name !== kiosk.name;
+    if (!existing) this.pruneKiosks(now);
+    if (visible) this.commitKiosks();
+    if (existing && next.name !== kiosk.name) this.retitleAlerts(device, kiosk.name, next.name, now);
     if (!kiosk.online) {
-      for (const row of this.unresolved("offline")) {
+      for (const row of this.unresolved(`offline:${device}`)) {
         this.updateAlert(row.id, { resolved_at: now, detail: `Back online after ${formatDuration(now - row.created_at)}.` }, now);
       }
     }
   }
 
-  /** Raises Kiosk offline and health alerts once their deadlines pass, then arms the alarm for the next one. */
+  /** Raises offline and health alerts per kiosk once their deadlines pass, then arms the alarm for the next one. */
   async evaluate(now: number): Promise<void> {
-    const kiosk = this.kiosk();
     const deadlines: number[] = [];
+    const stored = this.getMeta<Conditions>("conditions") ?? {};
+    const pending: Conditions = {};
+    let changed = false;
 
-    if (kiosk.lastSeenAt !== null && kiosk.online) {
-      const silentFor = now - kiosk.lastSeenAt;
-      if (silentFor >= OFFLINE_AFTER_MS) {
-        this.setKiosk({ ...kiosk, online: false });
-        if (this.unresolved("offline").length === 0) {
-          this.createAlert({
-            key: "offline",
-            kind: "offline",
-            severity: "urgent",
-            title: "Kiosk offline",
-            detail: `No contact for ${Math.round(silentFor / 1000)} s. Check the iPad, its Wi-Fi and the app.`,
-          }, now);
+    for (const kiosk of this.kiosks()) {
+      let entry = kiosk;
+      if (entry.lastSeenAt !== null && entry.online) {
+        const silentFor = now - entry.lastSeenAt;
+        if (silentFor >= OFFLINE_AFTER_MS) {
+          entry = { ...entry, online: false };
+          this.putKiosk(entry);
+          changed = true;
+          if (this.unresolved(`offline:${entry.id}`).length === 0) {
+            this.createAlert({
+              key: `offline:${entry.id}`,
+              kind: "offline",
+              severity: entry.open ? "urgent" : "warning",
+              title: `${entry.name} is offline`,
+              detail: `No contact for ${Math.round(silentFor / 1000)} s. Check the iPad, its Wi-Fi and the app.`,
+              kioskId: entry.id,
+            }, now);
+          }
+        } else {
+          deadlines.push(entry.lastSeenAt + OFFLINE_AFTER_MS);
         }
-      } else {
-        deadlines.push(kiosk.lastSeenAt + OFFLINE_AFTER_MS);
       }
-    }
 
-    const online = this.kiosk().online;
-    const conditions = healthConditions(kiosk.health);
-    const stored = this.getMeta<Record<string, number>>("conditions") ?? {};
-    const pending: Record<string, number> = {};
-    for (const row of this.sql.exec<AlertRow>("SELECT * FROM alerts WHERE kind = 'health' AND resolved_at IS NULL").toArray()) {
-      if (!conditions.has(row.key)) this.updateAlert(row.id, { resolved_at: now }, now);
-    }
-    for (const [key, condition] of conditions) {
-      pending[key] = stored[key] ?? now;
-      const open = this.unresolved(key)[0];
-      if (open) {
-        if (open.title !== condition.title || open.detail !== condition.detail) {
-          this.updateAlert(open.id, { title: condition.title, detail: condition.detail }, now, false);
-        }
-      } else if (online && now - pending[key] >= HEALTH_GRACE_MS) {
-        this.createAlert({ key, kind: "health", severity: "warning", ...condition }, now);
-      } else if (online) {
-        deadlines.push(pending[key] + HEALTH_GRACE_MS);
+      const conditions = new Map([...healthConditions(entry.health)].map(([key, c]) => [
+        `${key}:${entry.id}`,
+        { title: `${c.title} at ${entry.name}`, detail: c.detail },
+      ]));
+      for (const row of this.sql.exec<AlertRow>("SELECT * FROM alerts WHERE kind = 'health' AND kiosk_id = ? AND resolved_at IS NULL", entry.id).toArray()) {
+        if (!conditions.has(row.key)) this.updateAlert(row.id, { resolved_at: now }, now);
       }
+      const since: Record<string, number> = {};
+      for (const [key, condition] of conditions) {
+        since[key] = stored[entry.id]?.[key] ?? now;
+        const open = this.unresolved(key)[0];
+        if (open) {
+          if (open.title !== condition.title || open.detail !== condition.detail) {
+            this.updateAlert(open.id, { title: condition.title, detail: condition.detail }, now, false);
+          }
+        } else if (entry.online && now - since[key] >= HEALTH_GRACE_MS) {
+          this.createAlert({ key, kind: "health", severity: "warning", ...condition, kioskId: entry.id }, now);
+        } else if (entry.online) {
+          deadlines.push(since[key] + HEALTH_GRACE_MS);
+        }
+      }
+      if (conditions.size > 0) pending[entry.id] = since;
     }
+    if (changed) this.commitKiosks();
     this.putMeta("conditions", pending);
 
     if (deadlines.length > 0) {
       await this.ctx.storage.setAlarm(Math.max(Math.min(...deadlines), now + 1000));
     } else {
       await this.ctx.storage.deleteAlarm();
+    }
+  }
+
+  private setKioskOpen(device: string | null, open: boolean, by: string | null, now: number): ApiError | null {
+    const targets = device === null ? this.kiosks() : [this.kioskEntry(device)].filter((k): k is KioskEntry => k !== null);
+    if (device !== null && targets.length === 0) return { code: "not_found", message: "No such kiosk" };
+    const before = this.legacyOpen();
+    let changed = false;
+    for (const kiosk of targets) {
+      if (kiosk.open === open) continue;
+      this.putKiosk({ ...kiosk, open, openChangedAt: now, openChangedBy: by });
+      changed = true;
+    }
+    if (!changed) return null;
+    this.commitKiosks();
+    const after = this.legacyOpen();
+    if (after.open !== before.open) this.commit({ kind: "kioskOpen", kioskOpen: after });
+    return null;
+  }
+
+  private renameKiosk(device: string, name: string, now: number): ApiError | null {
+    const kiosk = this.kioskEntry(device);
+    if (!kiosk) return { code: "not_found", message: "No such kiosk" };
+    const next = { ...kiosk, customName: cleanName(name) };
+    next.name = displayName(next);
+    if (next.customName === kiosk.customName && next.name === kiosk.name) return null;
+    this.putKiosk(next);
+    this.commitKiosks();
+    if (next.name !== kiosk.name) this.retitleAlerts(device, kiosk.name, next.name, now);
+    return null;
+  }
+
+  private setKioskDebug(device: string, debug: boolean): ApiError | null {
+    const kiosk = this.kioskEntry(device);
+    if (!kiosk) return { code: "not_found", message: "No such kiosk" };
+    if (kiosk.debug === debug) return null;
+    this.putKiosk({ ...kiosk, debug });
+    this.commitKiosks();
+    return null;
+  }
+
+  private removeKiosk(device: string, now: number): ApiError | null {
+    if (!this.kioskEntry(device)) return null;
+    const before = this.legacyOpen();
+    this.forgetKiosk(device, now);
+    this.commitKiosks();
+    const after = this.legacyOpen();
+    if (after.open !== before.open) this.commit({ kind: "kioskOpen", kioskOpen: after });
+    return null;
+  }
+
+  private forgetKiosk(device: string, now: number) {
+    this.sql.exec("DELETE FROM kiosks WHERE id = ?", device);
+    for (const row of this.sql.exec<AlertRow>("SELECT * FROM alerts WHERE kiosk_id = ? AND resolved_at IS NULL", device).toArray()) {
+      this.updateAlert(row.id, { resolved_at: now }, now);
+    }
+    const conditions = this.getMeta<Conditions>("conditions") ?? {};
+    delete conditions[device];
+    this.putMeta("conditions", conditions);
+  }
+
+  /** Keeps the registry small when test devices come and go: the kiosks heard from least recently and now offline go first. */
+  private pruneKiosks(now: number) {
+    const all = this.kiosks();
+    const excess = all.length - MAX_KIOSKS;
+    if (excess <= 0) return;
+    const victims = all.filter((k) => !k.online).sort((a, b) => (a.lastSeenAt ?? 0) - (b.lastSeenAt ?? 0)).slice(0, excess);
+    for (const kiosk of victims) this.forgetKiosk(kiosk.id, now);
+  }
+
+  private retitleAlerts(device: string, from: string, to: string, now: number) {
+    for (const row of this.sql.exec<AlertRow>("SELECT * FROM alerts WHERE kiosk_id = ? AND resolved_at IS NULL", device).toArray()) {
+      const title = row.title.endsWith(` at ${from}`)
+        ? row.title.slice(0, -from.length) + to
+        : row.title.startsWith(`${from} is `)
+          ? to + row.title.slice(from.length)
+          : row.title;
+      if (title !== row.title) this.updateAlert(row.id, { title }, now, false);
     }
   }
 
@@ -635,7 +794,18 @@ export class Booth extends DurableObject<Env> {
       )
       .toArray()
       .map((row) => JSON.parse(row.data) as OrderSummary);
-    return { rev: this.rev(), kioskOpen: this.kioskOpen(), flavors: this.flavors(), kiosk: this.kiosk(), alerts, orders, serverTime: now };
+    const kiosks = this.kiosks();
+    const latest = kiosks.reduce<KioskEntry | undefined>((best, k) => ((k.lastSeenAt ?? -1) > (best?.lastSeenAt ?? -1) ? k : best), undefined);
+    return {
+      rev: this.rev(),
+      kiosks,
+      kioskOpen: this.legacyOpen(),
+      flavors: this.flavors(),
+      kiosk: legacyKiosk(latest),
+      alerts,
+      orders,
+      serverTime: now,
+    };
   }
 
   private rev(): number {
@@ -671,11 +841,14 @@ export class Booth extends DurableObject<Env> {
     }
   }
 
-  private createAlert(input: { key: string; kind: AlertKind; severity: Severity; title: string; detail: string }, now: number): Alert {
+  private createAlert(
+    input: { key: string; kind: AlertKind; severity: Severity; title: string; detail: string; kioskId?: string },
+    now: number,
+  ): Alert {
     const row = this.sql
       .exec<AlertRow>(
-        `INSERT INTO alerts (id, key, kind, severity, title, detail, count, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?) RETURNING *`,
+        `INSERT INTO alerts (id, key, kind, severity, title, detail, count, created_at, updated_at, kiosk_id)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?) RETURNING *`,
         crypto.randomUUID(),
         input.key,
         input.kind,
@@ -684,6 +857,7 @@ export class Booth extends DurableObject<Env> {
         input.detail,
         now,
         now,
+        input.kioskId ?? null,
       )
       .one();
     const alert = toAlert(row);
@@ -715,35 +889,50 @@ export class Booth extends DurableObject<Env> {
     this.sql.exec("DELETE FROM alerts WHERE created_at < ? AND (acked_at IS NOT NULL OR resolved_at IS NOT NULL)", now - RETENTION_MS);
     this.sql.exec("DELETE FROM processed WHERE at < ?", now - RETENTION_MS);
     this.sql.exec("DELETE FROM orders_feed WHERE paid_at < ? AND updated_at < ?", now - RETENTION_MS, now - RETENTION_MS);
+    const forgotten = this.kiosks().filter((k) => !k.online && (k.lastSeenAt ?? k.firstSeenAt) < now - RETENTION_MS);
+    for (const kiosk of forgotten) this.forgetKiosk(kiosk.id, now);
+    if (forgotten.length > 0) this.commitKiosks();
   }
 
-  private kiosk(): KioskState {
-    const stored = { ...EMPTY_KIOSK, ...this.getMeta<Partial<KioskState>>("kiosk") };
+  private kiosks(): KioskEntry[] {
+    return this.sql
+      .exec<{ data: string }>("SELECT data FROM kiosks ORDER BY first_seen, id")
+      .toArray()
+      .map((row) => JSON.parse(row.data) as KioskEntry);
+  }
+
+  private kioskEntry(device: string): KioskEntry | null {
+    const row = this.sql.exec<{ data: string }>("SELECT data FROM kiosks WHERE id = ?", device).toArray()[0];
+    return row ? (JSON.parse(row.data) as KioskEntry) : null;
+  }
+
+  private putKiosk(entry: KioskEntry) {
+    this.sql.exec(
+      "INSERT INTO kiosks (id, data, first_seen) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data",
+      entry.id,
+      JSON.stringify(entry),
+      entry.firstSeenAt,
+    );
+  }
+
+  private commitKiosks() {
+    this.commit({ kind: "kiosks", kiosks: this.kiosks() });
+  }
+
+  private lastKioskContact(): number | null {
+    const seen = this.kiosks().map((k) => k.lastSeenAt).filter((t): t is number => t !== null);
+    return seen.length > 0 ? Math.max(...seen) : null;
+  }
+
+  /** For clients that predate the kiosk registry: open unless every kiosk is closed. */
+  private legacyOpen(): KioskOpen {
+    const kiosks = this.kiosks();
+    const last = kiosks.reduce<KioskEntry | undefined>((best, k) => ((k.openChangedAt ?? -1) > (best?.openChangedAt ?? -1) ? k : best), undefined);
     return {
-      connected: stored.connected,
-      online: stored.online,
-      lastSeenAt: stored.lastSeenAt,
-      screen: stored.screen,
-      health: stored.health,
-      healthAt: stored.healthAt,
+      open: kiosks.length === 0 || kiosks.some((k) => k.open),
+      changedAt: last?.openChangedAt ?? null,
+      changedBy: last?.openChangedBy ?? null,
     };
-  }
-
-  private setKiosk(kiosk: KioskState) {
-    this.putMeta("kiosk", kiosk);
-    this.commit({ kind: "kiosk", kiosk });
-  }
-
-  private kioskOpen(): KioskOpen {
-    return this.getMeta<KioskOpen>("kioskOpen") ?? { open: true, changedAt: null, changedBy: null };
-  }
-
-  private setKioskOpen(open: boolean, by: string | null, now: number): ApiError | null {
-    if (this.kioskOpen().open === open) return null;
-    const kioskOpen: KioskOpen = { open, changedAt: now, changedBy: by };
-    this.putMeta("kioskOpen", kioskOpen);
-    this.commit({ kind: "kioskOpen", kioskOpen });
-    return null;
   }
 
   private flavorList(): { id: string; name: string }[] {

@@ -1,4 +1,4 @@
-export type StaffSection = "make" | "handoff" | "supplies" | "open" | "kiosk" | "feed" | "stats" | "board";
+export type StaffSection = "make" | "handoff" | "supplies" | "kiosks" | "feed" | "stats" | "board";
 
 export interface StaffRole {
   title: string;
@@ -12,27 +12,27 @@ export interface StaffRole {
 export const STAFF_ROLES = {
   scooper: {
     title: "Scooper",
-    summary: "Make list, oldest first, with start and done buttons, sold-out supplies and opening or closing the kiosk.",
+    summary: "Make list, oldest first, with start and done buttons, sold-out supplies and the kiosks.",
     icon: "cone",
     kind: "ipad",
     alerts: "quiet",
-    columns: [["make"], ["open"], ["supplies"]],
+    columns: [["make"], ["kiosks"], ["supplies"]],
   },
   toppings: {
     title: "Toppings",
-    summary: "Help alerts, toppings per order, handing orders off, cancelling, kiosk health and supplies.",
+    summary: "Help alerts, toppings per order, handing orders off, cancelling, the kiosks and supplies.",
     icon: "sparkles",
     kind: "ipad",
     alerts: "front",
-    columns: [["handoff"], ["open", "kiosk"], ["supplies"]],
+    columns: [["handoff"], ["kiosks"], ["supplies"]],
   },
   organizer: {
     title: "Organizer display",
-    summary: "Read-only laptop display: sales stats, the order feed, kiosk health and alerts.",
+    summary: "Read-only laptop display: sales stats, the order feed, each kiosk's status and alerts.",
     icon: "chart",
     kind: "display",
     alerts: "display",
-    columns: [["stats"], ["feed"], ["open", "kiosk", "supplies"]],
+    columns: [["stats"], ["feed"], ["kiosks", "supplies"]],
   },
   board: {
     title: "Order board",

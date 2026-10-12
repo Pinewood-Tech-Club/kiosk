@@ -47,7 +47,8 @@ function receiptLines(order: SquareOrder): ReceiptLine[] {
   }));
 }
 
-export function referenceId(orderNumber: number | undefined): string {
+export function referenceId(orderNumber: number | undefined, orderRef?: string): string {
+  if (orderRef) return `kiosk-${orderRef}`;
   return orderNumber === undefined ? "kiosk" : `kiosk-${String(orderNumber).padStart(4, "0")}`;
 }
 
@@ -57,6 +58,7 @@ function canonical(body: CheckoutBody): string {
     customerName: body.customerName,
     orderNumber: body.orderNumber ?? null,
     receiptToken: body.receiptToken,
+    ...(body.orderRef ? { orderRef: body.orderRef } : {}),
   });
 }
 
@@ -91,7 +93,7 @@ export async function checkout(env: Env, device: string, body: CheckoutBody, now
     console.warn({ event: "checkout-quote-differs", id: body.id, kiosk: body.quotedCents, server: q.totalCents });
   }
   const { catalog, error: catalogError } = await loadCatalog(env, credentials, now);
-  const ref = referenceId(body.orderNumber);
+  const ref = referenceId(body.orderNumber, body.orderRef);
 
   let order: SquareOrder;
   try {
@@ -156,13 +158,13 @@ export async function checkout(env: Env, device: string, body: CheckoutBody, now
   const insert = await withRetry("D1", () =>
     env.DB.prepare(
       `INSERT OR IGNORE INTO checkouts (id, device, request_hash, receipt_token, order_number, customer_name, environment, location_id,
-         square_order_id, total_cents, tax_cents, expected_cents, used_catalog, items, response, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         square_order_id, total_cents, tax_cents, expected_cents, used_catalog, items, response, created_at, order_ref)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         body.id, device, hash, body.receiptToken, body.orderNumber ?? null, body.customerName, credentials.environment,
         credentials.locationId, order.id, totalCents, taxCents, q.totalCents, catalog ? 1 : 0, JSON.stringify(items),
-        JSON.stringify(result), now,
+        JSON.stringify(result), now, body.orderRef ?? null,
       )
       .run(),
   );
@@ -183,7 +185,7 @@ export const routes: Route[] = [
       const client = await authenticate(request, env, ["kiosk"]);
       const body = await readBody(request, CheckoutBody, 64 * 1024);
       const result = await checkout(env, client.device, body);
-      noteKioskContact(env, ctx);
+      noteKioskContact(env, ctx, client.device);
       return json(result);
     },
   },

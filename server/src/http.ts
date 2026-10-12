@@ -182,8 +182,8 @@ export async function callHub<T>(label: string, call: () => Promise<T>): Promise
   }
 }
 
-export function noteKioskContact(env: Env, ctx: ExecutionContext) {
-  ctx.waitUntil(hub(env).noteKioskContact().catch((error) => console.warn({ event: "contact-failed", error: String(error) })));
+export function noteKioskContact(env: Env, ctx: ExecutionContext, device: string) {
+  ctx.waitUntil(hub(env).noteKioskContact(device).catch((error) => console.warn({ event: "contact-failed", error: String(error) })));
 }
 
 export function randomToken(bytes = 16): string {

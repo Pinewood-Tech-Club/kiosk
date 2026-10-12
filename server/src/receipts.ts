@@ -25,6 +25,7 @@ export interface ReceiptRecord {
   source: "order" | "checkout";
   id: string;
   orderNumber: number | null;
+  orderRef: string | null;
   customerName: string | null;
   totalCents: number;
   subtotalCents: number | null;
@@ -42,6 +43,7 @@ export interface ReceiptRecord {
 interface Row {
   id: string;
   order_number: number | null;
+  order_ref?: string | null;
   customer_name: string | null;
   total_cents: number;
   subtotal_cents?: number | null;
@@ -69,7 +71,7 @@ function parse<T>(text: string | null | undefined, fallback: T): T {
 export async function findReceipt(env: Env, token: string): Promise<ReceiptRecord | null> {
   const order = await withRetry("D1", () =>
     env.DB.prepare(
-      `SELECT id, order_number, customer_name, total_cents, subtotal_cents, tax_cents, card, simulated, paid_at, square_payment_id, items, lines, status
+      `SELECT id, order_number, order_ref, customer_name, total_cents, subtotal_cents, tax_cents, card, simulated, paid_at, square_payment_id, items, lines, status
        FROM orders WHERE receipt_token = ?`,
     )
       .bind(token)
@@ -80,6 +82,7 @@ export async function findReceipt(env: Env, token: string): Promise<ReceiptRecor
       source: "order",
       id: order.id,
       orderNumber: order.order_number,
+      orderRef: order.order_ref ?? null,
       customerName: order.customer_name,
       totalCents: order.total_cents,
       subtotalCents: order.subtotal_cents ?? null,
@@ -95,7 +98,7 @@ export async function findReceipt(env: Env, token: string): Promise<ReceiptRecor
     };
   }
   const checkout = await withRetry("D1", () =>
-    env.DB.prepare("SELECT id, order_number, customer_name, total_cents, tax_cents, items, response FROM checkouts WHERE receipt_token = ?")
+    env.DB.prepare("SELECT id, order_number, order_ref, customer_name, total_cents, tax_cents, items, response FROM checkouts WHERE receipt_token = ?")
       .bind(token)
       .first<Row>(),
   );
@@ -105,6 +108,7 @@ export async function findReceipt(env: Env, token: string): Promise<ReceiptRecor
       source: "checkout",
       id: checkout.id,
       orderNumber: checkout.order_number,
+      orderRef: checkout.order_ref ?? null,
       customerName: checkout.customer_name,
       totalCents: checkout.total_cents,
       subtotalCents: null,
@@ -223,7 +227,7 @@ export function notFoundPage(): string {
 export function receiptPage(record: ReceiptRecord, squareUrl: string | null): string {
   const subtotal = record.subtotalCents ?? record.totalCents - (record.taxCents ?? 0);
   const prices = itemPrices(record.items, record.lines, subtotal);
-  const label = record.orderNumber !== null ? `Order ${record.orderNumber}` : "Your order";
+  const label = record.orderRef ? `Order ${record.orderRef}` : record.orderNumber !== null ? `Order ${record.orderNumber}` : "Your order";
   return page(
     `${EVENT_NAME} receipt`,
     `<div class="card"><h1>${escapeHtml(EVENT_NAME)}</h1>

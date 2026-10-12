@@ -100,6 +100,7 @@ function applyChange(state: BoothState, change: Change) {
   if (change.kind === "flavors") state.flavors = change.flavors;
   if (change.kind === "kiosk") state.kiosk = change.kiosk;
   if (change.kind === "kioskOpen") state.kioskOpen = change.kioskOpen;
+  if (change.kind === "kiosks") state.kiosks = change.kiosks;
   if (change.kind === "alert") {
     const index = state.alerts.findIndex((a) => a.id === change.alert.id);
     if (index >= 0) state.alerts[index] = change.alert;
@@ -131,8 +132,11 @@ async function serverState(): Promise<BoothState> {
 
 function comparable(state: BoothState) {
   const alerts = [...state.alerts].sort((a, b) => a.id.localeCompare(b.id));
-  return { rev: state.rev, kioskOpen: state.kioskOpen, flavors: state.flavors, alerts, health: state.kiosk.health, online: state.kiosk.online };
+  const kiosks = state.kiosks.map(({ id, name, open, debug, online, connected, health }) => ({ id, name, open, debug, online, connected, health }));
+  return { rev: state.rev, kioskOpen: state.kioskOpen, flavors: state.flavors, alerts, kiosks };
 }
+
+const kioskIn = (state: BoothState, device: string) => state.kiosks.find((k) => k.id === device);
 
 const healthy = KioskHealth.parse({
   appVersion: "0.1 (1)",
@@ -226,7 +230,7 @@ describe("events", () => {
       ],
     })).body.results as ItemResult[];
     expect(results.map((r) => r.status)).toEqual(["ok", "stale", "stale", "ok", "rejected", "rejected"]);
-    expect((await serverState()).kiosk.health?.appVersion).toBe("six");
+    expect(kioskIn(await serverState(), device)?.health?.appVersion).toBe("six");
   });
 
   it("orders and times out on the server clock, not the client's", async () => {
@@ -285,6 +289,122 @@ describe("kiosk open flag", () => {
     const response = await post("/v1/actions", STAFF, newDevice("s"), { actions: [{ id: "bad-open", type: "setKioskOpen", open: "yes" }, setKioskOpen("fine-open", true)] });
     expect(response.body.results[0].status).toBe("rejected");
     expect(response.body.results[1].status).toBe("ok");
+  });
+});
+
+const act = (device: string, actions: Record<string, unknown>[]) =>
+  post("/v1/actions", STAFF, device, { actions: actions.map((a) => ({ id: crypto.randomUUID(), by: "Test", ...a })) });
+
+describe("kiosk registry", () => {
+  it("keeps one entry per kiosk device with a placeholder, reported and staff-given name", async () => {
+    const staff = await open(STAFF, newDevice("s"));
+    const first = `A1B2C3D4-${crypto.randomUUID().slice(0, 8)}`;
+    const second = newDevice("k");
+    const kiosk = await open(KIOSK, first);
+    const other = await open(KIOSK, second);
+    other.send({ type: "heartbeat", t: Date.now(), screen: "builder", name: "  Adam's   iPad " });
+    await other.next("pong");
+    let state = await serverState();
+    expect(kioskIn(state, first)).toMatchObject({ name: "Kiosk A1B2", tag: "A1B2", open: true, debug: false, connected: true, online: true, customName: null });
+    expect(kioskIn(state, second)).toMatchObject({ name: "Adam's iPad", reportedName: "Adam's iPad", screen: "builder" });
+    expect(state.kiosks.findIndex((k) => k.id === first)).toBeLessThan(state.kiosks.findIndex((k) => k.id === second));
+
+    const device = newDevice("web");
+    expect((await act(device, [{ type: "renameKiosk", kiosk: second, name: "Front table" }])).body.results[0].status).toBe("ok");
+    other.send({ type: "heartbeat", t: Date.now(), screen: "builder", name: "Adam's iPad" });
+    await other.next("pong");
+    expect(kioskIn(await serverState(), second)).toMatchObject({ name: "Front table", customName: "Front table", reportedName: "Adam's iPad" });
+    await act(device, [{ type: "renameKiosk", kiosk: second, name: "" }]);
+    expect(kioskIn(await serverState(), second)?.name).toBe("Adam's iPad");
+    expect((await act(device, [{ type: "renameKiosk", kiosk: "nobody", name: "X" }])).body.results[0].error.code).toBe("not_found");
+
+    await kiosk.settle();
+    await staff.settle();
+    state = await serverState();
+    expect(comparable(staff.state!)).toEqual(comparable(state));
+    expect(comparable(kiosk.state!)).toEqual(comparable(state));
+  });
+
+  it("opens and closes kiosks one at a time or all together, keeping the legacy flag for old clients", async () => {
+    const one = newDevice("k");
+    const two = newDevice("k");
+    const kiosk = await open(KIOSK, one);
+    await open(KIOSK, two);
+    const device = newDevice("web");
+    await act(device, [{ type: "setKioskOpen", open: true }]);
+
+    expect((await act(device, [{ type: "setKioskOpen", kiosk: one, open: false }])).body.results[0].status).toBe("ok");
+    let state = await serverState();
+    expect(kioskIn(state, one)).toMatchObject({ open: false, openChangedBy: "Test" });
+    expect(kioskIn(state, two)?.open).toBe(true);
+    expect(state.kioskOpen.open).toBe(true);
+    await kiosk.settle();
+    expect(kioskIn(kiosk.state!, one)?.open).toBe(false);
+
+    await act(`${device}-all`, [{ type: "setKioskOpen", open: false }]);
+    state = await serverState();
+    expect(state.kiosks.every((k) => !k.open)).toBe(true);
+    expect(state.kioskOpen.open).toBe(false);
+
+    await act(`${device}-again`, [{ type: "setKioskOpen", open: true }]);
+    state = await serverState();
+    expect(state.kiosks.every((k) => k.open)).toBe(true);
+    expect(state.kioskOpen.open).toBe(true);
+    expect((await act(device, [{ type: "setKioskOpen", kiosk: "nobody", open: false }])).body.results[0].error.code).toBe("not_found");
+    await kiosk.settle();
+    expect(comparable(kiosk.state!)).toEqual(comparable(await serverState()));
+  });
+
+  it("switches a kiosk's debug tools without touching the others", async () => {
+    const one = newDevice("k");
+    const two = newDevice("k");
+    const kiosk = await open(KIOSK, one);
+    await open(KIOSK, two);
+    const device = newDevice("web");
+    await act(device, [{ type: "setKioskDebug", kiosk: one, debug: true }]);
+    await kiosk.next("patch", (m) => m.change.kind === "kiosks" && m.change.kiosks.find((k) => k.id === one)?.debug === true);
+    const state = await serverState();
+    expect(kioskIn(state, one)?.debug).toBe(true);
+    expect(kioskIn(state, two)?.debug).toBe(false);
+    const before = state.rev;
+    expect((await act(`${device}-same`, [{ type: "setKioskDebug", kiosk: one, debug: true }])).body.rev).toBe(before);
+    await act(`${device}-off`, [{ type: "setKioskDebug", kiosk: one, debug: false }]);
+    expect(kioskIn(await serverState(), one)?.debug).toBe(false);
+  });
+
+  it("names the kiosk in help alerts, renames open ones and resolves them when the kiosk is removed", async () => {
+    const device = `F00D${crypto.randomUUID().slice(0, 8)}`;
+    const alertId = (await post("/v1/events", KIOSK, device, { events: [help(`${device}-h`, 1)] })).body.results[0].alertId;
+    let alert = (await serverState()).alerts.find((a) => a.id === alertId)!;
+    expect(alert).toMatchObject({ title: "Customer needs help at Kiosk F00D", key: `help:button:${device}`, kioskId: device });
+
+    const other = newDevice("k");
+    const otherAlert = (await post("/v1/events", KIOSK, other, { events: [help(`${other}-h`, 1)] })).body.results[0].alertId;
+    expect(otherAlert).not.toBe(alertId);
+
+    const staff = newDevice("web");
+    await act(staff, [{ type: "renameKiosk", kiosk: device, name: "Adam's iPad" }]);
+    alert = (await serverState()).alerts.find((a) => a.id === alertId)!;
+    expect(alert.title).toBe("Customer needs help at Adam's iPad");
+
+    expect((await act(`${staff}-rm`, [{ type: "removeKiosk", kiosk: device }])).body.results[0].status).toBe("ok");
+    const state = await serverState();
+    expect(kioskIn(state, device)).toBeUndefined();
+    expect(state.alerts.find((a) => a.id === alertId)?.resolvedAt).not.toBeNull();
+    expect(state.alerts.find((a) => a.id === otherAlert)?.resolvedAt).toBeNull();
+    expect((await act(`${staff}-rm2`, [{ type: "removeKiosk", kiosk: device }])).body.results[0].status).toBe("ok");
+  });
+
+  it("raises a closed kiosk's offline alert as a warning, not urgent", async () => {
+    const device = newDevice("k");
+    await post("/v1/logs", KIOSK, device, { lines: [{ id: `closed-${device}`, message: "hi" }] });
+    await new Promise((r) => setTimeout(r, 50));
+    await act(newDevice("web"), [{ type: "setKioskOpen", kiosk: device, open: false }]);
+    const stub = env.BOOTH.getByName("booth");
+    await runInDurableObject(stub, (booth: Booth) => booth.evaluate(Date.now() + OFFLINE_AFTER_MS + 1000));
+    const offline = (await serverState()).alerts.find((a) => a.key === `offline:${device}` && !a.resolvedAt);
+    expect(offline?.severity).toBe("warning");
+    await act(newDevice("web"), [{ type: "removeKiosk", kiosk: device }, { type: "setKioskOpen", open: true }]);
   });
 });
 
@@ -371,25 +491,37 @@ describe("hub", () => {
     expect(await closed).toBe(1008);
   });
 
-  it("raises Kiosk offline from the alarm and resolves it on the next contact", async () => {
+  it("raises an offline alert per kiosk from the alarm and resolves it on that kiosk's next contact", async () => {
     const staff = await open(STAFF, newDevice("s"));
-    const kiosk = await open(KIOSK, newDevice("k"));
-    kiosk.send({ type: "heartbeat", t: Date.now(), screen: "attract" });
+    const device = newDevice("k");
+    const other = newDevice("k");
+    const kiosk = await open(KIOSK, device);
+    const second = await open(KIOSK, other);
+    kiosk.send({ type: "heartbeat", t: Date.now(), screen: "attract", name: "Front iPad" });
     await kiosk.next("pong");
+    second.send({ type: "heartbeat", t: Date.now(), screen: "builder" });
+    await second.next("pong");
 
     const stub = env.BOOTH.getByName("booth");
     await runInDurableObject(stub, (_booth: Booth, state) => {
-      const row = state.storage.sql.exec<{ value: string }>("SELECT value FROM meta WHERE key = 'kiosk'").one();
-      const value = JSON.parse(row.value);
+      const row = state.storage.sql.exec<{ data: string }>("SELECT data FROM kiosks WHERE id = ?", device).one();
+      const value = JSON.parse(row.data);
       value.lastSeenAt = Date.now() - OFFLINE_AFTER_MS - 1000;
-      state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'kiosk'", JSON.stringify(value));
+      state.storage.sql.exec("UPDATE kiosks SET data = ? WHERE id = ?", JSON.stringify(value), device);
     });
     expect(await runDurableObjectAlarm(stub)).toBe(true);
-    const isOffline = (m: Msg<"patch">) => m.change.kind === "alert" && m.change.alert.kind === "offline";
+    const isOffline = (m: Msg<"patch">) => m.change.kind === "alert" && m.change.alert.kind === "offline" && m.change.alert.kioskId === device;
     const offline = await staff.next("patch", (m) => isOffline(m) && !(m.change as { alert: Alert }).alert.resolvedAt);
-    expect((offline.change as { alert: Alert }).alert.title).toBe("Kiosk offline");
+    expect((offline.change as { alert: Alert }).alert).toMatchObject({ title: "Front iPad is offline", severity: "urgent", key: `offline:${device}` });
+    const truth = await serverState();
+    expect(kioskIn(truth, device)?.online).toBe(false);
+    expect(kioskIn(truth, other)?.online).toBe(true);
+    expect(truth.alerts.filter((a) => a.kind === "offline" && a.kioskId === other && !a.resolvedAt)).toEqual([]);
 
-    await post("/v1/logs", KIOSK, newDevice("k"), { lines: [{ id: `contact-${Date.now()}`, message: "hi" }] });
+    await post("/v1/logs", KIOSK, other, { lines: [{ id: `contact-${other}`, message: "hi" }] });
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await serverState()).alerts.find((a) => a.id === (offline.change as { alert: Alert }).alert.id)?.resolvedAt).toBeNull();
+    await post("/v1/logs", KIOSK, device, { lines: [{ id: `contact-${device}`, message: "hi" }] });
     await staff.next("patch", (m) => isOffline(m) && (m.change as { alert: Alert }).alert.resolvedAt !== null, 4000);
     await staff.settle();
     expect(comparable(staff.state!)).toEqual(comparable(await serverState()));
@@ -399,13 +531,13 @@ describe("hub", () => {
     const stub = env.BOOTH.getByName("booth");
     const device = newDevice("k");
     const t0 = Date.now();
-    await stub.ingestEvents(device, [healthEvent("g1", 1, { readerReady: false, readers: [] })], t0);
-    const open = () => serverState().then((s) => s.alerts.filter((a) => a.key === "health:reader" && !a.resolvedAt));
+    await stub.ingestEvents(device, [healthEvent("g1", 1, { readerReady: false, readers: [], kioskName: "Side iPad" })], t0);
+    const open = () => serverState().then((s) => s.alerts.filter((a) => a.key === `health:reader:${device}` && !a.resolvedAt));
     expect(await open()).toEqual([]);
     await stub.ingestEvents(device, [healthEvent("g2", 2, { readerReady: false, readers: [] })], t0 + HEALTH_GRACE_MS - 1000);
     expect(await open()).toEqual([]);
     await runInDurableObject(stub, (booth: Booth) => booth.evaluate(t0 + HEALTH_GRACE_MS + 1));
-    expect((await open()).map((a) => a.title)).toEqual(["No card reader ready"]);
+    expect((await open()).map((a) => [a.title, a.kioskId])).toEqual([["No card reader ready at Side iPad", device]]);
     await stub.ingestEvents(device, [healthEvent("g3", 3)], t0 + HEALTH_GRACE_MS + 2);
     expect(await open()).toEqual([]);
   });
@@ -429,6 +561,31 @@ describe("hub", () => {
     expect((await staff.next("result", (m) => m.id === "evict-b")).status).toBe("ok");
     await staff.settle();
     expect(comparable(staff.state!)).toEqual(comparable(await serverState()));
+  });
+});
+
+describe("hub storage upgrade", () => {
+  it("drops the single-kiosk state and closes its unattributable alerts", async () => {
+    const stub = env.BOOTH.getByName("booth");
+    const legacyId = crypto.randomUUID();
+    await runInDurableObject(stub, (_booth: Booth, state) => {
+      const sql = state.storage.sql;
+      sql.exec("ALTER TABLE alerts DROP COLUMN kiosk_id");
+      sql.exec(
+        "INSERT INTO alerts (id, key, kind, severity, title, detail, count, created_at, updated_at) VALUES (?, 'offline', 'offline', 'urgent', 'Kiosk offline', 'x', 1, ?, ?)",
+        legacyId, Date.now(), Date.now(),
+      );
+      sql.exec("INSERT INTO meta (key, value) VALUES ('kioskOpen', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", JSON.stringify({ open: false, changedAt: 1, changedBy: "Old" }));
+      sql.exec("UPDATE meta SET value = '1' WHERE key = 'schema'");
+    });
+    await evictDurableObject(stub);
+    const state = await serverState();
+    expect(state.alerts.find((a) => a.id === legacyId)?.resolvedAt).not.toBeNull();
+    expect(state.alerts.find((a) => a.id === legacyId)?.kioskId).toBeNull();
+    expect(state.kioskOpen.open).toBe(true);
+    const device = newDevice("k");
+    const alertId = (await post("/v1/events", KIOSK, device, { events: [help(`${device}-up`, 1)] })).body.results[0].alertId;
+    expect((await serverState()).alerts.find((a) => a.id === alertId)?.kioskId).toBe(device);
   });
 });
 

@@ -65,7 +65,7 @@ color:#fff;display:flex;align-items:center;gap:20px;box-shadow:0 10px 30px -8px 
 .list>.row+.row::before{left:36px}
 .empty{padding:26px 32px;font-size:19px;color:var(--label-2);display:flex;align-items:center;gap:10px}
 .who{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:12px;min-width:0}
-.who .num{font-size:20px;font-weight:600;color:var(--label-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.who .num{font-size:15px;font-weight:500;color:var(--label-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .who .name{font-family:var(--serif);font-weight:600;letter-spacing:-.01em;line-height:1.05;min-width:0}
 .base{display:flex;align-items:center;gap:10px;color:var(--label-2);font-weight:500}
 .tops,.scoops{list-style:none}
@@ -88,7 +88,7 @@ color:#fff;display:flex;align-items:center;gap:20px;box-shadow:0 10px 30px -8px 
 .hero+.hero{margin-top:16px}
 .hero .top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
 .hero .name{font-size:64px}
-.hero .num{font-size:24px}
+.hero .num{font-size:17px}
 .hero .state{display:flex;flex-direction:column;align-items:flex-end;gap:6px;padding-top:14px}
 .hero .tag{font-size:20px}
 .hero .tag svg{font-size:24px;stroke-width:2.5}
@@ -140,7 +140,6 @@ details.finished summary h2 svg{font-size:22px;color:var(--label-3);transition:t
 details.finished[open] summary h2 svg{transform:rotate(90deg)}
 .drow{display:flex;align-items:center;gap:18px;min-height:76px;padding:12px 24px 12px 36px}
 .drow .name{font-size:28px}
-.drow .num{font-size:17px}
 .drow .when{flex:1;font-size:17px;color:var(--label-2);text-align:right}
 .drow .when.s-canceled{color:var(--red-ink)}
 .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}
@@ -149,6 +148,7 @@ details.finished[open] summary h2 svg{transform:rotate(90deg)}
 .cell .label{font-size:21px;font-weight:500}
 .cell .sub{font-size:16px;color:var(--label-2);margin-top:3px;font-weight:450}
 .cell .sub.bad{color:var(--red-ink);font-weight:550}
+.cell .sub.warn{color:var(--orange-ink);font-weight:550}
 .cell .value{font-size:19px;color:var(--label-2);text-align:right;overflow-wrap:anywhere}
 .value.bad{color:var(--red-ink);font-weight:550}
 .value.warn{color:var(--orange-ink);font-weight:550}
@@ -192,7 +192,6 @@ details.finished[open] summary h2 svg{transform:rotate(90deg)}
 .bar .n{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
 .frow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 20px;padding:16px 24px;align-items:center}
 .frow .name{font-size:30px}
-.frow .num{font-size:18px}
 .frow .fitems{grid-column:1;font-size:17px;color:var(--label-2)}
 .frow .fside{grid-column:2;grid-row:1/span 2;display:grid;gap:3px;justify-items:end}
 .fstatus{font-size:18px;font-weight:650;color:var(--label-2)}
@@ -202,13 +201,10 @@ details.finished[open] summary h2 svg{transform:rotate(90deg)}
 .board{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:32px;align-items:start}
 .brow{display:flex;align-items:baseline;gap:16px;padding:22px 36px}
 #boardReady .name{font-size:84px}
-#boardReady .num{font-size:30px}
 #boardReady.many{display:grid;grid-template-columns:1fr 1fr}
 #boardReady.many .name{font-size:60px}
 #boardReady.many>*+*::before{display:none}
 #boardMaking .name{font-size:48px;color:rgba(0,0,0,.72)}
-#boardMaking .num{font-size:22px}
-.board .num{color:var(--label-2)}
 .board .section-head h2{font-size:34px}
 .board .section-head>span{font-size:20px}
 .board .empty{font-size:24px;padding:30px 36px}
@@ -247,6 +243,20 @@ dialog p{font-size:18px;color:var(--label-2);line-height:1.4;margin-top:10px;pad
 .dialog-actions .confirm{background:var(--tint);color:#fff;font-weight:700}
 .dialog-actions .confirm.danger{background:var(--red)}
 body.app .web-only{display:none!important}
+body:not(.app) .app-only{display:none!important}
+.kcell{width:100%;text-align:left;min-height:84px}
+button.kcell:active{background:rgba(0,0,0,.04)}
+.kcell .chev{color:var(--label-3);font-size:22px}
+.kglyph{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:20px;color:#fff;background:var(--tint);flex:none}
+.kglyph.off{background:var(--label-3)}
+dialog.sheet{width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;background:var(--bg);padding:22px 22px 28px;border-radius:32px}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.sheet-head h3{min-width:0;overflow-wrap:anywhere}
+.sheet .section-head{margin:24px 0 10px}
+.sheet .section-head h2{font-size:22px}
+.sheet .group+.group{margin-top:16px}
+.field{font:inherit;font-size:21px;border:0;background:none;color:var(--label);flex:1;min-width:0;height:44px}
+.field:focus,.field:focus-visible{outline:none}
 @media (prefers-reduced-motion:reduce){.alert,dialog[open],.spin{animation:none}.switch,.switch::after{transition:none}}
 @media (max-width:1240px){.cols-3{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cols-3>.col:nth-child(2){grid-row:span 2}}
 @media (max-width:760px){
@@ -286,6 +296,7 @@ const ICONS: Record<string, string> = {
   loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
   list: '<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
+  tablet: '<rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><line x1="12" x2="12.01" y1="18" y2="18"/>',
   layout: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
 };
 
@@ -329,8 +340,7 @@ const SECTIONS: Record<StaffSection, (display: boolean) => string> = {
   board: () => `<div class="board"><section><div class="section-head"><h2>Ready for pickup</h2><span id="readyCount"></span></div><div class="group list" id="boardReady"></div></section><section><div class="section-head"><h2>Being made</h2><span id="makingCount"></span></div><div class="group list" id="boardMaking"></div></section></div>`,
   feed: () => `<div class="section-head"><h2>Orders</h2><span id="feedCount"></span></div><div class="group list" id="feed"></div>`,
   supplies: (display) => `<div class="section-head"><h2>Flavors</h2></div><div class="group list" id="soldout"></div>${display ? "" : `<p class="footnote">Switch a flavor off when it runs out. Customers can't choose it on the kiosk until it's switched back on.</p>`}`,
-  open: () => `<div class="section-head"><h2>Kiosk</h2></div><div class="group list" id="openCard"></div>`,
-  kiosk: () => `<div class="group list health" id="health"></div>`,
+  kiosks: (display) => `<div class="section-head"><h2>Kiosks</h2><span id="kioskCount"></span></div><div class="group list" id="kiosks"></div>${display ? "" : `<p class="footnote">Tap a kiosk to rename it, close or reopen it, or turn on its debug tools.</p>`}`,
   stats: () => `<div class="section-head"><h2>Today</h2><span id="updated"></span></div>
 <div class="group tiles">
 <div class="tile wide"><div class="k">Revenue</div><div class="v" id="tRevenue">$0</div><div class="s" id="tAvg"></div></div>
@@ -350,13 +360,14 @@ export function dashboardBody(roleId: string, role: StaffRole): string {
   const main = display
     ? `<main class="cols cols-${role.columns.length}">${role.columns.map(column).join("")}</main>`
     : `<main>${column(first)}${rest.length ? `<div class="split">${rest.map(column).join("")}</div>` : ""}</main>`;
-  const bar = display ? "" : `<button class="navbtn" id="sound" type="button" hidden></button><a class="navbtn web-only" href="/staff">${icon("layout")}Pages</a>${signOut()}`;
+  const bar = display ? "" : `<button class="navbtn" id="sound" type="button" hidden></button><a class="navbtn web-only" href="/staff">${icon("layout")}Pages</a>${signOut()}<button class="navbtn app-only" id="exitStaff" type="button">${icon("logOut")}Exit staff mode</button>`;
   return `<div class="page${display ? " wide" : ""} role-${escapeHtml(roleId)} kind-${role.kind}" id="wrap" data-title="${escapeHtml(role.title)}" data-kind="${role.kind}" data-alerts="${role.alerts}">
 ${nav(role.title, bar)}
 <div class="float"><div id="banner" class="banner" hidden role="status"></div>${role.alerts === "none" ? "" : `<div id="urgent" aria-live="assertive"></div>`}</div>
 ${role.alerts === "none" ? "" : `<section id="alerts" aria-live="polite"></section>`}
 ${main}${role.alerts === "front" ? `<section id="updates" aria-live="polite"></section>` : ""}</div>
 <div id="toast" class="toast" hidden role="status"></div>
+${display ? "" : `<dialog id="kioskSheet" class="sheet" aria-labelledby="ksTitle"><div class="sheet-head"><h3 id="ksTitle"></h3><button class="link" id="ksDone" type="button">Done</button></div><div id="ksNameWrap"></div><div id="ksRest"></div></dialog>`}
 ${display ? "" : `<dialog id="confirm" aria-labelledby="confirmTitle" aria-describedby="confirmText"><h3 id="confirmTitle"></h3><p id="confirmText"></p><div class="dialog-actions"><button class="cancel" id="confirmNo" type="button">Cancel</button><button class="confirm" id="confirmYes" type="button">Confirm</button></div></dialog>`}`;
 }
 
@@ -418,9 +429,27 @@ function toppingName(id){return Object.prototype.hasOwnProperty.call(TOPPINGS,id
 function agoSpan(ms){return '<span data-ago="'+(ms==null?"":ms)+'">'+ago(ms)+"</span>";}
 
 function keyOf(a){
-  return a.type==="ack"?"ack:"+a.alertId:a.type==="setSoldOut"?"flavor:"+a.flavor:a.type==="setKioskOpen"?"open":"order:"+a.orderId;
+  switch(a.type){
+    case "ack":return "ack:"+a.alertId;
+    case "setSoldOut":return "flavor:"+a.flavor;
+    case "setKioskOpen":return a.kiosk?"open:"+a.kiosk:"open:*";
+    case "renameKiosk":return "name:"+a.kiosk;
+    case "setKioskDebug":return "debug:"+a.kiosk;
+    case "removeKiosk":return "remove:"+a.kiosk;
+    default:return "order:"+a.orderId;
+  }
 }
-function valueOf(a){return a.type==="ack"?true:a.type==="setSoldOut"?a.soldOut:a.type==="setKioskOpen"?a.open:a.status;}
+function valueOf(a){
+  switch(a.type){
+    case "ack":case "removeKiosk":return true;
+    case "setSoldOut":return a.soldOut;
+    case "setKioskOpen":return a.open;
+    case "renameKiosk":return a.name;
+    case "setKioskDebug":return a.debug;
+    default:return a.status;
+  }
+}
+function supersedes(key,other){return other===key||(key==="open:*"&&other.indexOf("open:")===0);}
 
 function restoreOutbox(){
   try{
@@ -444,8 +473,8 @@ function intended(key){
 function enqueue(action){
   action.id=uuid();action.by=ACTOR;
   var key=keyOf(action);
-  outbox=outbox.filter(function(e){return e.inFlight||keyOf(e.action)!==key;});
-  delete settled[key];
+  outbox=outbox.filter(function(e){return e.inFlight||!supersedes(key,keyOf(e.action));});
+  Object.keys(settled).forEach(function(k){if(supersedes(key,k))delete settled[k];});
   outbox.push({action:action,queuedAt:Date.now()});
   saveOutbox();
   render();
@@ -526,12 +555,17 @@ function reconcile(){
   if(!state)return;
   var live=isLive(),t=Date.now(),changed=false;
   Object.keys(settled).forEach(function(key){
-    var s=settled[key],actual;
-    if(key.indexOf("flavor:")===0){var f=state.flavors.filter(function(x){return "flavor:"+x.id===key;})[0];actual=f?f.soldOut:undefined;}
-    else if(key.indexOf("order:")===0){var o=state.orders.filter(function(x){return "order:"+x.id===key;})[0];actual=o?o.status:undefined;}
-    else if(key==="open"){actual=!state.kioskOpen||state.kioskOpen.open!==false;}
-    else{var a=state.alerts.filter(function(x){return "ack:"+x.id===key;})[0];actual=!a||a.ackedAt!=null||a.resolvedAt!=null;}
-    if(actual===s.value||(live&&t-s.at>SETTLE_GRACE)){delete settled[key];changed=true;}
+    var s=settled[key],match;
+    var colon=key.indexOf(":"),kind=key.slice(0,colon),id=key.slice(colon+1),k=kioskById(id);
+    if(kind==="flavor"){var f=state.flavors.filter(function(x){return x.id===id;})[0];match=!!f&&f.soldOut===s.value;}
+    else if(kind==="order"){var o=state.orders.filter(function(x){return x.id===id;})[0];match=!!o&&o.status===s.value;}
+    else if(key==="open:*"){match=allKiosks().every(function(x){return x.open===s.value;});}
+    else if(kind==="open"){match=!!k&&k.open===s.value;}
+    else if(kind==="name"){match=!!k&&(k.customName||"")===cleanName(s.value);}
+    else if(kind==="debug"){match=!!k&&k.debug===s.value;}
+    else if(kind==="remove"){match=!k;}
+    else{var a=state.alerts.filter(function(x){return x.id===id;})[0];match=!a||a.ackedAt!=null||a.resolvedAt!=null;}
+    if(match||(live&&t-s.at>SETTLE_GRACE)){delete settled[key];changed=true;}
   });
   return changed;
 }
@@ -548,6 +582,7 @@ function applyPatch(msg){
   if(c.kind==="flavors")state.flavors=c.flavors;
   else if(c.kind==="kiosk")state.kiosk=c.kiosk;
   else if(c.kind==="kioskOpen")state.kioskOpen=c.kioskOpen;
+  else if(c.kind==="kiosks")state.kiosks=c.kiosks;
   else if(c.kind==="alert"){
     var i=state.alerts.findIndex(function(a){return a.id===c.alert.id;});
     if(i>=0)state.alerts[i]=c.alert;else state.alerts.unshift(c.alert);
@@ -855,10 +890,23 @@ function scoopItem(it){
     (t.length?'<div class="then">'+ico("plus")+esc(t.map(toppingName).join(", "))+"</div>":"")+"</div>";
 }
 
-function whoHtml(o){
-  return '<div class="who"><span class="name">'+esc(o.customerName||"Guest")+"</span>"+(o.orderNumber!=null?'<span class="num">#'+o.orderNumber+"</span>":"")+"</div>";
+function orderKiosk(o){
+  if(!o.kioskId||allKiosks().length<2)return "";
+  var k=kioskById(o.kioskId);
+  return k?kioskName(k):"";
 }
-function orderLabel(o){return (o.customerName||"Guest")+(o.orderNumber!=null?" #"+o.orderNumber:"");}
+function orderFine(o){
+  var parts=[];
+  if(o.orderNumber!=null)parts.push("#"+o.orderNumber);
+  var k=orderKiosk(o);
+  if(k)parts.push(k);
+  return parts.join(" · ");
+}
+function whoHtml(o,bare){
+  var fine=bare?"":orderFine(o);
+  return '<div class="who"><span class="name">'+esc(o.customerName||"Guest")+"</span>"+(fine?'<span class="num">'+esc(fine)+"</span>":"")+"</div>";
+}
+function orderLabel(o){return o.customerName||"Guest";}
 function tag(text,icon,cls){return '<span class="tag '+(cls||"")+'">'+ico(icon)+text+"</span>";}
 function ageTag(o){return '<span class="age">'+agoSpan(o.receivedAt)+"</span>";}
 function moveBtn(o,to,label,icon,cls){return '<button class="'+cls+'" type="button" data-order="'+esc(o.id)+'" data-to="'+to+'">'+ico(icon)+label+"</button>";}
@@ -919,7 +967,7 @@ function renderBoard(){
   var all=realOrders();
   var making=all.filter(function(x){return x.s==="paid"||x.s==="preparing";}).sort(byPaid);
   var ready=all.filter(function(x){return x.s==="ready";}).sort(byPaid);
-  var row=function(x){return '<div class="brow">'+whoHtml(x.o)+"</div>";};
+  var row=function(x){return '<div class="brow">'+whoHtml(x.o,true)+"</div>";};
   $("boardReady").className="group list"+(ready.length>4?" many":"");
   $("boardReady").innerHTML=ready.map(row).join("")||'<div class="empty">Nothing waiting for pickup</div>';
   $("boardMaking").innerHTML=making.map(row).join("")||'<div class="empty">Nothing being made</div>';
@@ -935,33 +983,67 @@ function renderSupplies(){
   }).join("")||'<div class="empty">The kiosk hasn\'t reported its flavors yet.</div>';
 }
 
-function kioskIsOpen(){
-  var i=intended("open");
-  if(i)return i.value;
-  return !state||!state.kioskOpen||state.kioskOpen.open!==false;
+function allKiosks(){return state&&state.kiosks||[];}
+function kioskById(id){return allKiosks().filter(function(k){return k.id===id;})[0]||null;}
+function kioskList(){return allKiosks().filter(function(k){return !intended("remove:"+k.id);});}
+function cleanName(v){return String(v==null?"":v).replace(/\s+/g," ").trim().slice(0,40);}
+function defaultName(k){return k.reportedName||"Kiosk "+k.tag;}
+function kioskName(k){var i=intended("name:"+k.id);return i?(cleanName(i.value)||defaultName(k)):k.name;}
+function kioskDebug(k){var i=intended("debug:"+k.id);return i?i.value:k.debug;}
+function kioskOpenNow(k){
+  for(var i=outbox.length-1;i>=0;i--){var a=outbox[i].action;if(a.type==="setKioskOpen"&&(!a.kiosk||a.kiosk===k.id))return a.open;}
+  var one=settled["open:"+k.id],all=settled["open:*"],s=one&&all?(one.at>=all.at?one:all):(one||all);
+  return s?s.value:k.open;
+}
+function openPending(k){return pendingTag("open:"+k.id)||pendingTag("open:*");}
+
+function kioskShort(k){
+  if(!isLive())return {html:"Status unknown while this page is offline",bad:false};
+  if(!k.online)return {html:"Offline, last heard "+agoSpan(k.lastSeenAt),bad:true};
+  var h=k.health,parts=["Online"];
+  if(h){
+    parts.push(h.simulatePayment?"payments simulated":h.readerReady?"card reader ready":"card reader not ready");
+    if(h.deviceBattery&&h.deviceBattery.percent>=0)parts.push("battery "+h.deviceBattery.percent+"%"+(h.deviceBattery.charging?", charging":""));
+  }
+  return {html:esc(parts.join(", ")),bad:!!h&&!h.simulatePayment&&!h.readerReady};
 }
 
-function kioskSummary(){
-  if(!isLive())return {html:"Kiosk status unknown while this page is offline",bad:false};
-  var k=state.kiosk,h=k.health;
-  if(!k.online)return {html:"Kiosk offline, last heard "+agoSpan(k.lastSeenAt),bad:true};
-  if(!h)return {html:"Kiosk online",bad:false};
-  var reader=h.simulatePayment?"Payments simulated":h.readerReady?"Card reader ready":"Card reader not ready";
-  var parts=[reader];
-  if(h.deviceBattery&&h.deviceBattery.percent>=0)parts.push("battery "+h.deviceBattery.percent+"%"+(h.deviceBattery.charging?", charging":""));
-  return {html:esc(parts.join(", ")),bad:!h.simulatePayment&&!h.readerReady};
+function renderKiosks(){
+  var list=kioskList();
+  $("kioskCount").textContent=list.length>1?plural(list.length,"kiosk"):"";
+  if(!list.length){$("kiosks").innerHTML='<div class="empty">No kiosk has connected yet. A kiosk iPad shows up here once it starts.</div>';if(sheetKiosk)closeSheet();return;}
+  var html=list.map(function(k){
+    var open=kioskOpenNow(k),s=kioskShort(k);
+    var text='<div class="label">'+esc(kioskName(k))+'</div><div class="sub'+(s.bad?" bad":"")+'">'+s.html+"</div>"+(kioskDebug(k)?'<div class="sub warn">Debug tools on</div>':"")+openPending(k)+pendingTag("name:"+k.id)+pendingTag("debug:"+k.id);
+    var inner='<span class="kglyph'+(k.online?"":" off")+'">'+ico("tablet")+'</span><div class="grow">'+text+'</div><span class="value'+(open?"":" bad")+'">'+(open?"Open":"Closed")+"</span>";
+    return READONLY?'<div class="cell kcell">'+inner+"</div>":'<button class="cell kcell" type="button" data-kiosk="'+esc(k.id)+'" aria-label="'+esc(kioskName(k))+', '+(open?"open":"closed")+'">'+inner+ico("chevron","chev")+"</button>";
+  }).join("");
+  if(!READONLY){
+    var one=list.length===1,anyOpen=list.some(kioskOpenNow),anyClosed=list.some(function(k){return !kioskOpenNow(k);});
+    if(anyOpen)html+='<div class="cell"><button class="destructive" type="button" data-allopen="0">'+(one?"Close kiosk":"Close all kiosks")+"</button>"+pendingTag("open:*")+"</div>";
+    if(anyClosed)html+='<div class="cell"><button class="action" type="button" data-allopen="1">'+(one?"Reopen kiosk":"Open all kiosks")+"</button></div>";
+  }
+  $("kiosks").innerHTML=html;
+  if(sheetKiosk)renderSheet(false);
 }
 
-function renderOpen(){
-  var open=kioskIsOpen(),k=state.kioskOpen||{},s=kioskSummary();
-  var sub=open?'<div class="sub'+(s.bad?" bad":"")+'">'+s.html+"</div>":'<div class="sub">Begin Order is off. Customers mid-order can still finish.'+(k.changedAt&&!intended("open")?" Closed "+agoSpan(k.changedAt)+(k.changedBy?" by "+esc(k.changedBy):"")+".":"")+"</div>"+(s.bad?'<div class="sub bad">'+s.html+"</div>":"");
-  var html='<div class="cell"><div class="grow"><div class="label status'+(open?"":" off")+'">'+(open?"Open for orders":"Closed to new orders")+"</div>"+sub+pendingTag("open")+"</div></div>";
-  if(!READONLY)html+='<div class="cell">'+(open?'<button class="destructive" type="button" data-open="0">Close kiosk</button>':'<button class="action" type="button" data-open="1">Reopen kiosk</button>')+"</div>";
-  $("openCard").innerHTML=html;
+var sheetKiosk=null;
+function openSheet(id){
+  if(!kioskById(id))return;
+  sheetKiosk=id;
+  renderSheet(true);
+  var d=$("kioskSheet");
+  if(d.showModal){if(!d.open)d.showModal();}else d.setAttribute("open","");
+}
+function closeSheet(){
+  sheetKiosk=null;
+  var d=$("kioskSheet");
+  if(!d)return;
+  if(d.close){if(d.open)d.close();}else d.removeAttribute("open");
 }
 
-function renderKiosk(){
-  var k=state.kiosk,h=k.health;
+function healthRows(k){
+  var h=k.health;
   var rows=[["Last heard",null,k.online?"":"bad",agoSpan(k.lastSeenAt)],["Screen",k.screen?titleCase(k.screen):"Unknown",""]];
   if(h){
     rows.push(["Payments",h.simulatePayment?"Simulated":h.environment,h.simulatePayment?"warn":""]);
@@ -975,9 +1057,65 @@ function renderKiosk(){
     if(h.lastError)rows.push(["Last error",h.lastError,"warn"]);
     rows.push(["App",h.appVersion,""]);
   } else rows.push(["Health","No report yet","warn"]);
-  $("health").innerHTML=rows.map(function(r){
+  rows.push(["Kiosk ID",k.tag,""]);
+  return rows.map(function(r){
     return '<div class="cell"><span class="label">'+esc(r[0])+'</span><span class="value '+r[2]+'">'+(r[3]?r[3]:esc(r[1]))+"</span></div>";
   }).join("");
+}
+
+function renderSheet(fresh){
+  var k=kioskById(sheetKiosk);
+  if(!k||intended("remove:"+k.id)){closeSheet();return;}
+  var name=kioskName(k),open=kioskOpenNow(k),debug=kioskDebug(k);
+  $("ksTitle").textContent=name;
+  if(fresh||!$("ksName")){
+    $("ksNameWrap").innerHTML='<div class="section-head"><h2>Name</h2></div><div class="group"><form class="cell" id="ksForm"><input id="ksName" class="field" maxlength="40" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" aria-label="Kiosk name" value="'+esc(name)+'" placeholder="'+esc(defaultName(k))+'"><button class="link" type="submit">Save</button></form></div><p class="footnote">Shown on alerts and staff pages. Leave it empty to use '+esc(defaultName(k))+".</p>";
+  }
+  var html='<div class="section-head"><h2>Controls</h2></div><div class="group list">';
+  html+='<div class="cell"><div class="grow"><div class="label">Taking orders</div><div class="sub">'+(open?"Customers can start new orders.":"Begin Order is off. Customers mid-order can still finish.")+"</div>"+openPending(k)+'</div><button class="switch" role="switch" type="button" data-kopen="'+esc(k.id)+'" aria-checked="'+open+'" aria-label="Taking orders"></button></div>';
+  html+='<div class="cell"><div class="grow"><div class="label">Debug tools</div><div class="sub">Shows the debug bar at the top of this kiosk\'s screen.</div>'+pendingTag("debug:"+k.id)+'</div><button class="switch" role="switch" type="button" data-kdebug="'+esc(k.id)+'" aria-checked="'+debug+'" aria-label="Debug tools"></button></div>';
+  html+='</div><div class="section-head"><h2>Status</h2></div><div class="group list health">'+healthRows(k)+"</div>";
+  if(!k.online)html+='<div class="section-head"></div><div class="group list"><div class="cell"><button class="destructive" type="button" data-kremove="'+esc(k.id)+'">Remove kiosk</button></div></div><p class="footnote">For an iPad that isn\'t a kiosk any more. Its alerts close; if it connects again it comes back as '+esc(defaultName(k))+".</p>";
+  $("ksRest").innerHTML=html;
+}
+
+function saveName(){
+  var k=kioskById(sheetKiosk),input=$("ksName");
+  if(!k||!input)return;
+  var name=cleanName(input.value);
+  input.blur();
+  if(name===defaultName(k)&&!k.customName)name="";
+  var i=intended("name:"+k.id),current=i?cleanName(i.value):(k.customName||"");
+  if(name===current){input.value=kioskName(k);return;}
+  enqueue({type:"renameKiosk",kiosk:k.id,name:name});
+  input.value=kioskName(k);
+  showToast("Renamed to "+kioskName(k));
+}
+
+function askKioskOpen(k,open){
+  var name=kioskName(k);
+  if(open)ask("Reopen "+name+"?","Customers will be able to start new orders on "+name+" right away.","Reopen kiosk",false,"Cancel",function(){enqueue({type:"setKioskOpen",kiosk:k.id,open:true});});
+  else ask("Close "+name+"?","Begin Order turns off on "+name+". A customer already ordering there can still finish and pay.","Close kiosk",true,"Cancel",function(){enqueue({type:"setKioskOpen",kiosk:k.id,open:false});});
+}
+
+function askAllOpen(open){
+  var list=kioskList();
+  if(list.length===1)return askKioskOpen(list[0],open);
+  if(open)ask("Open all kiosks?","Customers will be able to start new orders on every kiosk right away.","Open all",false,"Cancel",function(){enqueue({type:"setKioskOpen",open:true});});
+  else ask("Close all kiosks?","Begin Order turns off on every kiosk. Customers already ordering can still finish and pay.","Close all",true,"Cancel",function(){enqueue({type:"setKioskOpen",open:false});});
+}
+
+function askRemove(k){
+  var name=kioskName(k);
+  ask("Remove "+name+"?","It leaves the kiosk list and its alerts close. If the iPad connects again it comes back as "+defaultName(k)+".","Remove",true,"Cancel",function(){enqueue({type:"removeKiosk",kiosk:k.id});closeSheet();});
+}
+
+function askExit(){
+  ask("Exit staff mode?","This iPad goes back to the role picker, where it can start as a kiosk or open a staff page again.","Exit staff mode",false,"Cancel",function(){
+    var h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.boothApp;
+    if(h)h.postMessage({type:"exitStaffMode"});
+    else showToast("This version of the app can't switch roles from here. Relaunch it to pick a role.");
+  });
 }
 
 function renderFeed(){
@@ -995,13 +1133,13 @@ function renderFeed(){
   }).join("");
 }
 
-var HAS={alerts:!!$("alerts"),make:!!$("make"),handoff:!!$("handoff"),board:!!$("boardMaking"),feed:!!$("feed"),soldout:!!$("soldout"),open:!!$("openCard"),health:!!$("health"),stats:!!$("tOrders")};
+var HAS={alerts:!!$("alerts"),make:!!$("make"),handoff:!!$("handoff"),board:!!$("boardMaking"),feed:!!$("feed"),soldout:!!$("soldout"),kiosks:!!$("kiosks"),stats:!!$("tOrders")};
 
 function render(){
   renderLink();renderSound();
   if(!state){
     var waiting='<div class="empty">'+ico("loader","spin")+" Waiting for the booth</div>";
-    ["make","handoff","feed","soldout","health","openCard","boardMaking"].forEach(function(id){if($(id)&&!$(id).innerHTML)$(id).innerHTML=id==="make"||id==="handoff"?'<div class="group" style="margin-top:34px">'+waiting+"</div>":waiting;});
+    ["make","handoff","feed","soldout","kiosks","boardMaking"].forEach(function(id){if($(id)&&!$(id).innerHTML)$(id).innerHTML=id==="make"||id==="handoff"?'<div class="group" style="margin-top:34px">'+waiting+"</div>":waiting;});
     return;
   }
   if(HAS.alerts)renderAlerts();
@@ -1010,8 +1148,7 @@ function render(){
   if(HAS.board)renderBoard();
   if(HAS.feed)renderFeed();
   if(HAS.soldout)renderSupplies();
-  if(HAS.open)renderOpen();
-  if(HAS.health)renderKiosk();
+  if(HAS.kiosks)renderKiosks();
   fitNames();
 }
 
@@ -1052,7 +1189,7 @@ function closeConfirm(){var d=$("confirm");if(d.close)d.close();else d.removeAtt
 function askCancel(id){
   var o=state&&state.orders.filter(function(x){return x.id===id;})[0];
   if(!o)return;
-  ask("Cancel "+orderLabel(o)+"?","It leaves the queue and stops counting in totals. Any refund is done separately in Square.","Cancel order",true,"Keep order",function(){setStatus(id,"canceled",true);});
+  ask("Cancel the order for "+orderLabel(o)+"?","It leaves the queue and stops counting in totals. Any refund is done separately in Square.","Cancel order",true,"Keep order",function(){setStatus(id,"canceled",true);});
 }
 
 function askSoldOut(f){
@@ -1060,16 +1197,13 @@ function askSoldOut(f){
   else ask("Mark "+f.name+" sold out?","Customers won't be able to choose "+f.name+" on the kiosk. Scoops already in a cart stay.","Mark sold out",true,"Cancel",function(){enqueue({type:"setSoldOut",flavor:f.id,soldOut:true});});
 }
 
-function askOpen(open){
-  if(open)ask("Reopen the kiosk?","Customers will be able to start new orders on the kiosk right away.","Reopen kiosk",false,"Cancel",function(){enqueue({type:"setKioskOpen",open:true});});
-  else ask("Close the kiosk?","Begin Order turns off on the kiosk. A customer already ordering can still finish and pay.","Close kiosk",true,"Cancel",function(){enqueue({type:"setKioskOpen",open:false});});
-}
-
 document.addEventListener("click",function(e){
   var el=e.target.closest&&e.target.closest("button");
   if(!el)return;
   if(el.id==="confirmYes"){var go=pendingConfirm;closeConfirm();if(go)go();return;}
   if(el.id==="confirmNo"){closeConfirm();return;}
+  if(el.id==="ksDone"){closeSheet();return;}
+  if(el.id==="exitStaff"){askExit();return;}
   if(el.id==="sound"){
     if(soundState==="on"){soundState="off";store(MUTE_KEY,"1");renderSound();}
     else{store(MUTE_KEY,null);soundState="on";chime(true);renderSound();}
@@ -1082,10 +1216,19 @@ document.addEventListener("click",function(e){
     var f=state&&state.flavors.filter(function(x){return x.id===el.dataset.flavor;})[0];
     if(f)askSoldOut(f);
   }
-  else if(el.dataset.open){askOpen(el.dataset.open==="1");}
+  else if(el.dataset.kiosk){openSheet(el.dataset.kiosk);}
+  else if(el.dataset.allopen){askAllOpen(el.dataset.allopen==="1");}
+  else if(el.dataset.kopen){var ko=kioskById(el.dataset.kopen);if(ko)askKioskOpen(ko,!kioskOpenNow(ko));}
+  else if(el.dataset.kdebug){var kd=kioskById(el.dataset.kdebug);if(kd)enqueue({type:"setKioskDebug",kiosk:kd.id,debug:!kioskDebug(kd)});}
+  else if(el.dataset.kremove){var kr=kioskById(el.dataset.kremove);if(kr)askRemove(kr);}
   else if(el.dataset.order&&el.dataset.to){setStatus(el.dataset.order,el.dataset.to,true);}
   else if(el.dataset.cancel){askCancel(el.dataset.cancel);}
 });
+
+document.addEventListener("submit",function(e){
+  if(e.target&&e.target.id==="ksForm"){e.preventDefault();saveName();}
+});
+if($("kioskSheet"))$("kioskSheet").addEventListener("close",function(){sheetKiosk=null;});
 
 function renewSession(){
   fetch("/dashboard/renew",{method:"POST",credentials:"same-origin",cache:"no-store"}).then(function(r){if(r.status===401)location.reload();}).catch(function(){});
