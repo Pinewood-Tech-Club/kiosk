@@ -13,6 +13,8 @@ final class WhipLayer: ToppingLayer {
     let entity = Entity()
     private(set) var isFinished = false
     var launchPoint: (() -> SIMD3<Float>)?
+    var growDuration: Double { Self.growDuration }
+    var removeDuration: Double { Self.removeDuration }
 
     private let model = ModelEntity()
     private var style = WhipStyle(seed: 0)
@@ -118,6 +120,16 @@ final class WhipLayer: ToppingLayer {
 
     func surfaceAbove(_ below: ToppingSurface) -> ToppingSurface {
         guard groundTo != nil, !isFinished, !sweep.center.isEmpty else { return below }
+        return WhipSurface(below: below, tubes: tubes(), axis: sweep.axis, extent: sweep.outer)
+    }
+
+    func settledSurfaceAbove(_ below: ToppingSurface) -> ToppingSurface {
+        guard let groundTo, !isFinished, removeStart == nil else { return below }
+        let ground = WhipGround(from: groundTo, to: groundTo, mix: 1)
+        let saved = (current, sweep)
+        defer { (current, sweep) = saved }
+        current = WhipState(mix: 1, reveal: 1, settle: 1, deflate: 0)
+        sweep = WhipSweep(style: style, ground: ground)
         return WhipSurface(below: below, tubes: tubes(), axis: sweep.axis, extent: sweep.outer)
     }
 
@@ -870,8 +882,10 @@ struct WhipSurface: ToppingSurface {
     private let cell: Float
     private let count: Int
     private let heights: [Float]
+    private let cream: [Bool]
     let apex: SIMD3<Float>
     let radius: Float
+    var floor: Float { below.floor }
 
     init(below: ToppingSurface, tubes: [WhipTube], axis: SIMD2<Float>, extent: Float, count: Int = 44) {
         self.below = below
@@ -900,16 +914,28 @@ struct WhipSurface: ToppingSurface {
             }
         }
         var best = below.apex
+        var cream = [Bool](repeating: false, count: count * count)
         for iz in 0..<count {
             for ix in 0..<count {
                 let i = iz * count + ix
                 let x = origin.x + Float(ix) * cell, z = origin.y + Float(iz) * cell
-                if let under = below.sample(x: x, z: z)?.height, under > h[i] { h[i] = under }
+                if let under = below.sample(x: x, z: z)?.height {
+                    cream[i] = h[i] > under + 0.0003
+                    if under > h[i] { h[i] = under }
+                }
                 if h[i] > best.y { best = [x, h[i], z] }
             }
         }
         heights = h
+        self.cream = cream
         apex = best
+    }
+
+    func softness(x: Float, z: Float) -> Float {
+        let fx = (x - origin.x) / cell, fz = (z - origin.y) / cell
+        guard fx >= 0, fz >= 0, fx < Float(count - 1), fz < Float(count - 1) else { return below.softness(x: x, z: z) }
+        let i = Int(fz.rounded()) * count + Int(fx.rounded())
+        return cream[i] ? 1 : below.softness(x: x, z: z)
     }
 
     func sample(x: Float, z: Float) -> (height: Float, normal: SIMD3<Float>)? {

@@ -11,10 +11,13 @@ protocol ToppingSurface {
     var radius: Float { get }
     /// A scattered piece that ends up below this has slid off the part of the item a customer sees.
     var floor: Float { get }
+    /// 0 for firm ice cream to 1 for whipped cream, which holds a piece where it lands and lets it sink in a little.
+    func softness(x: Float, z: Float) -> Float
 }
 
 extension ToppingSurface {
     var floor: Float { apex.y - 2.5 * radius }
+    func softness(x: Float, z: Float) -> Float { 0 }
 }
 
 /// One layer of toppings on an item. The stack is always scoops, whip, drizzle, scattered,
@@ -34,6 +37,8 @@ protocol ToppingLayer: AnyObject {
     var isFinished: Bool { get }
     /// The surface layers above this one should rest on, given the one beneath it.
     func surfaceAbove(_ below: ToppingSurface) -> ToppingSurface
+    /// `surfaceAbove` once the layer has finished growing (or, while it's being removed, without it).
+    func settledSurfaceAbove(_ below: ToppingSurface) -> ToppingSurface
     /// The topping card icon's current position in `entity`'s parent space (rig body space); re-evaluate every
     /// frame, the item spins and moves. Set only on layers applied from a tap.
     var launchPoint: (() -> SIMD3<Float>)? { get set }
@@ -47,6 +52,7 @@ protocol ToppingLayer: AnyObject {
 }
 
 extension ToppingLayer {
+    func settledSurfaceAbove(_ below: ToppingSurface) -> ToppingSurface { surfaceAbove(below) }
     var growDuration: Double { 0.8 }
     var removeDuration: Double { 0.4 }
     var cardIcon: ToppingCardIcon? {

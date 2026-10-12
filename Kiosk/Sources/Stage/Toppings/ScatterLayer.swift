@@ -27,6 +27,12 @@ final class ScatterLayer: ToppingLayer {
     /// Where the topping's card icon is, in the layer's parent space; read every frame. When set,
     /// animated pieces are tossed from it and removed pieces fly back into it.
     var launchPoint: (() -> SIMD3<Float>)?
+    /// While set, each piece shows raised by this much at its (x, z): the cream beneath it is growing or
+    /// deflating, and the pieces ride it until the stack resurfaces them onto the finished surface.
+    var heave: ((Float, Float) -> Float)? {
+        didSet { reheave = true }
+    }
+    private var reheave = false
 
     private enum Motion {
         case none
@@ -108,6 +114,14 @@ final class ScatterLayer: ToppingLayer {
     static let popGrow = 0.08
     static let popShrink = 0.13
     static let returnDuration = 0.42
+    enum Serving {
+        /// Fewer pieces on a small top or one shared with other candy, so they lie in one loose layer.
+        case fitToRoom
+        /// Always the kind's whole count; pieces with no room on the ice cream rest on one lying piece, never in a heap.
+        case full
+    }
+
+    static let serving = Serving.fitToRoom
     /// Seconds per frame spent settling pieces ahead of their toss.
     static let settleBudget = 0.002
 
@@ -188,6 +202,7 @@ final class ScatterLayer: ToppingLayer {
     /// How many pieces to use: the kind's full serving where there's room for it in one loose layer, fewer on a small
     /// top or one shared with other candy, so pieces don't heap.
     private func portion(_ made: [ScatterPiece], on surface: ToppingSurface) -> Int {
+        if Self.serving == .full { return made.count }
         guard let half = made.first?.halfExtents else { return 0 }
         let sorted = [half.x, half.y, half.z].sorted()
         let pieceArea = Float.pi * sorted[1] * sorted[2]
@@ -262,7 +277,7 @@ final class ScatterLayer: ToppingLayer {
             let start = ScatterPose(position: [spot.x, ground + Self.dropHeight + piece.shape.bound, spot.y], rotation: toss.orientation)
             let result = job.settle.run(piece.shape, from: start, velocity: [toss.push.x, -Self.dropSpeed, toss.push.z],
                                         spin: attempt == 0 ? toss.spin : .zero, among: bodies)
-            if result.fell { continue }
+            if result.fell || Self.restsOnRaised(piece.shape, result.rest, among: bodies) { continue }
             if result.onPieces {
                 let cream = surface.sample(x: result.rest.position.x, z: result.rest.position.z)?.height ?? surface.apex.y
                 if perched == nil, result.rest.position.y - cream < Self.perchHeight + piece.shape.half.min(),
@@ -272,18 +287,28 @@ final class ScatterLayer: ToppingLayer {
                 continue
             }
             let normal = surface.sample(x: result.rest.position.x, z: result.rest.position.z)?.normal ?? [0, 1, 0]
-            if Self.standsOnEnd(piece.shape, result.rest, ground: normal) || Self.onEdge(piece.shape, result.rest, ground: normal) {
-                if awkward == nil { awkward = result }
+            if Self.standsOnEnd(piece.shape, result.rest, ground: normal)
+                || Self.standsOnEnd(piece.shape, result.rest, ground: [0, 1, 0], upright: 0.9) {
+                continue
+            }
+            if Self.onEdge(piece.shape, result.rest, ground: normal) || Self.onEdge(piece.shape, result.rest, ground: [0, 1, 0]) {
+                let ground = surface.sample(x: result.rest.position.x, z: result.rest.position.z)?.height ?? surface.apex.y
+                if awkward == nil, result.rest.position.y - ground < 1.1 * piece.shape.half.max(),
+                   !Self.standsOnEnd(piece.shape, result.rest, ground: [0, 1, 0]) {
+                    awkward = result
+                }
                 continue
             }
             landed = result
             break
         }
-        if landed == nil { landed = awkward ?? perched }
+        if landed == nil { landed = perched ?? awkward }
         if let landed {
             piece.rest = landed.rest
             piece.track = landed.track
-            let footprint = ScatterFootprint(shape: piece.shape, position: piece.rest.position, rotation: piece.rest.rotation)
+            let cream = surface.sample(x: piece.rest.position.x, z: piece.rest.position.z)?.height ?? surface.apex.y
+            let footprint = ScatterFootprint(shape: piece.shape, position: piece.rest.position, rotation: piece.rest.rotation,
+                                             raised: Self.isRaised(piece.shape, piece.rest, cream: cream))
             bodies.append(footprint)
             resting.append(footprint)
         } else {
@@ -350,7 +375,9 @@ final class ScatterLayer: ToppingLayer {
                 piece.rest = start
                 piece.track = [start]
             }
-            let footprint = ScatterFootprint(shape: piece.shape, position: piece.rest.position, rotation: piece.rest.rotation)
+            let cream = job.surface.sample(x: piece.rest.position.x, z: piece.rest.position.z)?.height ?? job.surface.apex.y
+            let footprint = ScatterFootprint(shape: piece.shape, position: piece.rest.position, rotation: piece.rest.rotation,
+                                             raised: Self.isRaised(piece.shape, piece.rest, cream: cream))
             job.settled?.append(footprint)
             job.restingAfter[index] = footprint
             let duration = job.duration
@@ -389,8 +416,36 @@ final class ScatterLayer: ToppingLayer {
         animating = true
     }
 
+    /// Moves every piece to where `heave` shows it and clears it, so a following `resurface` starts from there.
+    func bakeHeave() {
+        guard let heave else { return }
+        func lifted(_ pose: ScatterPose) -> ScatterPose {
+            var pose = pose
+            pose.position.y += heave(pose.position.x, pose.position.z)
+            return pose
+        }
+        for index in pieces.indices {
+            pieces[index].shown = lifted(pieces[index].shown)
+            pieces[index].rest = lifted(pieces[index].rest)
+            pieces[index].track = pieces[index].track.map(lifted)
+            switch pieces[index].motion {
+            case let .settle(from, start, lift): pieces[index].motion = .settle(from: lifted(from), start: start, lift: lift)
+            case let .leave(from, start): pieces[index].motion = .leave(from: lifted(from), start: start)
+            case .none, .arrive: break
+            }
+        }
+        resting = resting.map { footprint in
+            var footprint = footprint
+            footprint.position.y += heave(footprint.position.x, footprint.position.z)
+            return footprint
+        }
+        self.heave = nil
+    }
+
     func update(now: Double) {
-        guard animating else { return }
+        let heaving = heave != nil || reheave
+        reheave = false
+        guard animating || heaving else { return }
         if pending != nil {
             let started = CACurrentMediaTime()
             while pending != nil, CACurrentMediaTime() - started < Self.settleBudget, settleNext(now: now, force: false) {}
@@ -405,6 +460,7 @@ final class ScatterLayer: ToppingLayer {
         for index in pieces.indices {
             switch pieces[index].motion {
             case .none:
+                if heaving, !pieces[index].lost { place(pieces[index]) }
                 continue
             case .arrive(let start):
                 if pieces[index].lost { continue }
@@ -528,26 +584,40 @@ final class ScatterLayer: ToppingLayer {
     private func place(_ piece: Piece) {
         let scale = max(piece.scale, 1e-4)
         let rotation = piece.shown.rotation
+        var position = piece.shown.position
+        if let heave { position.y += heave(position.x, position.z) }
         piece.model.transform = Transform(scale: SIMD3(repeating: scale), rotation: rotation,
-                                          translation: piece.shown.position - rotation.act(piece.meshCenter * scale))
+                                          translation: position - rotation.act(piece.meshCenter * scale))
+    }
+
+    private static func isRaised(_ shape: ScatterShape, _ pose: ScatterPose, cream: Float) -> Bool {
+        pose.position.y - cream > 1.6 * shape.half.min() + 0.0005
+    }
+
+    /// Whether a piece would lean on one that's already up on other pieces: that's how heaps start.
+    private static func restsOnRaised(_ shape: ScatterShape, _ pose: ScatterPose, among bodies: [ScatterFootprint]) -> Bool {
+        bodies.contains { other in
+            other.raised && other.position.y < pose.position.y
+                && simd_distance(other.position, pose.position) < other.shape.bound + shape.bound
+        }
     }
 
     /// An elongated piece whose long axis points mostly up: stable for a box, but rare for real candy.
-    private static func standsOnEnd(_ shape: ScatterShape, _ pose: ScatterPose, ground: SIMD3<Float>) -> Bool {
+    private static func standsOnEnd(_ shape: ScatterShape, _ pose: ScatterPose, ground: SIMD3<Float>, upright: Float = 0.75) -> Bool {
         let half = shape.half
         let long = half.x > half.y ? (half.x > half.z ? 0 : 2) : (half.y > half.z ? 1 : 2)
         let others = (0..<3).filter { $0 != long }.map { half[$0] }
         guard half[long] > 1.4 * (others.max() ?? 0) else { return false }
         var axis = SIMD3<Float>.zero
         axis[long] = 1
-        return abs(simd_dot(pose.rotation.act(axis), ground)) > 0.75
+        return abs(simd_dot(pose.rotation.act(axis), ground)) > upright
     }
 
-    /// A disc (an M&M) standing on its rim, wedged rather than lying.
+    /// A disc (an M&M) standing on its rim, or a gummy bear on its side, wedged rather than lying.
     private static func onEdge(_ shape: ScatterShape, _ pose: ScatterPose, ground: SIMD3<Float>) -> Bool {
         let half = shape.half
         let thin = half.x < half.y ? (half.x < half.z ? 0 : 2) : (half.y < half.z ? 1 : 2)
-        guard half[thin] < 0.6 * ((0..<3).filter { $0 != thin }.map { half[$0] }.min() ?? 0) else { return false }
+        guard half[thin] < 0.7 * ((0..<3).filter { $0 != thin }.map { half[$0] }.min() ?? 0) else { return false }
         var axis = SIMD3<Float>.zero
         axis[thin] = 1
         return abs(simd_dot(pose.rotation.act(axis), ground)) < 0.5

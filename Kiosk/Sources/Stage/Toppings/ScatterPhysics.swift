@@ -134,6 +134,8 @@ struct ScatterFootprint {
     let shape: ScatterShape
     var position: SIMD3<Float>
     var rotation: simd_quatf
+    /// Resting up on other pieces rather than down on the ice cream; nothing may rest on it in turn.
+    var raised = false
 }
 
 /// Drops one rigid piece onto a surface among pieces already at rest, with gravity, friction and a
@@ -164,6 +166,10 @@ struct ScatterSettle {
     static let rollingResistance: Float = 0.9
     /// Meters; more would let soft cream hold a big piece standing on end.
     static let maxRollingResistance: Float = 0.0012
+    static let whipFriction: Float = 3
+    static let whipRollingResistance: Float = 0.004
+    /// How far a piece settles into whipped cream.
+    static let whipSink: Float = 0.0009
 
     let surface: ToppingSurface
     /// Below this height the piece has fallen off the item.
@@ -220,6 +226,7 @@ struct ScatterSettle {
             }
             let inverse = q.inverse
             var onCream = false
+            var soft: Float = 0
             var sink: Float = 0
             var overlap = SIMD3<Float>.zero
             var overlapDepth: Float = 0
@@ -228,13 +235,17 @@ struct ScatterSettle {
                 let r = q.act(s)
                 let p = x + r
                 if let ground = surface.sample(x: p.x, z: p.z) {
-                    let depth = (ground.height - p.y) * ground.normal.y
-                    sink = max(sink, ground.height - p.y)
-                    lowest = min(lowest, p.y - ground.height)
+                    let give = surface.softness(x: p.x, z: p.z)
+                    let height = ground.height - give * Self.whipSink
+                    let depth = (height - p.y) * ground.normal.y
+                    sink = max(sink, height - p.y)
+                    lowest = min(lowest, p.y - height)
                     if depth > -slop {
                         onCream = true
+                        soft = max(soft, give)
                         contacts.append(Contact(r: r, n: ground.normal, depth: depth,
-                                                friction: Self.creamFriction, bounce: Self.creamBounce))
+                                                friction: lerp(Self.creamFriction, Self.whipFriction, give),
+                                                bounce: Self.creamBounce))
                     }
                 }
                 for index in touching {
@@ -280,15 +291,18 @@ struct ScatterSettle {
                         let gx = x.x - reach + Float(gi) * gridSpacing
                         let gz = x.z - reach + Float(gj) * gridSpacing
                         guard let ground = surface.sample(x: gx, z: gz) else { continue }
-                        let g = SIMD3(gx, ground.height, gz)
+                        let give = surface.softness(x: gx, z: gz)
+                        let g = SIMD3(gx, ground.height - give * Self.whipSink, gz)
                         let local = inverse.act(g - x)
                         guard simd_length_squared(local) < shape.bound * shape.bound else { continue }
                         let hit = shape.contact(local)
                         if hit.distance < slop {
                             let normal = -q.act(hit.normal)
                             onCream = true
+                            soft = max(soft, give)
                             contacts.append(Contact(r: g - x, n: normal, depth: -hit.distance,
-                                                    friction: Self.creamFriction, bounce: Self.creamBounce))
+                                                    friction: lerp(Self.creamFriction, Self.whipFriction, give),
+                                                    bounce: Self.creamBounce))
                             if -hit.distance > overlapDepth {
                                 overlapDepth = -hit.distance
                                 overlap = normal
@@ -312,7 +326,8 @@ struct ScatterSettle {
                 c.target = vn < -0.1 ? -c.bounce * vn : 0
                 contacts[k] = c
             }
-            let rolling = min(Self.rollingResistance * shape.half.min(), Self.maxRollingResistance)
+            let rolling = lerp(min(Self.rollingResistance * shape.half.min(), Self.maxRollingResistance),
+                               Self.whipRollingResistance, soft)
             var rollingImpulse: Float = 0
             for _ in 0..<6 {
                 var creamImpulse: Float = 0
@@ -334,7 +349,7 @@ struct ScatterSettle {
                     let impulse = c.t1 * delta.x + c.t2 * delta.y
                     v += impulse
                     w += inertia * simd_cross(c.r, impulse)
-                    if c.friction == Self.creamFriction { creamImpulse += c.jn }
+                    if c.friction >= Self.creamFriction { creamImpulse += c.jn }
                     contacts[k] = c
                 }
                 let speed = simd_length(w)
