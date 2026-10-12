@@ -1,5 +1,6 @@
 import * as checkout from "./checkout";
 import * as dashboard from "./dashboard";
+import * as giftcards from "./giftcards";
 import { authenticate, callHub, errorResponse, hub, HttpError, json, match, readBody, type Route } from "./http";
 import * as logs from "./logs";
 import * as oauth from "./oauth";
@@ -13,7 +14,7 @@ export { Booth } from "./booth";
 
 const SERVICE = "techclub-icecream";
 
-export const FEATURES = ["square-oauth", "square-credentials", "checkout", "receipt-tokens", "order-feed", "stats", "staff-session", "kiosk-registry", "supplies"];
+export const FEATURES = ["square-oauth", "square-credentials", "checkout", "receipt-tokens", "order-feed", "stats", "staff-session", "kiosk-registry", "supplies", "gift-cards"];
 
 const core: Route[] = [
   {
@@ -76,6 +77,7 @@ export const routes: Route[] = [
   ...session.routes,
   ...oauth.routes,
   ...checkout.routes,
+  ...giftcards.routes,
   ...stats.routes,
   ...receipts.routes,
   ...dashboard.routes,
@@ -99,7 +101,11 @@ export default {
     }
   },
 
-  async scheduled(_controller, env, ctx): Promise<void> {
+  async scheduled(controller, env, ctx): Promise<void> {
+    if (controller.cron === giftcards.SWEEP_CRON) {
+      await giftcards.sweepStaleHolds(env);
+      return;
+    }
     ctx.waitUntil(
       oauth.refreshToken(env).then(
         (outcome) => console.log({ event: "square-refresh-check", ...outcome }),

@@ -81,12 +81,61 @@ export type Action = z.infer<typeof Action>;
 export const EventsBody = z.object({ events: z.array(z.unknown()).min(1).max(100) });
 export const ActionsBody = z.object({ actions: z.array(z.unknown()).min(1).max(50) });
 
+export const Vessel = z.enum(["cup", "cone"]);
+const ItemRef = z.string().min(1).max(64);
+
+export const SessionItem = z.object({
+  id: ItemRef,
+  vessel: Vessel,
+  flavors: z.array(FlavorId).max(10),
+  toppings: z.array(ToppingId).max(10).default([]),
+  cents: z.number().int().min(0).max(1_000_000),
+  current: z.boolean().default(false),
+  inOrder: z.boolean().default(true),
+});
+
+export const KioskSession = z.object({
+  screen: text(20),
+  step: z.enum(["vessel", "flavors", "toppings"]).nullable().default(null),
+  editing: z.boolean().default(false),
+  items: z.array(SessionItem).max(30),
+  customerName: text(40).default(""),
+  totalCents: z.number().int().min(0).max(10_000_000),
+  paying: z.boolean().default(false),
+  orderingOpen: z.boolean().default(true),
+  assisted: z.boolean().default(false),
+  maxScoops: z.number().int().min(1).max(10).default(3),
+  results: z
+    .array(z.object({ id, status: z.enum(["applied", "duplicate", "rejected"]), message: text(200).optional() }))
+    .max(20)
+    .default([]),
+});
+export type KioskSession = z.infer<typeof KioskSession>;
+
+const commandBase = { id, kiosk: DeviceId, by: text(40).optional() };
+
+export const AssistCommand = z.discriminatedUnion("op", [
+  z.object({ ...commandBase, op: z.literal("addScoop"), item: ItemRef, flavor: FlavorId }),
+  z.object({ ...commandBase, op: z.literal("removeScoop"), item: ItemRef, flavor: FlavorId }),
+  z.object({ ...commandBase, op: z.literal("setVessel"), item: ItemRef, vessel: Vessel }),
+  z.object({ ...commandBase, op: z.literal("setTopping"), item: ItemRef, topping: ToppingId, on: z.boolean() }),
+  z.object({ ...commandBase, op: z.literal("addItem") }),
+  z.object({ ...commandBase, op: z.literal("removeItem"), item: ItemRef }),
+  z.object({ ...commandBase, op: z.literal("setName"), name: text(40) }),
+  z.object({ ...commandBase, op: z.literal("navigate"), to: z.enum(["builder", "summary", "name"]) }),
+  z.object({ ...commandBase, op: z.literal("startOver") }),
+]);
+export type AssistCommand = z.infer<typeof AssistCommand>;
+
 export const ClientMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("heartbeat"), t: z.number().finite().optional(), screen: text(40).optional(), name: KioskName.optional() }),
   z.object({ type: z.literal("ping"), t: z.number().finite().optional() }),
   z.object({ type: z.literal("sync") }),
   z.object({ type: z.literal("event"), event: z.unknown() }),
   z.object({ type: z.literal("action"), action: z.unknown() }),
+  z.object({ type: z.literal("session"), session: z.unknown() }),
+  z.object({ type: z.literal("assist"), kiosk: DeviceId.nullable(), by: text(40).optional() }),
+  z.object({ type: z.literal("command"), command: z.unknown() }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -119,6 +168,9 @@ export const Order = z.object({
   appVersion: text(40).optional(),
   receiptToken: ReceiptToken.nullable().optional(),
   orderRef: OrderRef.nullable().optional(),
+  giftCardPaymentId: text(64).nullable().optional(),
+  giftCardCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  giftCardLast4: text(4).nullable().optional(),
   items: z
     .array(z.object({ vessel: text(20), flavors: z.array(text(32)).max(10), toppings: z.array(text(32)).max(20).optional() }))
     .min(1)
@@ -145,6 +197,14 @@ export const CheckoutBody = z.object({
   items: z.array(CartItem).min(1).max(20),
 });
 export type CheckoutBody = z.infer<typeof CheckoutBody>;
+
+const GiftCardGan = z.string().max(200);
+const GiftCardKey = z.string().min(1).max(45);
+
+export const GiftCardLookupBody = z.object({ gan: GiftCardGan });
+export const GiftCardChargeBody = z.object({ checkoutId: id, gan: GiftCardGan, idempotencyKey: GiftCardKey });
+export const CheckoutCompleteBody = z.object({ checkoutId: id, paymentIds: z.array(z.string().min(1).max(64)).min(1).max(3), idempotencyKey: GiftCardKey });
+export const CheckoutCancelBody = z.object({ checkoutId: id, paymentIds: z.array(z.string().min(1).max(64)).max(3).optional() });
 
 export const OrdersBody = z.object({ orders: z.array(z.unknown()).min(1).max(50) });
 

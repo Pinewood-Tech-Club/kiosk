@@ -289,6 +289,7 @@ Clients that queue offline should keep only the newest unsent `setSoldOut`/`setS
   "totalCents": 900, "subtotalCents": 900, "taxCents": 0, "card": "Visa 1111", "simulated": false,
   "paidAt": "2026-12-05T13:02:11Z", "appVersion": "0.1 (1)",
   "receiptToken": "Qm9vdGhSZWNlaXB0VG9rZW4",                                     // (added) optional
+  "giftCardPaymentId": "...", "giftCardCents": 500, "giftCardLast4": "1234",     // (added) optional, nullable: the gift card part of a split or gift-only order
   "items": [{ "vessel": "cone", "flavors": ["vanilla", "chocolate"], "toppings": ["sprinkles"] }],   // toppings (added) optional
   "lines": [{ "title": "1 Scoop", "detail": "#1 Waffle Cone: Vanilla", "cents": 400 }] }] }
 ```
@@ -298,6 +299,8 @@ Clients that queue offline should keep only the newest unsent `setSoldOut`/`setS
 `id` is the checkout id the kiosk generated when the customer pressed pay (the same id sent to `POST /v1/checkout`), so a receipt, a checkout and a paid order share one id.
 
 `orderNumber` counts per kiosk, so two kiosks both have an order 12. `orderRef` *(added, optional, 1 to 24 of `A-Z a-z 0-9 -`)* is `<tag>-<orderNumber>`, made on the kiosk from its own device id without asking the server, so it is unique across kiosks; it is the Square reference id (`kiosk-3F2A-12`) and what the receipt shows. The hub's feed records the uploading device as `kioskId`. Customers are called by name, so staff pages show the name large and the number only in fine print.
+
+For a split order `squarePaymentId` is the card reader's payment and `card` reads like `Visa 4242 + Gift card 1234`; for a gift-card-only order `squarePaymentId` is the gift card payment. `giftCardCents` is an integer >= 0. The receipt page shows both tenders when `giftCardCents` > 0.
 
 `GET /v1/orders?since=<ms>&limit=<n>` (staff) lists orders paid since `since`, newest first, with the count and total of real (not simulated) orders. Each row also has `status`, `status_at` and `status_by`.
 
@@ -350,6 +353,20 @@ Idempotent by `id`: a retry returns the stored result with `status: "duplicate"`
 
 The kiosk calls this first with a 3.5 s budget and creates the order on the device on any failure or timeout, skipping the backend for a minute afterwards. It only uses it when its SDK token came from the backend, so the order and the payment belong to the same merchant.
 
+## Gift cards *(added)*
+
+All routes are kiosk-only, JSON, and fail with the usual error shape. Square needs the `GIFTCARDS_READ` OAuth scope, so a merchant connected before it was added must run the Square connect flow again. Gift card numbers (GANs) are normalized on the server: a leading `sqgc://` (any case) is stripped, then every non-digit is removed, and the result must be exactly 16 digits or the answer is `400 invalid_gan`. Only the last four digits are ever logged or stored.
+
+`POST /v1/giftcards/lookup` with `{ "gan": "sqgc://7783320000001234" }` answers `{ "last4": "1234", "balanceCents": 500, "state": "ACTIVE" }`. Unknown card: `404 giftcard_not_found`. After 10 invalid or not-found lookups (lookups inside `charge` count too) from one device within 10 minutes: `429 rate_limited`.
+
+`POST /v1/giftcards/charge` with `{ "checkoutId": "...", "gan": "...", "idempotencyKey": "<1 to 45 chars>" }` places a hold (an uncompleted Square payment with partial authorization, on the checkout's Square order and location) for the part of the checkout total not already held by earlier gift cards of the same checkout, and answers `{ "paymentId": "...", "approvedCents": 500, "remainingCents": 400, "last4": "1234" }` where `remainingCents` is the total minus every gift card hold on the checkout. The kiosk then takes `remainingCents` on the reader (same Square order id, not auto-completed) when it is above zero. Errors: `404 checkout_not_found` (unknown, or created by another device), `409 giftcard_inactive` (state is not `ACTIVE`), `409 giftcard_empty` (zero balance), `409 already_covered` (earlier holds already cover the total), `409 conflict` (the key was used for another checkout). The same `idempotencyKey` returns the stored answer without another Square call. The balance is only reserved, not spent, until `complete`.
+
+`POST /v1/checkout/complete` with `{ "checkoutId": "...", "paymentIds": ["<1 to 3 payment ids>"], "idempotencyKey": "..." }` calls Square's PayOrder with those payments, then reads the order and requires `net_amount_due_money` to be 0 (falling back to the order's tenders covering its total). Answers `{ "status": "completed" }`; payments settle to `COMPLETED` within a few seconds, and the order itself stays open (it has a proposed pickup fulfillment). Errors: `409 amount_mismatch` (Square's `ORDER_TOTAL_MISMATCH`: the payments don't add up), `409 order_unpaid` (Square still shows an amount due). Retrying a completed checkout answers `completed` again.
+
+`POST /v1/checkout/cancel` with `{ "checkoutId": "...", "paymentIds": ["..."] }` (`paymentIds` optional) cancels the listed payments and every gift card hold still `approved` for the checkout, tolerating payments Square says are already canceled or completed, and answers `{ "canceled": ["<payment ids>"] }`. Square gives the gift balance back asynchronously (minutes). `503 unavailable` if Square can't be reached; retry.
+
+A cron every 10 minutes (`*/10 * * * *`) cancels gift card holds still `approved` 15 minutes after they were placed, so an abandoned checkout doesn't lock the customer's balance. State lives in D1 `giftcard_payments` (`approved`, `completed`, `canceled`).
+
 ## Receipts: `GET /r/<receiptToken>` *(added)*
 
 Public, no auth: the token is the credential. The kiosk generates it (128 random bits, base64url) when the customer pays, so it can show a QR code even with the backend down, and sends it with the checkout and the paid order (`receipts.ts` looks in `orders`, then `checkouts`). The response is a mobile-friendly HTML page (`noindex` in a meta tag and `X-Robots-Tag`, `no-store`): event name, order reference (`Order 3F2A-12`, or the order number for orders without one), customer name, itemized lines (vessel, flavors, toppings, price), subtotal, tax, total, card, date and time in `America/Los_Angeles`, and a "View Square receipt" link when Square's payment has a `receipt_url` (looked up only for ids that look like Square payment ids, with a 2.5 s budget covering credentials too; the link is simply left out on failure). Per-item prices are Square's `#N`-tagged lines when they add up to the subtotal, else the app's pricing. An order a staff member set to `canceled` says "This order was canceled". A well-formed token that isn't an uploaded order yet (including one with only a checkout) gets `200` with "Your receipt will appear shortly" and a 10 s auto-refresh, since a kiosk may show the QR code while the backend was unreachable; if D1 can't be read the same page comes back with `503`. Only a malformed token gets `404`. The kiosk's URL is `Receipt.receiptURL` (`BOOTH_URL` + `/r/<token>`).
@@ -381,4 +398,4 @@ Sold out is split by role. The scooper page switches flavors and *Cups and cones
 ## Other routes
 
 - `GET /v1/state` (any role): the current `BoothState`.
-- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "features": [...], "time": ... }`. `features` *(added)* lists additions a client can rely on (`square-oauth`, `square-credentials`, `checkout`, `receipt-tokens`, `order-feed`, `stats`, `staff-session`, `kiosk-registry`, `supplies`). With a token, `?deep=1` also checks D1 and the hub.
+- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "features": [...], "time": ... }`. `features` *(added)* lists additions a client can rely on (`square-oauth`, `square-credentials`, `checkout`, `receipt-tokens`, `order-feed`, `stats`, `staff-session`, `kiosk-registry`, `supplies`, `gift-cards`). With a token, `?deep=1` also checks D1 and the hub.

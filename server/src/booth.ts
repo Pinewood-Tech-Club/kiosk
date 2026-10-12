@@ -14,6 +14,7 @@ import {
   type FlavorState,
   type ItemResult,
   type KioskEntry,
+  type KioskSessionState,
   type KioskState,
   type OrderSummary,
   type KioskOpen,
@@ -23,7 +24,18 @@ import {
   type SupplyItem,
   type SupplyState,
 } from "./protocol";
-import { Action, ClientMessage, Event, describe, type HelpReason, type KioskHealth, type OrderStatus, type SupplyKind } from "./schema";
+import {
+  Action,
+  AssistCommand,
+  ClientMessage,
+  Event,
+  KioskSession,
+  describe,
+  type HelpReason,
+  type KioskHealth,
+  type OrderStatus,
+  type SupplyKind,
+} from "./schema";
 
 export const OFFLINE_AFTER_MS = 30_000;
 export const HEALTH_GRACE_MS = 45_000;
@@ -39,12 +51,14 @@ export const OPEN_ORDER_STATUSES: OrderStatus[] = ["paid", "preparing", "ready"]
 const RECENT_ORDERS_MS = 3 * 60 * 60_000;
 const MAX_FEED_ORDERS = 100;
 export const MAX_KIOSKS = 20;
+export const ASSIST_TTL_MS = 30_000;
 const SCHEMA_VERSION = 2;
 
 interface Attachment {
   role: Role;
   device: string;
   connectedAt: number;
+  assist?: { kiosk: string; by: string | null; at: number };
 }
 
 interface Condition {
@@ -219,6 +233,7 @@ export class Booth extends DurableObject<Env> {
           data TEXT NOT NULL,
           first_seen INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS sessions (kiosk TEXT PRIMARY KEY, data TEXT NOT NULL);
       `);
       if ((this.getMeta<number>("schema") ?? 1) < SCHEMA_VERSION) this.migrate(Date.now());
     });
@@ -260,7 +275,8 @@ export class Booth extends DurableObject<Env> {
       await this.evaluate(now);
     }
     this.flushPatches();
-    this.send(server, { type: "snapshot", state: this.state(now) });
+    this.send(server, { type: "snapshot", state: this.state(now, role) });
+    if (role === "kiosk") this.send(server, this.assistMessage(device, now));
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -340,7 +356,7 @@ export class Booth extends DurableObject<Env> {
         });
         break;
       case "sync":
-        this.send(ws, { type: "snapshot", state: this.state(now) });
+        this.send(ws, { type: "snapshot", state: this.state(now, role) });
         break;
       case "event": {
         if (role !== "kiosk") {
@@ -360,6 +376,112 @@ export class Booth extends DurableObject<Env> {
         this.send(ws, { type: "result", ...results[0] });
         break;
       }
+      case "session":
+        if (role !== "kiosk") {
+          this.send(ws, { type: "error", error: { code: "forbidden", message: "Only a kiosk publishes its session" } });
+          return;
+        }
+        this.storeSession(ws, device, msg.session, now);
+        break;
+      case "assist":
+        if (role !== "staff") {
+          this.send(ws, { type: "error", error: { code: "forbidden", message: "Only staff assist a kiosk" } });
+          return;
+        }
+        this.setAssist(ws, attachment, msg.kiosk, msg.by ?? null, now);
+        break;
+      case "command":
+        this.relayCommand(ws, role, msg.command);
+        break;
+    }
+  }
+
+  // MARK: Assist
+
+  private storeSession(ws: WebSocket, device: string, raw: unknown, now: number) {
+    const parsed = KioskSession.safeParse(raw);
+    if (!parsed.success) {
+      this.send(ws, { type: "error", error: { code: "bad_request", message: `session: ${describe(parsed.error)}` } });
+      return;
+    }
+    const session: KioskSessionState = { ...parsed.data, kiosk: device, updatedAt: now };
+    this.sql.exec(
+      "INSERT INTO sessions (kiosk, data) VALUES (?, ?) ON CONFLICT (kiosk) DO UPDATE SET data = excluded.data",
+      device,
+      JSON.stringify(session),
+    );
+    this.toStaff({ type: "session", kiosk: device, session });
+  }
+
+  private dropSession(device: string) {
+    const existed = this.sql.exec("DELETE FROM sessions WHERE kiosk = ? RETURNING kiosk", device).toArray().length > 0;
+    if (existed) this.toStaff({ type: "session", kiosk: device, session: null });
+  }
+
+  private sessions(): KioskSessionState[] {
+    return this.sql
+      .exec<{ kiosk: string; data: string }>("SELECT kiosk, data FROM sessions ORDER BY kiosk")
+      .toArray()
+      .filter((row) => this.kioskSockets(row.kiosk).length > 0)
+      .map((row) => JSON.parse(row.data) as KioskSessionState);
+  }
+
+  private setAssist(ws: WebSocket, attachment: Attachment, kiosk: string | null, by: string | null, now: number) {
+    const previous = attachment.assist?.kiosk ?? null;
+    const next: Attachment = { role: attachment.role, device: attachment.device, connectedAt: attachment.connectedAt };
+    if (kiosk) next.assist = { kiosk, by, at: now };
+    ws.serializeAttachment(next);
+    if (previous && previous !== kiosk) this.notifyAssist(previous, now);
+    if (kiosk) this.notifyAssist(kiosk, now);
+  }
+
+  private assistMessage(kiosk: string, now: number, except?: WebSocket): ServerMessage {
+    const helpers = this.ctx
+      .getWebSockets("staff")
+      .filter((s) => s !== except && s.readyState === WebSocket.OPEN)
+      .map((s) => (s.deserializeAttachment() as Attachment | null)?.assist)
+      .filter((a): a is NonNullable<Attachment["assist"]> => !!a && a.kiosk === kiosk && now - a.at < ASSIST_TTL_MS);
+    return { type: "assist", active: helpers.length > 0, by: helpers[0]?.by ?? null, expiresIn: ASSIST_TTL_MS };
+  }
+
+  private notifyAssist(kiosk: string, now: number, except?: WebSocket) {
+    const message = this.assistMessage(kiosk, now, except);
+    for (const socket of this.kioskSockets(kiosk)) this.send(socket, message);
+  }
+
+  private relayCommand(ws: WebSocket, role: Role, raw: unknown) {
+    if (role !== "staff") {
+      this.send(ws, { type: "result", ...rejected(itemId(raw), "forbidden", "Only staff send assist commands") });
+      return;
+    }
+    const parsed = AssistCommand.safeParse(raw);
+    if (!parsed.success) {
+      this.send(ws, { type: "result", ...rejected(itemId(raw), "bad_request", describe(parsed.error)) });
+      return;
+    }
+    const command = parsed.data;
+    const targets = this.kioskSockets(command.kiosk);
+    if (targets.length === 0) {
+      const name = this.kioskEntry(command.kiosk)?.name ?? "That kiosk";
+      this.send(ws, { type: "result", ...rejected(command.id, "kiosk_offline", `${name} isn't connected`) });
+      return;
+    }
+    for (const socket of targets) this.send(socket, { type: "command", command });
+    this.send(ws, { type: "result", id: command.id, status: "ok" });
+  }
+
+  private kioskSockets(device: string, except?: WebSocket): WebSocket[] {
+    return this.ctx
+      .getWebSockets(`device:${device}`)
+      .filter((s) => s !== except && s.readyState === WebSocket.OPEN && (s.deserializeAttachment() as Attachment | null)?.role === "kiosk");
+  }
+
+  private toStaff(message: ServerMessage) {
+    const json = JSON.stringify(message);
+    for (const socket of this.ctx.getWebSockets("staff")) {
+      try {
+        socket.send(json);
+      } catch {}
     }
   }
 
@@ -376,10 +498,13 @@ export class Booth extends DurableObject<Env> {
   private socketGone(ws: WebSocket) {
     this.flood.delete(ws);
     const attachment = ws.deserializeAttachment() as Attachment | null;
+    if (attachment?.role === "staff" && attachment.assist) this.notifyAssist(attachment.assist.kiosk, Date.now(), ws);
     if (attachment?.role !== "kiosk") return;
-    const others = this.ctx.getWebSockets(`device:${attachment.device}`).filter((s) => s !== ws && s.readyState === WebSocket.OPEN);
+    const others = this.kioskSockets(attachment.device, ws);
+    if (others.length > 0) return;
+    this.dropSession(attachment.device);
     const entry = this.kioskEntry(attachment.device);
-    if (others.length === 0 && entry?.connected) {
+    if (entry?.connected) {
       this.putKiosk({ ...entry, connected: false });
       this.commitKiosks();
     }
@@ -387,8 +512,8 @@ export class Booth extends DurableObject<Env> {
 
   // MARK: RPC
 
-  async getState(): Promise<BoothState> {
-    return this.state(Date.now());
+  async getState(role: Role = "staff"): Promise<BoothState> {
+    return this.state(Date.now(), role);
   }
 
   async check(): Promise<{ ok: true; rev: number }> {
@@ -758,6 +883,7 @@ export class Booth extends DurableObject<Env> {
 
   private forgetKiosk(device: string, now: number) {
     this.sql.exec("DELETE FROM kiosks WHERE id = ?", device);
+    this.sql.exec("DELETE FROM sessions WHERE kiosk = ?", device);
     for (const row of this.sql.exec<AlertRow>("SELECT * FROM alerts WHERE kiosk_id = ? AND resolved_at IS NULL", device).toArray()) {
       this.updateAlert(row.id, { resolved_at: now }, now);
     }
@@ -788,7 +914,7 @@ export class Booth extends DurableObject<Env> {
 
   // MARK: Storage
 
-  private state(now: number): BoothState {
+  private state(now: number, role: Role = "staff"): BoothState {
     const alerts = this.sql
       .exec<AlertRow>(
         `SELECT * FROM alerts
@@ -814,6 +940,7 @@ export class Booth extends DurableObject<Env> {
     const latest = kiosks.reduce<KioskEntry | undefined>((best, k) => ((k.lastSeenAt ?? -1) > (best?.lastSeenAt ?? -1) ? k : best), undefined);
     return {
       rev: this.rev(),
+      ...(role === "staff" ? { sessions: this.sessions() } : {}),
       kiosks,
       kioskOpen: this.legacyOpen(),
       flavors: this.flavors(),
@@ -906,6 +1033,9 @@ export class Booth extends DurableObject<Env> {
     this.sql.exec("DELETE FROM alerts WHERE created_at < ? AND (acked_at IS NOT NULL OR resolved_at IS NOT NULL)", now - RETENTION_MS);
     this.sql.exec("DELETE FROM processed WHERE at < ?", now - RETENTION_MS);
     this.sql.exec("DELETE FROM orders_feed WHERE paid_at < ? AND updated_at < ?", now - RETENTION_MS, now - RETENTION_MS);
+    for (const row of this.sql.exec<{ kiosk: string }>("SELECT kiosk FROM sessions").toArray()) {
+      if (this.kioskSockets(row.kiosk).length === 0) this.sql.exec("DELETE FROM sessions WHERE kiosk = ?", row.kiosk);
+    }
     const forgotten = this.kiosks().filter((k) => !k.online && (k.lastSeenAt ?? k.firstSeenAt) < now - RETENTION_MS);
     for (const kiosk of forgotten) this.forgetKiosk(kiosk.id, now);
     if (forgotten.length > 0) this.commitKiosks();
