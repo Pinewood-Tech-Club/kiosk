@@ -32,6 +32,8 @@
 	<string>$(KIOSK_NAME)</string>
 	<key>KioskEventName</key>
 	<string>$(KIOSK_EVENT_NAME)</string>
+	<key>KioskStaffPin</key>
+	<string>$(KIOSK_STAFF_PIN)</string>
 	<key>KioskRole</key>
 	<string>$(KIOSK_ROLE)</string>
 	<key>StaffPage</key>

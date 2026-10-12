@@ -361,11 +361,9 @@ struct KioskOpenState: Codable, Equatable, Sendable {
 struct BoothState: Codable, Equatable, Sendable {
     var rev: Int
     var flavors: [BoothFlavorState]
-    /// Nil from servers that only track flavors.
     var supplies: [BoothSupplyState]?
     var kiosk: KioskState
     var kioskOpen: KioskOpenState
-    /// Nil from servers that predate the kiosk registry; those only have the shared `kioskOpen`.
     var kiosks: [KioskEntry]?
     var alerts: [BoothAlert]
     var orders: [BoothOrderSummary]

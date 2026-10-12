@@ -86,6 +86,7 @@ final class AppModel {
 
     private var debugBarOverride: Bool?
     private var debugBarDismissed = false
+    private var debugBarUnlocked = false
     var simulatePayment: Bool
     var slowMotion: Double = 1 {
         didSet { stage.timeScale = slowMotion }
@@ -245,11 +246,23 @@ final class AppModel {
     }
 
     var showsDebugBar: Bool {
-        debugBarOverride ?? (booth.debugEnabled && !debugBarDismissed)
+        debugBarOverride ?? ((booth.debugEnabled || debugBarUnlocked || !booth.isEnabled) && !debugBarDismissed)
+    }
+
+    var canUnlockDebugBar: Bool { Config.staffPin != nil }
+
+    func unlockDebugBar(pin: String) -> Bool {
+        guard let expected = Config.staffPin, pin.trimmingCharacters(in: .whitespaces) == expected else { return false }
+        square.record("Debug bar unlocked with the staff PIN")
+        debugBarOverride = nil
+        debugBarUnlocked = true
+        debugBarDismissed = false
+        return true
     }
 
     func hideDebugBar() {
         debugBarOverride = nil
+        debugBarUnlocked = false
         debugBarDismissed = true
     }
 
@@ -526,6 +539,10 @@ final class AppModel {
         switch confirmation {
         case .removeEmptyEdit(let next):
             guard let editingID else { return }
+            guard current.scoopCount == 0 else {
+                finishEditing(then: next)
+                return
+            }
             delete(editingID, presentNewItem: next == .newItem)
             if next != .newItem { proceed(to: next) }
         case .deleteItem(let id): delete(id)

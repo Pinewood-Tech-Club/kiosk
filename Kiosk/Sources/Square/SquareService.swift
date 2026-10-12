@@ -81,6 +81,7 @@ final class SquareService: NSObject {
     private var hasApplicationID: Bool { Config.squareApplicationID != nil }
     var isConfigured: Bool { hasApplicationID && credentialSource != nil }
     var isSandbox: Bool { hasApplicationID && sdk.settingsManager.sdkSettings.environment == .sandbox }
+    var isProduction: Bool { hasApplicationID && !isSandbox }
     var environmentName: String { hasApplicationID ? (isSandbox ? "Sandbox" : "Production") : "No credentials" }
     var isAuthorized: Bool { authorizationState == .authorized }
 

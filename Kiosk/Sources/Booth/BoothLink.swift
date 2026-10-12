@@ -63,6 +63,7 @@ final class BoothLink {
     @ObservationIgnored private var lastSession: AssistSession?
     @ObservationIgnored private var commandQueue: [AssistCommand] = []
     @ObservationIgnored private var runningCommands = false
+    @ObservationIgnored private var runningCommandID: String?
     @ObservationIgnored private var handledCommands: [String: AssistSession.Result] = [:]
     @ObservationIgnored private var handledOrder: [String] = []
     @ObservationIgnored private var assistResults: [AssistSession.Result] = []
@@ -201,7 +202,7 @@ final class BoothLink {
             record(AssistSession.Result(id: command.id, status: done.status == "applied" ? "duplicate" : done.status, message: done.message))
             return
         }
-        guard !commandQueue.contains(where: { $0.id == command.id }) else { return }
+        guard command.id != runningCommandID, !commandQueue.contains(where: { $0.id == command.id }) else { return }
         commandQueue.append(command)
         guard !runningCommands else { return }
         runningCommands = true
@@ -211,6 +212,7 @@ final class BoothLink {
     private func runCommands() async {
         while !commandQueue.isEmpty, let app {
             let command = commandQueue.removeFirst()
+            runningCommandID = command.id
             lastTouch = Date()
             idleSent = false
             let outcome = await app.applyAssist(command.op)
@@ -225,6 +227,7 @@ final class BoothLink {
             if handledOrder.count > Self.rememberedCommands {
                 handledCommands[handledOrder.removeFirst()] = nil
             }
+            runningCommandID = nil
             record(result)
         }
         runningCommands = false

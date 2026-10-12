@@ -6,6 +6,10 @@ enum Config {
     static let locationID = value("SquareLocationID")
     static let categoryName = value("SquareCategoryName")
     static let eventName = value("KioskEventName") ?? "Tech Club Ice Cream"
+    static var staffPin: String? {
+        let pin = UserDefaults.standard.string(forKey: "kioskStaffPin")?.trimmingCharacters(in: .whitespaces)
+        return pin?.isEmpty == false ? pin : value("KioskStaffPin")
+    }
 
     private static func value(_ key: String) -> String? {
         guard let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String else { return nil }
