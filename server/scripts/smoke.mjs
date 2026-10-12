@@ -253,7 +253,7 @@ await step("square", async () => {
   check("square credentials for the kiosk", credentials.status === 200 && !!credentials.json?.accessToken && !!credentials.json?.locationId, `${credentials.json?.source}, ${credentials.json?.locationId}`);
   if (!tryCheckout) return;
   const cart = {
-    id: randomUUID(), receiptToken, orderNumber: 0, customerName: "Smoke Test", sourceName: "Smoke test", quotedCents: 1100,
+    id: randomUUID(), receiptToken, orderNumber: 0, customerName: "Smoke Test", sourceName: "Smoke test", quotedCents: 1300,
     locationId: credentials.json.locationId,
     items: [{ vessel: "cone", flavors: ["vanilla", "chocolate"], toppings: ["sprinkles"] }, { vessel: "cup", flavors: ["cookies"] }],
   };
@@ -261,7 +261,7 @@ await step("square", async () => {
   const first = await http("/v1/checkout", { token: kioskToken, device: kioskDevice, body: cart });
   check("checkout created a Square order", first.status === 200 && first.json?.status === "created" && !!first.json?.squareOrderId,
     `${Date.now() - started} ms, ${first.json?.totalCents ?? JSON.stringify(first.json)} cents, catalog ${first.json?.usedCatalog}`);
-  check("checkout priced like the kiosk", first.json?.expectedSubtotalCents === 1100 && first.json?.priceMatches === true, first.json?.catalogError ?? "");
+  check("checkout priced like the kiosk", first.json?.expectedSubtotalCents === 1300 && first.json?.priceMatches === true, first.json?.catalogError ?? "");
   const again = await http("/v1/checkout", { token: kioskToken, device: kioskDevice, body: cart });
   check("checkout retry replays the same order", again.json?.status === "duplicate" && again.json?.squareOrderId === first.json?.squareOrderId);
   const receipt = await fetch(`${base}/r/${receiptToken}`);
