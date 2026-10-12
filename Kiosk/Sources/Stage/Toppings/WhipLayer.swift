@@ -7,14 +7,24 @@ import UIKit
 final class WhipLayer: ToppingLayer {
     static let growDuration: Double = 1.5
     static let removeDuration: Double = 0.5
+    /// Swelling up under toppings already on the item, rather than sprayed over them.
+    static let liftDuration: Double = 1.2
+    /// Cream lifted in from below starts this far under the surface beneath, out of sight.
+    private static let liftSink: Float = 0.0015
     /// Share of `growDuration` spent spraying; the rest lets the freshest foam finish puffing up.
     private static let sprayShare: Float = 0.86
 
     let entity = Entity()
     private(set) var isFinished = false
     var launchPoint: (() -> SIMD3<Float>)?
-    var growDuration: Double { Self.growDuration }
+    /// Set before `apply` or `remove` when other toppings sit on the cream: instead of spraying a rosette over them or
+    /// slumping away, the finished rosette swells up from beneath them (or sinks back), its height everywhere an eased
+    /// share of the finished cream's, so the layers above can follow it exactly with the same easing.
+    var underToppings = false
+    var growDuration: Double { liftsIn ? Self.liftDuration : Self.growDuration }
     var removeDuration: Double { Self.removeDuration }
+    private var liftsIn = false
+    private var sinksOut = false
 
     private let model = ModelEntity()
     private var style = WhipStyle(seed: 0)
@@ -66,6 +76,8 @@ final class WhipLayer: ToppingLayer {
         groundFrom = grid
         groundTo = grid
         blendDuration = 0
+        liftsIn = animated && underToppings
+        sinksOut = false
         growStart = animated ? now : nil
         removeStart = nil
         isFinished = false
@@ -97,6 +109,7 @@ final class WhipLayer: ToppingLayer {
             isFinished = true
             return
         }
+        sinksOut = underToppings
         removeStart = now
     }
 
@@ -114,7 +127,7 @@ final class WhipLayer: ToppingLayer {
             sweepMix = current.mix
         }
         rebuild()
-        entity.setOpacity(1 - Self.smoothstep(0.55, 1, current.deflate))
+        entity.setOpacity(1 - max(Self.smoothstep(0.55, 1, current.deflate), current.fade))
         shown = current
     }
 
@@ -144,13 +157,24 @@ final class WhipLayer: ToppingLayer {
             state.mix = t >= 1 ? 1 : Ease.inOutCubic(Ease.clamp01(t))
         }
         if let growStart {
-            let t = Float((now - growStart) / Self.growDuration)
-            state.reveal = t >= Self.sprayShare ? 1 : Self.extrusion(Ease.clamp01(t / Self.sprayShare))
-            state.settle = t >= 1 ? 1 : Self.smoothstep(Self.sprayShare, 1, t)
+            let t = Float((now - growStart) / growDuration)
+            if liftsIn {
+                state.rise = t >= 1 ? 1 : Ease.inOutSine(Ease.clamp01(t))
+            } else {
+                state.reveal = t >= Self.sprayShare ? 1 : Self.extrusion(Ease.clamp01(t / Self.sprayShare))
+                state.settle = t >= 1 ? 1 : Self.smoothstep(Self.sprayShare, 1, t)
+            }
             if t >= 1 { self.growStart = nil }
         }
         if let removeStart {
-            state.deflate = Ease.clamp01(Float((now - removeStart) / Self.removeDuration))
+            let t = Ease.clamp01(Float((now - removeStart) / Self.removeDuration))
+            if sinksOut {
+                state.rise = min(state.rise, 1 - Ease.inOutSine(t))
+                state.fade = Self.smoothstep(0.6, 1, t)
+                if t >= 1 { state.deflate = 1 }
+            } else {
+                state.deflate = t
+            }
         }
         current = state
     }
@@ -192,7 +216,14 @@ final class WhipLayer: ToppingLayer {
             let tip = head.center + head.tangent * headRadius * WhipMesh.capReach
             out.append(deflated(tip, radius: headRadius * 0.55, ground: ground))
         }
-        return out
+        guard current.rise < 1 else { return out }
+        return out.map { tube in
+            var tube = tube
+            let floor = ground.height(tube.center.x, tube.center.z) - Self.liftSink
+            tube.center.y = floor + current.rise * (tube.center.y - floor)
+            tube.squash *= current.rise
+            return tube
+        }
     }
 
     private func deflated(_ center: SIMD3<Float>, radius: Float, ground: WhipGround) -> WhipTube {
@@ -210,7 +241,7 @@ final class WhipLayer: ToppingLayer {
     private func rebuild() {
         guard let buffers else { return }
         let length = sweep.length(atVolume: current.reveal)
-        guard length > 1e-5 else {
+        guard length > 1e-5, current.rise > 0.01 else {
             model.isEnabled = false
             return
         }
@@ -270,6 +301,13 @@ final class WhipLayer: ToppingLayer {
                 shade.append(min(0.6 * under + 0.3 * inner + 0.75 * crease, 1) * ring.occlusion)
             }
         }
+        if current.rise < 1 {
+            let ground = currentGround
+            for i in points.indices {
+                let floor = ground.height(points[i].x, points[i].z) - Self.liftSink
+                points[i].y = floor + current.rise * (points[i].y - floor)
+            }
+        }
         buffers.write(points: points, shade: shade, rings: rings, stride: stride)
     }
 
@@ -316,6 +354,9 @@ private struct WhipState: Equatable {
     var reveal: Float
     var settle: Float
     var deflate: Float
+    /// Share of the finished cream's height above the surface beneath, while it swells up under toppings or sinks away.
+    var rise: Float = 1
+    var fade: Float = 0
 }
 
 struct WhipTube {
