@@ -81,8 +81,14 @@ final class ScatterLayer: ToppingLayer {
         let next: Int
         let start: Double
         /// One attempt runs per call, so a piece that needs several never stalls a frame.
-        var spots: [SIMD2<Float>] = []
+        var spots: [(spot: SIMD2<Float>, lays: Bool)] = []
         var attempt = 0
+        var simulated = 0
+        /// Where the piece would lie pressed onto the slope (or the pieces on it), if no settled landing works out.
+        var placed: ScatterPose?
+        var placedLift = Float.infinity
+        /// A small piece looks for bare cream first, and only then goes over the spots again for pieces to rest on.
+        var climbing = false
         var awkward: ScatterSettle.Outcome?
         var perched: ScatterSettle.Outcome?
     }
@@ -107,13 +113,39 @@ final class ScatterLayer: ToppingLayer {
     private var pending: Pending?
     private var resurfacing: Resurfacing?
     private var animating = false
+    private var tally: [String: Int] = [:]
 
     /// Simulated seconds shown per real second: slower than life so a fall on a small scoop reads.
     static let playbackRate: Float = 0.6
     static let dropHeight: Float = 0.014
     static let dropSpeed: Float = 0.35
-    /// Spots tried, the roomiest first, before a piece that finds no room on the ice cream is left off.
-    static let attempts = 7
+    /// Landings simulated for a piece, the roomiest spots first, before it falls back to resting on a lying piece, being
+    /// left pressed where it was laid, or, with nowhere for either, left off.
+    static let attempts = 10
+    /// The first attempts toss the piece the way a hand would; the rest lay it on the slope, as a server presses it on.
+    static let tossAttempts = 3
+    /// Cosine of the steepest slope a piece is laid on.
+    static let steepestLay: Float = 0.7
+    /// Further landings simulated on steeper and lower spots, once the rest of the top is taken.
+    static let lastResortAttempts = 4
+    /// Steeper than `steepestLay`, a piece is only laid where the slope faces the camera (+z), not out to the side, where
+    /// it would show edge-on past the scoop's outline.
+    static let steepFacing: Float = 0.3
+    /// A piece isn't laid where the slope faces this far toward the side: seen from the front it would stick out past
+    /// the scoop's outline.
+    static let sideways: Float = 0.5
+    static let layGap: Float = 0.0008
+    static let laySpeed: Float = 0.03
+    /// A piece this small laid flat already follows the curve beneath it, so it's left where it's laid rather than settled.
+    static let smallPiece: Float = 0.006
+    /// A laid piece may start this far up to clear the pieces beneath it.
+    static let highestLay: Float = 0.016
+    /// Lifted no more than this, a piece left where it was laid is on the cream rather than on other pieces.
+    static let pressedLift: Float = 0.002
+    /// Laid pieces stay this far above the floor. Toward the back the camera sees down past a cup's rim; toward the
+    /// front (+z) a piece much below the rim would be hidden by the cup's wall.
+    static let lowestLay: Float = 0.002
+    static let lowestInFront: Float = 0.006
     /// A piece with no room on the ice cream may rest on one lying piece, never on a heap.
     static let perchHeight: Float = 0.010
     /// Cosine of the steepest slope pieces are aimed at; steeper spots can't hold them.
@@ -124,11 +156,12 @@ final class ScatterLayer: ToppingLayer {
     enum Serving {
         /// Fewer pieces on a small top or one shared with other candy, so they lie in one loose layer.
         case fitToRoom
-        /// Always the kind's whole count; pieces with no room on the ice cream rest on one lying piece, never in a heap.
+        /// Always the kind's whole count: pieces with no room on the ice cream are laid on the scoops' shoulders or rest on
+        /// lying pieces, never up a heap.
         case full
     }
 
-    static let serving = Serving.fitToRoom
+    static let serving = Serving.full
     /// Seconds per frame spent settling pieces ahead of their toss.
     static let settleBudget = 0.002
 
@@ -144,6 +177,7 @@ final class ScatterLayer: ToppingLayer {
         pieces = []
         tosses = []
         resting = []
+        tally = [:]
         isFinished = false
         var rng = ToppingRandom(seed: seed)
         let made = kind.makePieces(rng: &rng)
@@ -258,51 +292,97 @@ final class ScatterLayer: ToppingLayer {
         let surface = job.surface
         var piece = pieces[index]
         let toss = tosses[index]
-        let radius = max(surface.radius, 1e-3)
-        let apexXZ = SIMD2(surface.apex.x, surface.apex.z)
         if job.spots.isEmpty {
             let firstAngle = atan2(toss.candidates[0].y, toss.candidates[0].x)
             let ring = (0..<12).map { k in
                 let angle = firstAngle + Float(k) * 2.4
                 return SIMD2(cos(angle), sin(angle)) * [0.3, 0.55, 0.8][k % 3]
             }
-            job.spots = (toss.candidates + ring).map { offset -> (spot: SIMD2<Float>, score: Float) in
-                let candidate = apexXZ + offset * radius
-                var score = radius
-                for other in bodies {
-                    let gap = simd_distance(candidate, SIMD2(other.position.x, other.position.z))
-                    score = min(score, gap - other.shape.bound - piece.shape.bound)
-                }
-                score -= 0.1 * simd_length(offset) * radius
-                if (surface.sample(x: candidate.x, z: candidate.y)?.normal.y ?? 0) < Self.steepestAim { score -= radius }
-                return (candidate, score)
-            }.sorted { $0.score > $1.score }.prefix(Self.attempts).map(\.spot)
+            let tossed = ranked(toss.candidates + ring, piece: piece.shape, on: surface, steepest: Self.steepestAim, lowest: 0)
+                .prefix(Self.tossAttempts)
+            let wide = (0..<240).map { k in
+                let angle = firstAngle + Float(k) * 2.4
+                return SIMD2(cos(angle), sin(angle)) * (0.15 + 2.25 * Float(k % 12) / 11)
+            }
+            let laid = ranked(wide, piece: piece.shape, on: surface, steepest: Self.steepestLay, lowest: Self.lowestLay, laying: true)
+            let lastResort = ranked(wide, piece: piece.shape, on: surface, steepest: Self.steepestAim, lowest: 0,
+                                    laying: true)
+            job.spots = tossed.map { ($0, false) } + (laid + lastResort).map { ($0, true) }
         }
         let attempt = job.attempt
-        let spot = job.spots[attempt]
-        let ground = surface.sample(x: spot.x, z: spot.y)?.height ?? surface.apex.y
-        let start = ScatterPose(position: [spot.x, ground + Self.dropHeight + piece.shape.bound, spot.y], rotation: toss.orientation)
-        let result = job.settle.run(piece.shape, from: start, velocity: [toss.push.x, -Self.dropSpeed, toss.push.z],
-                                    spin: attempt == 0 ? toss.spin : .zero, among: bodies)
+        let (spot, lays) = job.spots[attempt]
+        let simulating = job.simulated < Self.attempts + Self.lastResortAttempts
+        let small = piece.shape.bound < Self.smallPiece
+        var result: ScatterSettle.Outcome?
         var landed: ScatterSettle.Outcome?
-        switch judge(result, shape: piece.shape, on: surface) {
-        case .lies: landed = result
-        case .perches: if job.perched == nil { job.perched = result }
-        case .wedges: if job.awkward == nil { job.awkward = result }
-        case .rejected: break
+        var verdict = "lost"
+        if !lays {
+            if simulating {
+                let ground = surface.sample(x: spot.x, z: spot.y)?.height ?? surface.apex.y
+                let start = ScatterPose(position: [spot.x, ground + Self.dropHeight + piece.shape.bound, spot.y],
+                                        rotation: toss.orientation)
+                result = job.settle.run(piece.shape, from: start, velocity: [toss.push.x, -Self.dropSpeed, toss.push.z],
+                                        spin: attempt == 0 ? toss.spin : .zero, among: bodies)
+                job.simulated += 1
+            }
+        } else if let found = layingPose(piece.shape, at: spot, on: surface, turn: Float(index) * 2.4 + Float(attempt) * 1.3,
+                                         highest: small && !job.climbing ? 0 : Self.highestLay) {
+            consider(found, for: piece.shape, on: surface, in: &job)
+            let onCream = job.placedLift == 0
+            if small {
+                if onCream, let placed = job.placed {
+                    landed = ScatterSettle.Outcome(rest: placed, track: [placed], fell: false, onPieces: false)
+                    verdict = "laid"
+                }
+            } else if simulating || onCream {
+                result = job.settle.run(piece.shape, from: found.pose, velocity: -found.pose.rotation.act([0, 1, 0]) * Self.laySpeed,
+                                        spin: .zero, among: bodies, grip: 1)
+                job.simulated += 1
+            }
+            if onCream, let placed = job.placed, let settled = result, judge(settled, shape: piece.shape, on: surface) != .lies {
+                landed = ScatterSettle.Outcome(rest: placed, track: [placed], fell: false, onPieces: false)
+                verdict = "laid"
+                result = nil
+            }
         }
-        if landed == nil, attempt + 1 < job.spots.count {
+        if let result {
+            switch judge(result, shape: piece.shape, on: surface) {
+            case .lies:
+                landed = result
+                verdict = "lies"
+            case .perches: if job.perched == nil { job.perched = result }
+            case .wedges: if job.awkward == nil, Self.serving == .fitToRoom { job.awkward = result }
+            case .rejected: break
+            }
+        }
+        let searching = simulating || (job.perched == nil && job.awkward == nil && job.placedLift > 0)
+        if landed == nil, searching, attempt + 1 < job.spots.count {
             job.attempt = attempt + 1
             pending = job
             return true
         }
-        if landed == nil { landed = job.perched ?? job.awkward }
+        if landed == nil, small, !job.climbing, job.placed == nil, let firstLaid = job.spots.firstIndex(where: \.lays) {
+            job.climbing = true
+            job.attempt = firstLaid
+            pending = job
+            return true
+        }
+        if landed == nil, let perched = job.perched {
+            landed = perched
+            verdict = "perches"
+        } else if landed == nil, let awkward = job.awkward {
+            landed = awkward
+            verdict = "wedges"
+        } else if landed == nil, let placed = job.placed {
+            landed = ScatterSettle.Outcome(rest: placed, track: [placed], fell: false, onPieces: job.placedLift > 0)
+            verdict = "pressed"
+        }
+        tally[verdict, default: 0] += 1
         if let landed {
             piece.rest = landed.rest
             piece.track = landed.track
-            let cream = surface.sample(x: piece.rest.position.x, z: piece.rest.position.z)?.height ?? surface.apex.y
             let footprint = ScatterFootprint(shape: piece.shape, position: piece.rest.position, rotation: piece.rest.rotation,
-                                             raised: Self.isRaised(piece.shape, piece.rest, cream: cream))
+                                             raised: Self.isRaised(piece.shape, piece.rest, on: surface, among: bodies))
             bodies.append(footprint)
             resting.append(footprint)
         } else {
@@ -314,7 +394,94 @@ final class ScatterLayer: ToppingLayer {
         if let now { piece.delay = max(piece.delay, now - job.start) }
         pieces[index] = piece
         pending = index + 1 < pieces.count ? Pending(surface: surface, settle: job.settle, next: index + 1, start: job.start) : nil
+        if pending == nil { reportTally() }
         return true
+    }
+
+    /// Keeps the lowest pose where the piece could be left pressed onto the slope, or onto pieces but no higher than a
+    /// perch, so never up a heap, as the fallback when nothing it was dropped or laid onto settled.
+    private func consider(_ found: (pose: ScatterPose, lift: Float), for shape: ScatterShape, on surface: ToppingSurface,
+                          in job: inout Pending) {
+        var pressed = found.pose
+        pressed.position.y -= Self.layGap
+        guard found.lift < job.placedLift, let ground = surface.sample(x: pressed.position.x, z: pressed.position.z) else { return }
+        if found.lift > Self.pressedLift {
+            guard !Self.supports(shape, pressed, among: bodies).isEmpty,
+                  Self.above(pressed, ground) < Self.perchHeight + shape.half.min() else { return }
+        } else if Self.restsOnRaised(shape, pressed, among: bodies) {
+            return
+        }
+        job.placed = pressed
+        job.placedLift = found.lift
+    }
+
+    /// Lying flat on the slope just clear of the surface, turned the way that needs the least lift to clear the pieces
+    /// already there, so a piece laid where they lie comes down on top of them. Nil if it would have to rise too far.
+    private func layingPose(_ shape: ScatterShape, at spot: SIMD2<Float>, on surface: ToppingSurface, turn: Float,
+                            highest: Float) -> (pose: ScatterPose, lift: Float)? {
+        guard let ground = surface.sample(x: spot.x, z: spot.y) else { return nil }
+        let tilt = simd_quatf(from: [0, 1, 0], to: ground.normal)
+        let base = SIMD3(spot.x, ground.height, spot.y) + ground.normal * (shape.half.y + Self.layGap)
+        let near = bodies.filter { simd_distance($0.position, base) < $0.shape.bound + shape.bound + highest }
+        var best: ScatterPose?
+        var lowest = highest
+        for k in 0..<6 {
+            let rotation = tilt * simd_quatf(angle: turn + Float(k) * .pi / 6, axis: [0, 1, 0])
+            var lift: Float = 0
+            while lift <= lowest {
+                let pose = ScatterPose(position: base + SIMD3(0, lift, 0), rotation: rotation)
+                if near.allSatisfy({ Self.clear(shape, pose, of: $0) }) {
+                    if lift < lowest || best == nil { best = pose; lowest = lift }
+                    break
+                }
+                lift += 0.0005
+            }
+            if lowest == 0 { break }
+        }
+        return best.map { ($0, lowest) }
+    }
+
+    private static func clear(_ shape: ScatterShape, _ pose: ScatterPose, of other: ScatterFootprint) -> Bool {
+        let toOther = other.rotation.inverse
+        let toPiece = pose.rotation.inverse
+        return !shape.points.contains { s in
+            other.shape.contact(toOther.act(pose.position + pose.rotation.act(s) - other.position)).distance < layGap
+        } && !other.shape.points.contains { s in
+            shape.contact(toPiece.act(other.position + other.rotation.act(s) - pose.position)).distance < layGap
+        }
+    }
+
+    /// Spots by room around them, roomiest first. Spots too low to see are dropped, and too steep ones sorted last, or dropped
+    /// for a piece that's laid rather than tossed.
+    private func ranked(_ offsets: [SIMD2<Float>], piece: ScatterShape, on surface: ToppingSurface, steepest: Float,
+                        lowest: Float, laying: Bool = false) -> [SIMD2<Float>] {
+        let radius = max(surface.radius, 1e-3)
+        let apexXZ = SIMD2(surface.apex.x, surface.apex.z)
+        return offsets.compactMap { offset -> (spot: SIMD2<Float>, score: Float)? in
+            let candidate = apexXZ + offset * radius
+            let facing = max(offset.y, 0) / max(simd_length(offset), 1e-4)
+            guard let ground = surface.sample(x: candidate.x, z: candidate.y),
+                  ground.height > surface.floor + lowest + (Self.lowestInFront - lowest) * facing else { return nil }
+            var score = radius
+            for other in bodies {
+                let gap = simd_distance(candidate, SIMD2(other.position.x, other.position.z))
+                score = min(score, gap - other.shape.bound - piece.bound)
+            }
+            score -= 0.1 * simd_length(offset) * radius
+            if ground.normal.y < steepest {
+                if laying { return nil }
+                score -= radius
+            }
+            if laying, ground.normal.y < Self.steepestLay, ground.normal.z < Self.steepFacing { return nil }
+            if laying, abs(ground.normal.x) > Self.sideways { return nil }
+            return (candidate, score)
+        }.sorted { $0.score > $1.score }.map(\.spot)
+    }
+
+    private func reportTally() {
+        let placed = pieces.count - tally["lost", default: 0]
+        let detail = ["lies", "laid", "perches", "wedges", "pressed", "lost"].map { "\($0) \(tally[$0, default: 0])" }.joined(separator: ", ")
+        SquareService.appendToLogFile("Scatter: \(type(of: kind)) placed \(placed)/\(pieces.count) (\(detail))")
     }
 
     private enum Judgement { case lies, perches, wedges, rejected }
@@ -327,14 +494,14 @@ final class ScatterLayer: ToppingLayer {
         guard !result.fell, !Self.restsOnRaised(shape, rest, among: bodies) else { return .rejected }
         guard let ground = surface.sample(x: rest.position.x, z: rest.position.z) else { return .rejected }
         if result.onPieces {
-            let low = rest.position.y - ground.height < Self.perchHeight + shape.half.min()
+            let low = Self.above(rest, ground) < Self.perchHeight + shape.half.min()
             return low && !Self.standsOnEnd(shape, rest, ground: up) && !Self.onEdge(shape, rest, ground: up) ? .perches : .rejected
         }
         if Self.standsOnEnd(shape, rest, ground: ground.normal) || Self.standsOnEnd(shape, rest, ground: up, upright: 0.8) {
             return .rejected
         }
         if Self.onEdge(shape, rest, ground: ground.normal) || Self.onEdge(shape, rest, ground: up, flat: 0.6) {
-            let low = rest.position.y - ground.height < 1.1 * shape.half.max()
+            let low = Self.above(rest, ground) < 1.1 * shape.half.max()
             return low && !Self.standsOnEnd(shape, rest, ground: up) ? .wedges : .rejected
         }
         return .lies
@@ -392,9 +559,9 @@ final class ScatterLayer: ToppingLayer {
                 piece.rest = start
                 piece.track = [start]
             }
-            let cream = job.surface.sample(x: piece.rest.position.x, z: piece.rest.position.z)?.height ?? job.surface.apex.y
             let footprint = ScatterFootprint(shape: piece.shape, position: piece.rest.position, rotation: piece.rest.rotation,
-                                             raised: Self.isRaised(piece.shape, piece.rest, cream: cream))
+                                             raised: Self.isRaised(piece.shape, piece.rest, on: job.surface,
+                                                                     among: job.settled ?? []))
             job.settled?.append(footprint)
             job.restingAfter[index] = footprint
             let duration = job.duration
@@ -617,16 +784,42 @@ final class ScatterLayer: ToppingLayer {
                                           translation: position - rotation.act(piece.meshCenter * scale))
     }
 
-    private static func isRaised(_ shape: ScatterShape, _ pose: ScatterPose, cream: Float) -> Bool {
-        pose.position.y - cream > 1.6 * shape.half.min() + 0.0005
+    /// Up off the surface, or held up by a piece below it: either way nothing may rest on it in turn.
+    private static func isRaised(_ shape: ScatterShape, _ pose: ScatterPose, on surface: ToppingSurface,
+                                 among bodies: [ScatterFootprint]) -> Bool {
+        guard let ground = surface.sample(x: pose.position.x, z: pose.position.z) else { return true }
+        return above(pose, ground) > 1.6 * shape.half.min() + 0.0005 || !supports(shape, pose, among: bodies).isEmpty
     }
 
-    /// Whether a piece would lean on one that's already up on other pieces: that's how heaps start.
-    private static func restsOnRaised(_ shape: ScatterShape, _ pose: ScatterPose, among bodies: [ScatterFootprint]) -> Bool {
-        bodies.contains { other in
-            other.raised && other.position.y < pose.position.y
-                && simd_distance(other.position, pose.position) < other.shape.bound + shape.bound
+    /// The pieces below this one that hold it up, rather than just touch its side.
+    private static func supports(_ shape: ScatterShape, _ pose: ScatterPose, among bodies: [ScatterFootprint]) -> [ScatterFootprint] {
+        let touch: Float = 0.0006, upward: Float = 0.5
+        return bodies.filter { other in
+            guard other.position.y < pose.position.y,
+                  simd_distance(other.position, pose.position) < other.shape.bound + shape.bound + touch else { return false }
+            let toOther = other.rotation.inverse
+            let rests = shape.points.contains { s in
+                let hit = other.shape.contact(toOther.act(pose.position + pose.rotation.act(s) - other.position))
+                return hit.distance < touch && other.rotation.act(hit.normal).y > upward
+            }
+            if rests { return true }
+            let toPiece = pose.rotation.inverse
+            return other.shape.points.contains { s in
+                let hit = shape.contact(toPiece.act(other.position + other.rotation.act(s) - pose.position))
+                return hit.distance < touch && pose.rotation.act(hit.normal).y < -upward
+            }
         }
+    }
+
+    /// Distance from the surface to the piece's center, square to the slope, so a piece lying on a steep shoulder isn't
+    /// mistaken for one up on others.
+    private static func above(_ pose: ScatterPose, _ ground: (height: Float, normal: SIMD3<Float>)) -> Float {
+        (pose.position.y - ground.height) * ground.normal.y
+    }
+
+    /// Whether a piece would rest on one that's already up on other pieces: that's how heaps start.
+    private static func restsOnRaised(_ shape: ScatterShape, _ pose: ScatterPose, among bodies: [ScatterFootprint]) -> Bool {
+        supports(shape, pose, among: bodies).contains(where: \.raised)
     }
 
     /// An elongated piece whose long axis points mostly up: stable for a box, but rare for real candy.
