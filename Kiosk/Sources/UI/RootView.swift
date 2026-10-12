@@ -131,7 +131,68 @@ private struct WindowHook: UIViewRepresentable {
     final class HookView: UIView {
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            if let window { TouchObserver.install(on: window) }
+            if let window {
+                TouchObserver.install(on: window)
+                CornerHold.install(on: window)
+            }
         }
     }
+}
+
+/// Watches the window rather than a SwiftUI gesture, which a view update during the hold could cancel.
+final class CornerHold: UIGestureRecognizer, UIGestureRecognizerDelegate {
+    static let held = Notification.Name("KioskCornerHeld")
+    static let corner = CGRect(x: 0, y: 0, width: 110, height: 110)
+    static let duration: TimeInterval = 3
+    private static let slop: CGFloat = 24
+
+    private var timer: Timer?
+    private var start = CGPoint.zero
+
+    static func install(on window: UIWindow) {
+        guard !(window.gestureRecognizers ?? []).contains(where: { $0 is CornerHold }) else { return }
+        let hold = CornerHold(target: nil, action: nil)
+        hold.cancelsTouchesInView = false
+        hold.delaysTouchesBegan = false
+        hold.delaysTouchesEnded = false
+        hold.delegate = hold
+        window.addGestureRecognizer(hold)
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard timer == nil, event.allTouches?.count == 1, let touch = touches.first, let view,
+              Self.corner.contains(touch.location(in: view)) else {
+            stop()
+            return
+        }
+        start = touch.location(in: view)
+        timer = Timer.scheduledTimer(withTimeInterval: Self.duration, repeats: false) { [weak self] _ in
+            self?.timer = nil
+            NotificationCenter.default.post(name: Self.held, object: nil)
+            self?.state = .failed
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let touch = touches.first, let view else { return }
+        let point = touch.location(in: view)
+        if hypot(point.x - start.x, point.y - start.y) > Self.slop { stop() }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { stop() }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { stop() }
+
+    override func reset() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func stop() {
+        timer?.invalidate()
+        timer = nil
+        state = .failed
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 }

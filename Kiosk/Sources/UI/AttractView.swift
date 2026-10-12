@@ -48,15 +48,17 @@ struct AttractView: View {
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
         .overlay(alignment: .topLeading) {
-            if app.canUnlockDebugBar {
-                Color.clear
-                    .frame(width: 110, height: 110)
-                    .contentShape(Rectangle())
-                    .onLongPressGesture(minimumDuration: 3) { askForPin(rejected: false) }
-            }
+            Color.clear
+                .frame(width: CornerHold.corner.width, height: CornerHold.corner.height)
+                .contentShape(Rectangle())
+                .onTapGesture {}
         }
         .contentShape(Rectangle())
         .onTapGesture { app.beginOrder() }
+        .onReceive(NotificationCenter.default.publisher(for: CornerHold.held)) { _ in
+            guard app.screen == .attract, app.canUnlockDebugBar, !asksForPin else { return }
+            askForPin(rejected: false)
+        }
         .ignoresSafeArea()
         .alert("Staff tools", isPresented: $asksForPin) {
             SecureField("PIN", text: $pin)
