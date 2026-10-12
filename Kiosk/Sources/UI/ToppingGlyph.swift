@@ -10,7 +10,8 @@ struct ToppingGlyph: View {
             context.scaleBy(x: canvas.width / 64, y: canvas.height / 64)
             switch topping {
             case .whip: Self.whip(&context)
-            case .chocolate: Self.syrup(&context)
+            case .chocolate: Self.syrup(&context, dark: Self.chocolate, light: Self.chocolateLight)
+            case .caramel: Self.syrup(&context, dark: Self.caramel, light: Self.caramelLight)
             case .gummies: Self.gummies(&context)
             case .mms: Self.candies(&context)
             case .sprinkles: Self.sprinkles(&context)
@@ -24,6 +25,8 @@ struct ToppingGlyph: View {
     private static let creamShade = Color(red: 0.84, green: 0.79, blue: 0.72)
     private static let chocolate = Color(red: 0.36, green: 0.20, blue: 0.12)
     private static let chocolateLight = Color(red: 0.55, green: 0.33, blue: 0.20)
+    private static let caramel = Color(red: 0.62, green: 0.32, blue: 0.08)
+    private static let caramelLight = Color(red: 0.88, green: 0.58, blue: 0.24)
 
     private static func whip(_ context: inout GraphicsContext) {
         let tiers: [(CGRect, CGFloat)] = [
@@ -45,14 +48,14 @@ struct ToppingGlyph: View {
         context.fill(peak, with: .color(cream))
     }
 
-    private static func syrup(_ context: inout GraphicsContext) {
+    private static func syrup(_ context: inout GraphicsContext, dark: Color, light: Color) {
         var drop = Path()
         drop.move(to: CGPoint(x: 32, y: 6))
         drop.addCurve(to: CGPoint(x: 50, y: 40), control1: CGPoint(x: 38, y: 18), control2: CGPoint(x: 50, y: 27))
         drop.addArc(center: CGPoint(x: 32, y: 40), radius: 18, startAngle: .degrees(0), endAngle: .degrees(180), clockwise: false)
         drop.addCurve(to: CGPoint(x: 32, y: 6), control1: CGPoint(x: 14, y: 27), control2: CGPoint(x: 26, y: 18))
         drop.closeSubpath()
-        context.fill(drop, with: .linearGradient(Gradient(colors: [chocolateLight, chocolate]),
+        context.fill(drop, with: .linearGradient(Gradient(colors: [light, dark]),
                                                 startPoint: CGPoint(x: 20, y: 14), endPoint: CGPoint(x: 44, y: 58)))
         var shine = Path()
         shine.addArc(center: CGPoint(x: 32, y: 40), radius: 11, startAngle: .degrees(160), endAngle: .degrees(215), clockwise: false)

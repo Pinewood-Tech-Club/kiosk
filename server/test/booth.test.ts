@@ -418,9 +418,9 @@ describe("supplies", () => {
     expect(state.supplies.map((s) => `${s.kind}:${s.id}`)).toEqual([
       ...state.flavors.map((f) => `flavor:${f.id}`),
       "vessel:cup", "vessel:cone",
-      "topping:whip", "topping:chocolate", "topping:gummies", "topping:mms", "topping:sprinkles",
+      "topping:whip", "topping:chocolate", "topping:caramel", "topping:gummies", "topping:mms", "topping:sprinkles",
     ]);
-    expect(state.supplies.filter((s) => s.kind === "topping").map((s) => s.name)).toEqual(["Whipped Cream", "Chocolate Syrup", "Gummy Bears", "M&M's", "Sprinkles"]);
+    expect(state.supplies.filter((s) => s.kind === "topping").map((s) => s.name)).toEqual(["Whipped Cream", "Chocolate Syrup", "Caramel Syrup", "Gummy Bears", "M&M's", "Sprinkles"]);
     expect(state.supplies.filter((s) => s.kind === "vessel").map((s) => s.name)).toEqual(["Cups", "Waffle cones"]);
     expect(state.supplies.every((s) => !s.soldOut)).toBe(true);
   });
@@ -435,25 +435,30 @@ describe("supplies", () => {
     expect((await staff.next("result", (m) => m.id === "cone-out")).status).toBe("ok");
     staff.send({ type: "action", action: setSupply("chocolate-topping-out", "topping", "chocolate", true) });
     expect((await staff.next("result", (m) => m.id === "chocolate-topping-out")).status).toBe("ok");
+    staff.send({ type: "action", action: setSupply("caramel-topping-out", "topping", "caramel", true) });
+    expect((await staff.next("result", (m) => m.id === "caramel-topping-out")).status).toBe("ok");
     for (const client of [kioskA, kioskB, staff]) await client.settle();
 
     for (const client of [kioskA, kioskB]) {
       expect(supplyOut(client.state!, "vessel", "cone")).toBe(true);
       expect(supplyOut(client.state!, "topping", "chocolate")).toBe(true);
+      expect(supplyOut(client.state!, "topping", "caramel")).toBe(true);
       expect(supplyOut(client.state!, "flavor", "chocolate")).toBe(false);
       expect(client.state!.flavors.find((f) => f.id === "chocolate")!.soldOut).toBe(false);
     }
     const patches = staff.inbox.filter((m): m is Msg<"patch"> => m.type === "patch" && m.rev > startRev);
     expect(patches.some((m) => m.change.kind === "flavors")).toBe(false);
-    expect(patches.filter((m) => m.change.kind === "supplies")).toHaveLength(2);
+    expect(patches.filter((m) => m.change.kind === "supplies")).toHaveLength(3);
 
     const alerts = (await serverState()).alerts.filter((a) => a.kind === "soldout" && !a.resolvedAt);
     expect(alerts.find((a) => a.key === "soldout:vessel:cone")).toMatchObject({ title: "Waffle cones are sold out", severity: "info" });
     expect(alerts.find((a) => a.key === "soldout:topping:chocolate")).toMatchObject({ title: "Chocolate Syrup is sold out", severity: "info" });
+    expect(alerts.find((a) => a.key === "soldout:topping:caramel")).toMatchObject({ title: "Caramel Syrup is sold out", severity: "info" });
 
     staff.send({ type: "action", action: setSupply("cone-back", "vessel", "cone", false) });
     staff.send({ type: "action", action: setSupply("chocolate-topping-back", "topping", "chocolate", false) });
-    await staff.next("result", (m) => m.id === "chocolate-topping-back");
+    staff.send({ type: "action", action: setSupply("caramel-topping-back", "topping", "caramel", false) });
+    await staff.next("result", (m) => m.id === "caramel-topping-back");
     for (const client of [kioskA, kioskB, staff]) await client.settle();
     const truth = comparable(await serverState());
     expect(truth.supplies.every((s) => !s.soldOut)).toBe(true);

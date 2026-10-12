@@ -4,12 +4,20 @@ import UIKit
 
 extension Topping {
     /// Whip and drizzle change the surface everything above them rests on; scattered pieces don't.
-    var isLayered: Bool { self == .whip || self == .chocolate }
+    var isLayered: Bool { self == .whip || drizzleStyle != nil }
+
+    var drizzleStyle: DrizzleStyle? {
+        switch self {
+        case .chocolate: .chocolate
+        case .caramel: .caramel
+        default: nil
+        }
+    }
 
     var stackRank: Int {
         switch self {
         case .whip: 0
-        case .chocolate: 1
+        case .chocolate, .caramel: 1
         case .gummies, .mms, .sprinkles: 2
         }
     }
@@ -254,7 +262,7 @@ enum ToppingFactory {
     static func layer(_ topping: Topping, candy: CandyLibrary?) -> any ToppingLayer {
         switch topping {
         case .whip: WhipLayer()
-        case .chocolate: DrizzleLayer(style: .chocolate)
+        case .chocolate, .caramel: DrizzleLayer(style: topping.drizzleStyle ?? .chocolate)
         case .gummies, .mms, .sprinkles: ScatterLayer(kind: scatterKind(topping, candy: candy))
         }
     }
@@ -268,8 +276,8 @@ enum ToppingFactory {
         switch topping {
         case .whip:
             return (WhipLayer.makeIconDollop(), [])
-        case .chocolate:
-            return (DrizzleLayer.makeIcon(style: .chocolate), [])
+        case .chocolate, .caramel:
+            return (DrizzleLayer.makeIcon(style: topping.drizzleStyle ?? .chocolate), [])
         case .gummies, .mms, .sprinkles:
             var random = ToppingRandom(seed: ToppingSeed.layer(item: 0x5EED, topping: topping))
             let pile = scatterKind(topping, candy: candy).makeIconPile(rng: &random)

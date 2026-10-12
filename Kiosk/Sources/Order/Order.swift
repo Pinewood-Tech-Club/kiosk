@@ -42,7 +42,7 @@ enum Flavor: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum Topping: String, CaseIterable, Identifiable, Sendable {
-    case whip, chocolate, gummies, mms, sprinkles
+    case whip, chocolate, caramel, gummies, mms, sprinkles
 
     var id: String { rawValue }
 
@@ -50,6 +50,7 @@ enum Topping: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .whip: "Whipped Cream"
         case .chocolate: "Chocolate Syrup"
+        case .caramel: "Caramel Syrup"
         case .gummies: "Gummy Bears"
         case .mms: "M&M's"
         case .sprinkles: "Sprinkles"
