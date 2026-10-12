@@ -1,6 +1,7 @@
 import { escapeHtml } from "./http";
 import { TOPPING_TITLES } from "./pricing";
 import { NOTO_SERIF_SEMIBOLD_WOFF2 } from "./staff-font";
+import type { SupplyKind } from "./schema";
 import { STAFF_ROLES, type StaffRole, type StaffSection } from "./staff-roles";
 
 const STYLE = `
@@ -159,6 +160,10 @@ details.finished[open] summary h2 svg{transform:rotate(90deg)}
 .destructive{color:var(--red);font-size:21px;font-weight:500;width:100%;text-align:left;min-height:44px}
 .action{color:var(--tint-ink);font-size:21px;font-weight:600;width:100%;text-align:left;min-height:44px}
 .soldout{color:var(--red);font-size:16px;font-weight:600;margin-top:3px}
+.compact .cell{min-height:54px;padding:10px 24px}
+.compact .label{font-size:18px}
+.compact .value{font-size:17px}
+.compact .none{font-size:18px;font-weight:450;color:var(--label-2)}
 .cell .pending{margin-top:4px}
 .footnote{font-size:15px;color:var(--label-2);margin:10px 24px 0;line-height:1.35}
 .health{margin-top:20px}
@@ -334,12 +339,34 @@ export function pickerBody(message: string | null = null): string {
   return `<div class="page">${nav("Booth staff", signOut(), false)}${error}${group("ipad", "iPads")}${group("display", "Laptop displays")}</div>`;
 }
 
-const SECTIONS: Record<StaffSection, (display: boolean) => string> = {
+const SUPPLY_KINDS: SupplyKind[] = ["flavor", "vessel", "topping"];
+const SUPPLY_TITLES: Record<SupplyKind, string> = { flavor: "Flavors", vessel: "Cups and cones", topping: "Toppings" };
+
+function supplyGroup(kinds: SupplyKind[], mode: "edit" | "list" | "compact"): string {
+  return `<div class="group list${mode === "edit" ? "" : " compact"}" data-supply="${kinds.join(",")}" data-mode="${mode}"></div>`;
+}
+
+function suppliesSection(display: boolean, role: StaffRole): string {
+  if (display) return SUPPLY_KINDS.map((kind) => `<div class="section-head"><h2>${SUPPLY_TITLES[kind]}</h2></div>${supplyGroup([kind], "list")}`).join("");
+  const owned = SUPPLY_KINDS.filter((kind) => role.owns.includes(kind));
+  const others = SUPPLY_KINDS.filter((kind) => !role.owns.includes(kind));
+  const note = owned.includes("vessel")
+    ? "Switch an item off when it runs out. Customers can't choose it on the kiosks until it's back on; anything already in a cart stays. With no cups or cones left, the kiosks show Closed."
+    : "Switch a topping off when it runs out. Customers can't add it on the kiosks until it's back on; toppings already in a cart stay.";
+  const html = owned.map((kind) => `<div class="section-head"><h2>${SUPPLY_TITLES[kind]}</h2></div>${supplyGroup([kind], "edit")}`).join("")
+    + (owned.length ? `<p class="footnote">${note}</p>` : "");
+  if (!others.length) return html;
+  const owner = Object.values(STAFF_ROLES as Record<string, StaffRole>).find((r) => r.kind === "ipad" && others.every((kind) => r.owns.includes(kind)));
+  const title = others.map((kind, i) => (i === 0 ? SUPPLY_TITLES[kind] : SUPPLY_TITLES[kind].toLowerCase())).join(", ");
+  return html + `<div class="section-head"><h2>${title}</h2>${owner ? `<span>Set on the ${escapeHtml(owner.title)} iPad</span>` : ""}</div>${supplyGroup(others, "compact")}`;
+}
+
+const SECTIONS: Record<StaffSection, (display: boolean, role: StaffRole) => string> = {
   make: () => `<div id="make"></div>`,
   handoff: () => `<div id="handoff"></div><details class="finished" id="doneWrap" hidden><summary class="section-head"><h2>Finished${icon("chevron")}</h2><span id="doneTitle"></span></summary><div class="group list" id="done"></div></details>`,
   board: () => `<div class="board"><section><div class="section-head"><h2>Ready for pickup</h2><span id="readyCount"></span></div><div class="group list" id="boardReady"></div></section><section><div class="section-head"><h2>Being made</h2><span id="makingCount"></span></div><div class="group list" id="boardMaking"></div></section></div>`,
   feed: () => `<div class="section-head"><h2>Orders</h2><span id="feedCount"></span></div><div class="group list" id="feed"></div>`,
-  supplies: (display) => `<div class="section-head"><h2>Flavors</h2></div><div class="group list" id="soldout"></div>${display ? "" : `<p class="footnote">Switch a flavor off when it runs out. Customers can't choose it on the kiosk until it's switched back on.</p>`}`,
+  supplies: (display, role) => `<div id="soldout">${suppliesSection(display, role)}</div>`,
   kiosks: (display) => `<div class="section-head"><h2>Kiosks</h2><span id="kioskCount"></span></div><div class="group list" id="kiosks"></div>${display ? "" : `<p class="footnote">Tap a kiosk to rename it, close or reopen it, or turn on its debug tools.</p>`}`,
   stats: () => `<div class="section-head"><h2>Today</h2><span id="updated"></span></div>
 <div class="group tiles">
@@ -355,7 +382,7 @@ const SECTIONS: Record<StaffSection, (display: boolean) => string> = {
 
 export function dashboardBody(roleId: string, role: StaffRole): string {
   const display = role.kind === "display";
-  const column = (sections: StaffSection[]) => `<div class="col">${sections.map((s) => SECTIONS[s](display)).join("")}</div>`;
+  const column = (sections: StaffSection[]) => `<div class="col">${sections.map((s) => SECTIONS[s](display, role)).join("")}</div>`;
   const [first, ...rest] = role.columns;
   const main = display
     ? `<main class="cols cols-${role.columns.length}">${role.columns.map(column).join("")}</main>`
@@ -431,7 +458,8 @@ function agoSpan(ms){return '<span data-ago="'+(ms==null?"":ms)+'">'+ago(ms)+"</
 function keyOf(a){
   switch(a.type){
     case "ack":return "ack:"+a.alertId;
-    case "setSoldOut":return "flavor:"+a.flavor;
+    case "setSoldOut":return "supply:flavor:"+a.flavor;
+    case "setSupply":return "supply:"+a.kind+":"+a.item;
     case "setKioskOpen":return a.kiosk?"open:"+a.kiosk:"open:*";
     case "renameKiosk":return "name:"+a.kiosk;
     case "setKioskDebug":return "debug:"+a.kiosk;
@@ -442,7 +470,7 @@ function keyOf(a){
 function valueOf(a){
   switch(a.type){
     case "ack":case "removeKiosk":return true;
-    case "setSoldOut":return a.soldOut;
+    case "setSoldOut":case "setSupply":return a.soldOut;
     case "setKioskOpen":return a.open;
     case "renameKiosk":return a.name;
     case "setKioskDebug":return a.debug;
@@ -557,7 +585,7 @@ function reconcile(){
   Object.keys(settled).forEach(function(key){
     var s=settled[key],match;
     var colon=key.indexOf(":"),kind=key.slice(0,colon),id=key.slice(colon+1),k=kioskById(id);
-    if(kind==="flavor"){var f=state.flavors.filter(function(x){return x.id===id;})[0];match=!!f&&f.soldOut===s.value;}
+    if(kind==="supply"){var su=supplyByKey(id);match=!!su&&su.soldOut===s.value;}
     else if(kind==="order"){var o=state.orders.filter(function(x){return x.id===id;})[0];match=!!o&&o.status===s.value;}
     else if(key==="open:*"){match=allKiosks().every(function(x){return x.open===s.value;});}
     else if(kind==="open"){match=!!k&&k.open===s.value;}
@@ -570,7 +598,16 @@ function reconcile(){
   return changed;
 }
 
-function flavorOut(f){var i=intended("flavor:"+f.id);return i?i.value:f.soldOut;}
+function supplies(){
+  if(!state)return [];
+  return state.supplies||state.flavors.map(function(f){return {kind:"flavor",id:f.id,name:f.name,soldOut:f.soldOut};});
+}
+function supplyByKey(k){return supplies().filter(function(x){return x.kind+":"+x.id===k;})[0]||null;}
+function supplyOut(x){var i=intended("supply:"+x.kind+":"+x.id);return i?i.value:x.soldOut;}
+function noVessels(){
+  var v=supplies().filter(function(x){return x.kind==="vessel";});
+  return v.length>0&&v.every(supplyOut);
+}
 function orderStatus(o){var i=intended("order:"+o.id);return i?i.value:o.status;}
 function alertAcked(a){return !!intended("ack:"+a.id);}
 
@@ -580,6 +617,7 @@ function applyPatch(msg){
   if(msg.rev!==state.rev+1)return send({type:"sync"});
   var c=msg.change;
   if(c.kind==="flavors")state.flavors=c.flavors;
+  else if(c.kind==="supplies")state.supplies=c.supplies;
   else if(c.kind==="kiosk")state.kiosk=c.kiosk;
   else if(c.kind==="kioskOpen")state.kioskOpen=c.kioskOpen;
   else if(c.kind==="kiosks")state.kiosks=c.kiosks;
@@ -975,12 +1013,22 @@ function renderBoard(){
   $("makingCount").textContent=making.length?plural(making.length,"order"):"";
 }
 
+var SUPPLY_NONE={flavor:"No flavors yet",vessel:"No cups or cones listed",topping:"No toppings listed"};
 function renderSupplies(){
-  $("soldout").innerHTML=state.flavors.map(function(f){
-    var out=flavorOut(f);
-    if(READONLY)return '<div class="cell"><span class="label">'+esc(f.name)+'</span><span class="value'+(out?" bad":"")+'">'+(out?"Sold out":"Available")+"</span></div>";
-    return '<div class="cell"><div class="grow"><div class="label">'+esc(f.name)+"</div>"+(out?'<div class="soldout">Sold out</div>':"")+pendingTag("flavor:"+f.id)+'</div><button class="switch" role="switch" type="button" data-flavor="'+esc(f.id)+'" aria-checked="'+(!out)+'" aria-label="'+esc(f.name)+' available"></button></div>';
-  }).join("")||'<div class="empty">The kiosk hasn\'t reported its flavors yet.</div>';
+  document.querySelectorAll("[data-supply]").forEach(function(el){
+    var kinds=el.getAttribute("data-supply").split(","),mode=el.getAttribute("data-mode");
+    var list=supplies().filter(function(x){return kinds.indexOf(x.kind)>=0;});
+    if(mode==="compact"){
+      var out=list.filter(supplyOut);
+      el.innerHTML=out.map(function(x){return '<div class="cell"><span class="label">'+esc(x.name)+'</span><span class="value bad">Sold out</span></div>';}).join("")||'<div class="cell"><span class="none">'+(list.length?"All available":"Nothing listed yet")+"</span></div>";
+      return;
+    }
+    el.innerHTML=list.map(function(x){
+      var o=supplyOut(x),key="supply:"+x.kind+":"+x.id;
+      if(mode==="list")return '<div class="cell"><span class="label">'+esc(x.name)+'</span><span class="value'+(o?" bad":"")+'">'+(o?"Sold out":"Available")+"</span></div>";
+      return '<div class="cell"><div class="grow"><div class="label">'+esc(x.name)+"</div>"+(o?'<div class="soldout">Sold out</div>':"")+pendingTag(key)+'</div><button class="switch" role="switch" type="button" data-supply-key="'+esc(x.kind+":"+x.id)+'" aria-checked="'+(!o)+'" aria-label="'+esc(x.name)+' available"></button></div>';
+    }).join("")||'<div class="empty">'+SUPPLY_NONE[kinds[0]]+"</div>";
+  });
 }
 
 function allKiosks(){return state&&state.kiosks||[];}
@@ -1012,11 +1060,12 @@ function renderKiosks(){
   var list=kioskList();
   $("kioskCount").textContent=list.length>1?plural(list.length,"kiosk"):"";
   if(!list.length){$("kiosks").innerHTML='<div class="empty">No kiosk has connected yet. A kiosk iPad shows up here once it starts.</div>';if(sheetKiosk)closeSheet();return;}
+  var empty=noVessels();
   var html=list.map(function(k){
-    var open=kioskOpenNow(k),s=kioskShort(k);
-    var text='<div class="label">'+esc(kioskName(k))+'</div><div class="sub'+(s.bad?" bad":"")+'">'+s.html+"</div>"+(kioskDebug(k)?'<div class="sub warn">Debug tools on</div>':"")+openPending(k)+pendingTag("name:"+k.id)+pendingTag("debug:"+k.id);
-    var inner='<span class="kglyph'+(k.online?"":" off")+'">'+ico("tablet")+'</span><div class="grow">'+text+'</div><span class="value'+(open?"":" bad")+'">'+(open?"Open":"Closed")+"</span>";
-    return READONLY?'<div class="cell kcell">'+inner+"</div>":'<button class="cell kcell" type="button" data-kiosk="'+esc(k.id)+'" aria-label="'+esc(kioskName(k))+', '+(open?"open":"closed")+'">'+inner+ico("chevron","chev")+"</button>";
+    var open=kioskOpenNow(k),s=kioskShort(k),taking=open&&!empty;
+    var text='<div class="label">'+esc(kioskName(k))+'</div><div class="sub'+(s.bad?" bad":"")+'">'+s.html+"</div>"+(open&&empty?'<div class="sub warn">No cups or cones left</div>':"")+(kioskDebug(k)?'<div class="sub warn">Debug tools on</div>':"")+openPending(k)+pendingTag("name:"+k.id)+pendingTag("debug:"+k.id);
+    var inner='<span class="kglyph'+(k.online?"":" off")+'">'+ico("tablet")+'</span><div class="grow">'+text+'</div><span class="value'+(taking?"":" bad")+'">'+(taking?"Open":"Closed")+"</span>";
+    return READONLY?'<div class="cell kcell">'+inner+"</div>":'<button class="cell kcell" type="button" data-kiosk="'+esc(k.id)+'" aria-label="'+esc(kioskName(k))+', '+(taking?"open":"closed")+'">'+inner+ico("chevron","chev")+"</button>";
   }).join("");
   if(!READONLY){
     var one=list.length===1,anyOpen=list.some(kioskOpenNow),anyClosed=list.some(function(k){return !kioskOpenNow(k);});
@@ -1072,7 +1121,7 @@ function renderSheet(fresh){
     $("ksNameWrap").innerHTML='<div class="section-head"><h2>Name</h2></div><div class="group"><form class="cell" id="ksForm"><input id="ksName" class="field" maxlength="40" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" aria-label="Kiosk name" value="'+esc(name)+'" placeholder="'+esc(defaultName(k))+'"><button class="link" type="submit">Save</button></form></div><p class="footnote">Shown on alerts and staff pages. Leave it empty to use '+esc(defaultName(k))+".</p>";
   }
   var html='<div class="section-head"><h2>Controls</h2></div><div class="group list">';
-  html+='<div class="cell"><div class="grow"><div class="label">Taking orders</div><div class="sub">'+(open?"Customers can start new orders.":"Begin Order is off. Customers mid-order can still finish.")+"</div>"+openPending(k)+'</div><button class="switch" role="switch" type="button" data-kopen="'+esc(k.id)+'" aria-checked="'+open+'" aria-label="Taking orders"></button></div>';
+  html+='<div class="cell"><div class="grow"><div class="label">Taking orders</div><div class="sub">'+(!open?"Begin Order is off. Customers mid-order can still finish.":noVessels()?"Paused while cups and cones are both sold out.":"Customers can start new orders.")+"</div>"+openPending(k)+'</div><button class="switch" role="switch" type="button" data-kopen="'+esc(k.id)+'" aria-checked="'+open+'" aria-label="Taking orders"></button></div>';
   html+='<div class="cell"><div class="grow"><div class="label">Debug tools</div><div class="sub">Shows the debug bar at the top of this kiosk\'s screen.</div>'+pendingTag("debug:"+k.id)+'</div><button class="switch" role="switch" type="button" data-kdebug="'+esc(k.id)+'" aria-checked="'+debug+'" aria-label="Debug tools"></button></div>';
   html+='</div><div class="section-head"><h2>Status</h2></div><div class="group list health">'+healthRows(k)+"</div>";
   if(!k.online)html+='<div class="section-head"></div><div class="group list"><div class="cell"><button class="destructive" type="button" data-kremove="'+esc(k.id)+'">Remove kiosk</button></div></div><p class="footnote">For an iPad that isn\'t a kiosk any more. Its alerts close; if it connects again it comes back as '+esc(defaultName(k))+".</p>";
@@ -1133,13 +1182,14 @@ function renderFeed(){
   }).join("");
 }
 
-var HAS={alerts:!!$("alerts"),make:!!$("make"),handoff:!!$("handoff"),board:!!$("boardMaking"),feed:!!$("feed"),soldout:!!$("soldout"),kiosks:!!$("kiosks"),stats:!!$("tOrders")};
+var HAS={alerts:!!$("alerts"),make:!!$("make"),handoff:!!$("handoff"),board:!!$("boardMaking"),feed:!!$("feed"),soldout:!!document.querySelector("[data-supply]"),kiosks:!!$("kiosks"),stats:!!$("tOrders")};
 
 function render(){
   renderLink();renderSound();
   if(!state){
     var waiting='<div class="empty">'+ico("loader","spin")+" Waiting for the booth</div>";
-    ["make","handoff","feed","soldout","kiosks","boardMaking"].forEach(function(id){if($(id)&&!$(id).innerHTML)$(id).innerHTML=id==="make"||id==="handoff"?'<div class="group" style="margin-top:34px">'+waiting+"</div>":waiting;});
+    ["make","handoff","feed","kiosks","boardMaking"].forEach(function(id){if($(id)&&!$(id).innerHTML)$(id).innerHTML=id==="make"||id==="handoff"?'<div class="group" style="margin-top:34px">'+waiting+"</div>":waiting;});
+    document.querySelectorAll("[data-supply]").forEach(function(el){if(!el.innerHTML)el.innerHTML=waiting;});
     return;
   }
   if(HAS.alerts)renderAlerts();
@@ -1192,9 +1242,19 @@ function askCancel(id){
   ask("Cancel the order for "+orderLabel(o)+"?","It leaves the queue and stops counting in totals. Any refund is done separately in Square.","Cancel order",true,"Keep order",function(){setStatus(id,"canceled",true);});
 }
 
-function askSoldOut(f){
-  if(flavorOut(f))ask("Mark "+f.name+" available again?","Customers will be able to order "+f.name+" on the kiosk right away.","Mark available",false,"Cancel",function(){enqueue({type:"setSoldOut",flavor:f.id,soldOut:false});});
-  else ask("Mark "+f.name+" sold out?","Customers won't be able to choose "+f.name+" on the kiosk. Scoops already in a cart stay.","Mark sold out",true,"Cancel",function(){enqueue({type:"setSoldOut",flavor:f.id,soldOut:true});});
+function askSupply(x){
+  var n=x.name,lower=x.kind==="vessel"?n.toLowerCase():n,go=function(v){enqueue({type:"setSupply",kind:x.kind,item:x.id,soldOut:v});};
+  if(supplyOut(x)){
+    var back=x.kind==="topping"?"Customers will be able to add "+n+" on the kiosks right away.":"Customers will be able to choose "+lower+" on the kiosks right away.";
+    if(x.kind==="vessel"&&noVessels())back+=" Kiosks showing Closed for lack of cups and cones take orders again.";
+    ask("Mark "+n+" available again?",back,"Mark available",false,"Cancel",function(){go(false);});
+    return;
+  }
+  var out=x.kind==="flavor"?"Customers won't be able to choose "+n+" on the kiosks. Scoops already in a cart stay."
+    :x.kind==="vessel"?"Customers won't be able to choose "+lower+" on the kiosks. Items already in a cart stay."
+    :"Customers won't be able to add "+n+" on the kiosks. Toppings already in a cart stay.";
+  if(x.kind==="vessel"&&supplies().filter(function(v){return v.kind==="vessel"&&v.id!==x.id;}).every(supplyOut))out+=" With no cups or cones left, every kiosk shows Closed until one is back.";
+  ask("Mark "+n+" sold out?",out,"Mark sold out",true,"Cancel",function(){go(true);});
 }
 
 document.addEventListener("click",function(e){
@@ -1212,9 +1272,9 @@ document.addEventListener("click",function(e){
   if(READONLY)return;
   if(el.dataset.ack){enqueue({type:"ack",alertId:el.dataset.ack});}
   else if(el.dataset.ackids){el.dataset.ackids.split(",").forEach(function(id){if(id)enqueue({type:"ack",alertId:id});});}
-  else if(el.dataset.flavor){
-    var f=state&&state.flavors.filter(function(x){return x.id===el.dataset.flavor;})[0];
-    if(f)askSoldOut(f);
+  else if(el.dataset.supplyKey){
+    var su=supplyByKey(el.dataset.supplyKey);
+    if(su)askSupply(su);
   }
   else if(el.dataset.kiosk){openSheet(el.dataset.kiosk);}
   else if(el.dataset.allopen){askAllOpen(el.dataset.allopen==="1");}

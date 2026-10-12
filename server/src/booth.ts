@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   DEFAULT_FLAVORS,
+  TOPPINGS,
+  VESSELS,
   defaultKioskName,
   helpTitle,
   kioskTag,
@@ -18,8 +20,10 @@ import {
   type Role,
   type ServerMessage,
   type Severity,
+  type SupplyItem,
+  type SupplyState,
 } from "./protocol";
-import { Action, ClientMessage, Event, describe, type HelpReason, type KioskHealth, type OrderStatus } from "./schema";
+import { Action, ClientMessage, Event, describe, type HelpReason, type KioskHealth, type OrderStatus, type SupplyKind } from "./schema";
 
 export const OFFLINE_AFTER_MS = 30_000;
 export const HEALTH_GRACE_MS = 45_000;
@@ -29,6 +33,7 @@ export const MAX_FRAME_BYTES = 64 * 1024;
 export const FLOOD_LIMIT = 60;
 export const FLOOD_WINDOW_MS = 10_000;
 const RECENT_ALERTS_MS = 3 * 60 * 60_000;
+export const MAX_SNAPSHOT_ALERTS = 60;
 const RETENTION_MS = 7 * 24 * 60 * 60_000;
 export const OPEN_ORDER_STATUSES: OrderStatus[] = ["paid", "preparing", "ready"];
 const RECENT_ORDERS_MS = 3 * 60 * 60_000;
@@ -488,7 +493,8 @@ export class Booth extends DurableObject<Env> {
         let error: ApiError | null;
         switch (action.type) {
           case "ack": error = this.ack(action.alertId, by, now); break;
-          case "setSoldOut": error = this.setSoldOut(action.flavor, action.soldOut, by, now); break;
+          case "setSoldOut": error = this.setSupply("flavor", action.flavor, action.soldOut, by, now); break;
+          case "setSupply": error = this.setSupply(action.kind, action.item, action.soldOut, by, now); break;
           case "setKioskOpen": error = this.setKioskOpen(action.kiosk ?? null, action.open, by, now); break;
           case "renameKiosk": error = this.renameKiosk(action.kiosk, action.name, now); break;
           case "setKioskDebug": error = this.setKioskDebug(action.kiosk, action.debug); break;
@@ -549,23 +555,32 @@ export class Booth extends DurableObject<Env> {
     return null;
   }
 
-  private setSoldOut(flavorID: string, soldOut: boolean, by: string | null, now: number): ApiError | null {
-    const flavor = this.flavorList().find((f) => f.id === flavorID);
-    if (!flavor) return { code: "not_found", message: `Unknown flavor ${flavorID}` };
+  private setSupply(kind: SupplyKind, itemID: string, soldOut: boolean, by: string | null, now: number): ApiError | null {
+    const item = this.supplyList(kind).find((i) => i.id === itemID);
+    if (!item) return { code: "not_found", message: `Unknown ${kind} ${itemID}` };
+    const key = soldOutKey(kind, itemID);
     const map = this.getMeta<Record<string, boolean>>("soldOut") ?? {};
-    if ((map[flavorID] ?? false) === soldOut) return null;
-    map[flavorID] = soldOut;
+    if ((map[key] ?? false) === soldOut) return null;
+    map[key] = soldOut;
     this.putMeta("soldOut", map);
-    this.commit({ kind: "flavors", flavors: this.flavors() });
+    if (kind === "flavor") this.commit({ kind: "flavors", flavors: this.flavors() });
+    const supplies = this.supplies();
+    this.commit({ kind: "supplies", supplies });
 
-    const key = `soldout:${flavorID}`;
-    for (const row of this.unresolved(key)) this.updateAlert(row.id, { resolved_at: now }, now);
+    const alertKey = `soldout:${key}`;
+    for (const row of this.unresolved(alertKey)) this.updateAlert(row.id, { resolved_at: now }, now);
+    const verb = item.plural ? "are" : "is";
+    const vessels = supplies.filter((s) => s.kind === "vessel");
+    const noVessels = kind === "vessel" && soldOut && vessels.every((s) => s.soldOut);
+    const setBy = by ? `, set by ${by}` : "";
     this.createAlert({
-      key,
+      key: alertKey,
       kind: "soldout",
-      severity: "info",
-      title: soldOut ? `${flavor.name} is sold out` : `${flavor.name} is back`,
-      detail: `${soldOut ? "Greyed out" : "Available again"} on the kiosk${by ? `, set by ${by}` : ""}.`,
+      severity: noVessels ? "warning" : "info",
+      title: `${item.name} ${verb} ${soldOut ? "sold out" : "back"}`,
+      detail: noVessels
+        ? `No cups or cones left, so the kiosks show Closed until one is back${setBy}.`
+        : `${soldOut ? "Greyed out" : "Available again"} on the kiosks${setBy}.`,
     }, now);
     return null;
   }
@@ -778,8 +793,9 @@ export class Booth extends DurableObject<Env> {
       .exec<AlertRow>(
         `SELECT * FROM alerts
          WHERE (acked_at IS NULL AND resolved_at IS NULL) OR updated_at > ?
-         ORDER BY created_at DESC LIMIT 60`,
+         ORDER BY created_at DESC, rowid DESC LIMIT ?`,
         now - RECENT_ALERTS_MS,
+        MAX_SNAPSHOT_ALERTS,
       )
       .toArray()
       .map(toAlert);
@@ -801,6 +817,7 @@ export class Booth extends DurableObject<Env> {
       kiosks,
       kioskOpen: this.legacyOpen(),
       flavors: this.flavors(),
+      supplies: this.supplies(),
       kiosk: legacyKiosk(latest),
       alerts,
       orders,
@@ -940,14 +957,27 @@ export class Booth extends DurableObject<Env> {
   }
 
   private flavors(): FlavorState[] {
+    return this.supplies().filter((s) => s.kind === "flavor").map(({ id, name, soldOut }) => ({ id, name, soldOut }));
+  }
+
+  private supplyList(kind: SupplyKind): SupplyItem[] {
+    if (kind === "vessel") return VESSELS;
+    if (kind === "topping") return TOPPINGS;
+    return this.flavorList();
+  }
+
+  private supplies(): SupplyState[] {
     const soldOut = this.getMeta<Record<string, boolean>>("soldOut") ?? {};
-    return this.flavorList().map((f) => ({ ...f, soldOut: soldOut[f.id] ?? false }));
+    return (["flavor", "vessel", "topping"] as const).flatMap((kind) =>
+      this.supplyList(kind).map((item) => ({ kind, id: item.id, name: item.name, soldOut: soldOut[soldOutKey(kind, item.id)] ?? false })),
+    );
   }
 
   private setFlavorList(list: { id: string; name: string }[]) {
     if (JSON.stringify(this.flavorList()) === JSON.stringify(list)) return;
     this.putMeta("flavors", list);
     this.commit({ kind: "flavors", flavors: this.flavors() });
+    this.commit({ kind: "supplies", supplies: this.supplies() });
   }
 
   private getMeta<T>(key: string): T | null {
@@ -968,6 +998,11 @@ export class Booth extends DurableObject<Env> {
       ws.send(JSON.stringify(message));
     } catch {}
   }
+}
+
+/** Flavors keep the bare ids they were stored under before vessels and toppings could sell out. */
+function soldOutKey(kind: SupplyKind, id: string): string {
+  return kind === "flavor" ? id : `${kind}:${id}`;
 }
 
 function formatDuration(ms: number): string {

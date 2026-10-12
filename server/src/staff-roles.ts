@@ -1,3 +1,5 @@
+import type { SupplyKind } from "./schema";
+
 export type StaffSection = "make" | "handoff" | "supplies" | "kiosks" | "feed" | "stats" | "board";
 
 export interface StaffRole {
@@ -6,24 +8,27 @@ export interface StaffRole {
   icon: string;
   kind: "ipad" | "display";
   alerts: "front" | "quiet" | "display" | "none";
+  owns: SupplyKind[];
   columns: StaffSection[][];
 }
 
 export const STAFF_ROLES = {
   scooper: {
     title: "Scooper",
-    summary: "Make list, oldest first, with start and done buttons, sold-out supplies and the kiosks.",
+    summary: "Make list, oldest first, with start and done buttons, sold-out flavors, cups and cones, and the kiosks.",
     icon: "cone",
     kind: "ipad",
     alerts: "quiet",
+    owns: ["flavor", "vessel"],
     columns: [["make"], ["kiosks"], ["supplies"]],
   },
   toppings: {
     title: "Toppings",
-    summary: "Help alerts, toppings per order, handing orders off, cancelling, the kiosks and supplies.",
+    summary: "Help alerts, toppings per order, handing orders off, cancelling, sold-out toppings and the kiosks.",
     icon: "sparkles",
     kind: "ipad",
     alerts: "front",
+    owns: ["topping"],
     columns: [["handoff"], ["kiosks"], ["supplies"]],
   },
   organizer: {
@@ -32,6 +37,7 @@ export const STAFF_ROLES = {
     icon: "chart",
     kind: "display",
     alerts: "display",
+    owns: [],
     columns: [["stats"], ["feed"], ["kiosks", "supplies"]],
   },
   board: {
@@ -40,6 +46,7 @@ export const STAFF_ROLES = {
     icon: "list",
     kind: "display",
     alerts: "none",
+    owns: [],
     columns: [["board"]],
   },
 } satisfies Record<string, StaffRole>;

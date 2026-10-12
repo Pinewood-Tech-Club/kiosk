@@ -10,6 +10,9 @@ export const DeviceId = z.string().regex(/^[A-Za-z0-9._-]{1,64}$/);
 export const FlavorId = z.string().regex(/^[a-z0-9_-]{1,32}$/);
 
 export const ToppingId = z.string().regex(/^[a-z0-9_-]{1,32}$/);
+export const SupplyId = z.string().regex(/^[a-z0-9_-]{1,32}$/);
+export const SupplyKind = z.enum(["flavor", "vessel", "topping"]);
+export type SupplyKind = z.infer<typeof SupplyKind>;
 export const ReceiptToken = z.string().regex(/^[A-Za-z0-9_-]{22,64}$/, "22 to 64 of A-Z a-z 0-9 _ -");
 export const OrderRef = z.string().regex(/^[A-Za-z0-9-]{1,24}$/, "1 to 24 of A-Z a-z 0-9 -");
 export const KioskName = text(40);
@@ -65,6 +68,7 @@ export type Event = z.infer<typeof Event>;
 export const Action = z.discriminatedUnion("type", [
   z.object({ id, type: z.literal("ack"), alertId: z.string().min(1).max(64), by: text(40).optional() }),
   z.object({ id, type: z.literal("setSoldOut"), flavor: FlavorId, soldOut: z.boolean(), by: text(40).optional() }),
+  z.object({ id, type: z.literal("setSupply"), kind: SupplyKind, item: SupplyId, soldOut: z.boolean(), by: text(40).optional() }),
   z.object({ id, type: z.literal("setOrderStatus"), orderId: id, status: OrderStatus, by: text(40).optional() }),
   z.object({ id, type: z.literal("setKioskOpen"), open: z.boolean(), kiosk: DeviceId.optional(), by: text(40).optional() }),
   z.object({ id, type: z.literal("renameKiosk"), kiosk: DeviceId, name: KioskName, by: text(40).optional() }),

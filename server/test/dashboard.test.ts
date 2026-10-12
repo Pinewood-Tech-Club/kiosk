@@ -88,6 +88,16 @@ describe("dashboard page", () => {
     expect(organizer).toContain('data-kind="display"');
     for (const id of ["confirm", "kioskSheet", "exitStaff"]) expect(organizer).not.toContain(`id="${id}"`);
     expect(organizer).not.toContain("Sign out");
+    expect(scooper).toContain('data-supply="flavor" data-mode="edit"');
+    expect(scooper).toContain('data-supply="vessel" data-mode="edit"');
+    expect(scooper).toContain('data-supply="topping" data-mode="compact"');
+    expect(scooper).toContain("Set on the Toppings iPad");
+    expect(toppings).toContain('data-supply="topping" data-mode="edit"');
+    expect(toppings).toContain('data-supply="flavor,vessel" data-mode="compact"');
+    expect(toppings).toContain("<h2>Flavors, cups and cones</h2><span>Set on the Scooper iPad</span>");
+    expect(toppings).not.toContain('data-supply="flavor" data-mode="edit"');
+    for (const kind of ["flavor", "vessel", "topping"]) expect(organizer).toContain(`data-supply="${kind}" data-mode="list"`);
+    expect(organizer).not.toContain('data-mode="edit"');
     const board = await page("board");
     expect(board).toContain('id="boardMaking"');
     expect(board).not.toContain('id="alerts"');

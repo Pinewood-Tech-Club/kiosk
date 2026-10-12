@@ -402,6 +402,24 @@ describe("checkout", () => {
     expect(unauthorized.body.error).toMatchObject({ code: "square_unauthorized", retryable: false });
   });
 
+  it("takes a cart whose flavor, cone and topping sold out after they were added", async () => {
+    mockSquare();
+    await connectSquare();
+    const out = (soldOut: boolean) => [
+      { id: crypto.randomUUID(), type: "setSupply", kind: "flavor", item: "vanilla", soldOut },
+      { id: crypto.randomUUID(), type: "setSupply", kind: "vessel", item: "cone", soldOut },
+      { id: crypto.randomUUID(), type: "setSupply", kind: "vessel", item: "cup", soldOut },
+      { id: crypto.randomUUID(), type: "setSupply", kind: "topping", item: "gummies", soldOut },
+    ];
+    const marked = await call("/v1/actions", { token: STAFF, json: { actions: out(true) } });
+    expect(marked.body.results.every((r: { status: string }) => r.status === "ok")).toBe(true);
+    const body = cart({ items: [{ vessel: "cone", flavors: ["vanilla"], toppings: ["gummies"] }, { vessel: "cup", flavors: ["vanilla"] }] });
+    const result = await call("/v1/checkout", { token: KIOSK, json: body });
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ status: "created", priceMatches: true });
+    await call("/v1/actions", { token: STAFF, json: { actions: out(false) } });
+  });
+
   it("validates the cart", async () => {
     mockSquare();
     await connectSquare();

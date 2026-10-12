@@ -13,7 +13,7 @@ export { Booth } from "./booth";
 
 const SERVICE = "techclub-icecream";
 
-export const FEATURES = ["square-oauth", "square-credentials", "checkout", "receipt-tokens", "order-feed", "stats", "staff-session", "kiosk-registry"];
+export const FEATURES = ["square-oauth", "square-credentials", "checkout", "receipt-tokens", "order-feed", "stats", "staff-session", "kiosk-registry", "supplies"];
 
 const core: Route[] = [
   {

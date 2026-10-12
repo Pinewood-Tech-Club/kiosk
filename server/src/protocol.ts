@@ -1,8 +1,16 @@
-import type { HelpReason, KioskHealth, OrderStatus } from "./schema";
+import { TOPPING_TITLES } from "./pricing";
+import type { HelpReason, KioskHealth, OrderStatus, SupplyKind } from "./schema";
 
 export type Role = "kiosk" | "staff";
 
 export interface FlavorState {
+  id: string;
+  name: string;
+  soldOut: boolean;
+}
+
+export interface SupplyState {
+  kind: SupplyKind;
   id: string;
   name: string;
   soldOut: boolean;
@@ -88,6 +96,7 @@ export interface BoothState {
   kiosks: KioskEntry[];
   kioskOpen: KioskOpen;
   flavors: FlavorState[];
+  supplies: SupplyState[];
   kiosk: KioskState;
   alerts: Alert[];
   orders: OrderSummary[];
@@ -96,6 +105,7 @@ export interface BoothState {
 
 export type Change =
   | { kind: "flavors"; flavors: FlavorState[] }
+  | { kind: "supplies"; supplies: SupplyState[] }
   | { kind: "alert"; alert: Alert }
   | { kind: "kiosk"; kiosk: KioskState }
   | { kind: "kiosks"; kiosks: KioskEntry[] }
@@ -148,3 +158,18 @@ export const DEFAULT_FLAVORS = [
   { id: "chocolate", name: "Chocolate" },
   { id: "cookies", name: "Cookies & Cream" },
 ];
+
+export interface SupplyItem {
+  id: string;
+  name: string;
+  plural?: boolean;
+}
+
+export const VESSELS: SupplyItem[] = [
+  { id: "cup", name: "Cups", plural: true },
+  { id: "cone", name: "Waffle cones", plural: true },
+];
+
+const PLURAL_TOPPINGS = new Set(["gummies", "mms", "sprinkles"]);
+
+export const TOPPINGS: SupplyItem[] = Object.entries(TOPPING_TITLES).map(([id, name]) => ({ id, name, plural: PLURAL_TOPPINGS.has(id) }));

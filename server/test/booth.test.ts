@@ -2,7 +2,7 @@ import { createExecutionContext, createScheduledController, evictDurableObject, 
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src";
-import { Booth, FLOOD_LIMIT, HEALTH_GRACE_MS, OFFLINE_AFTER_MS, healthConditions } from "../src/booth";
+import { Booth, FLOOD_LIMIT, HEALTH_GRACE_MS, MAX_SNAPSHOT_ALERTS, OFFLINE_AFTER_MS, healthConditions } from "../src/booth";
 import type { Alert, BoothState, Change, ItemResult, ServerMessage } from "../src/protocol";
 import { KioskHealth } from "../src/schema";
 
@@ -98,6 +98,7 @@ class Client {
 
 function applyChange(state: BoothState, change: Change) {
   if (change.kind === "flavors") state.flavors = change.flavors;
+  if (change.kind === "supplies") state.supplies = change.supplies;
   if (change.kind === "kiosk") state.kiosk = change.kiosk;
   if (change.kind === "kioskOpen") state.kioskOpen = change.kioskOpen;
   if (change.kind === "kiosks") state.kiosks = change.kiosks;
@@ -105,6 +106,7 @@ function applyChange(state: BoothState, change: Change) {
     const index = state.alerts.findIndex((a) => a.id === change.alert.id);
     if (index >= 0) state.alerts[index] = change.alert;
     else state.alerts.unshift(change.alert);
+    state.alerts = state.alerts.sort((a, b) => b.createdAt - a.createdAt).slice(0, MAX_SNAPSHOT_ALERTS);
   }
 }
 
@@ -133,7 +135,7 @@ async function serverState(): Promise<BoothState> {
 function comparable(state: BoothState) {
   const alerts = [...state.alerts].sort((a, b) => a.id.localeCompare(b.id));
   const kiosks = state.kiosks.map(({ id, name, open, debug, online, connected, health }) => ({ id, name, open, debug, online, connected, health }));
-  return { rev: state.rev, kioskOpen: state.kioskOpen, flavors: state.flavors, alerts, kiosks };
+  return { rev: state.rev, kioskOpen: state.kioskOpen, flavors: state.flavors, supplies: state.supplies, alerts, kiosks };
 }
 
 const kioskIn = (state: BoothState, device: string) => state.kiosks.find((k) => k.id === device);
@@ -155,6 +157,8 @@ const healthEvent = (id: string, seq: number, overrides: Record<string, unknown>
   id, seq, type: "health", health: { ...healthy, ...overrides },
 });
 const setSoldOut = (id: string, flavor: string, soldOut: boolean) => ({ id, type: "setSoldOut", flavor, soldOut, by: "Test" });
+const setSupply = (id: string, kind: string, item: string, soldOut: boolean) => ({ id, type: "setSupply", kind, item, soldOut, by: "Test" });
+const supplyOut = (state: BoothState, kind: string, id: string) => state.supplies.find((s) => s.kind === kind && s.id === id)?.soldOut;
 
 describe("HTTP hygiene", () => {
   it("rejects bad credentials, roles and devices with structured errors", async () => {
@@ -405,6 +409,146 @@ describe("kiosk registry", () => {
     const offline = (await serverState()).alerts.find((a) => a.key === `offline:${device}` && !a.resolvedAt);
     expect(offline?.severity).toBe("warning");
     await act(newDevice("web"), [{ type: "removeKiosk", kiosk: device }, { type: "setKioskOpen", open: true }]);
+  });
+});
+
+describe("supplies", () => {
+  it("lists flavors, cups and cones and toppings, all available to start", async () => {
+    const state = await serverState();
+    expect(state.supplies.map((s) => `${s.kind}:${s.id}`)).toEqual([
+      ...state.flavors.map((f) => `flavor:${f.id}`),
+      "vessel:cup", "vessel:cone",
+      "topping:whip", "topping:chocolate", "topping:gummies", "topping:mms", "topping:sprinkles",
+    ]);
+    expect(state.supplies.filter((s) => s.kind === "topping").map((s) => s.name)).toEqual(["Whipped Cream", "Chocolate Syrup", "Gummy Bears", "M&M's", "Sprinkles"]);
+    expect(state.supplies.filter((s) => s.kind === "vessel").map((s) => s.name)).toEqual(["Cups", "Waffle cones"]);
+    expect(state.supplies.every((s) => !s.soldOut)).toBe(true);
+  });
+
+  it("sells a cone or topping out on every kiosk without touching the flavors patch old apps follow", async () => {
+    const kioskA = await open(KIOSK, newDevice("k"));
+    const kioskB = await open(KIOSK, newDevice("k"));
+    const staff = await open(STAFF, newDevice("s"));
+    const startRev = staff.state!.rev;
+
+    staff.send({ type: "action", action: setSupply("cone-out", "vessel", "cone", true) });
+    expect((await staff.next("result", (m) => m.id === "cone-out")).status).toBe("ok");
+    staff.send({ type: "action", action: setSupply("chocolate-topping-out", "topping", "chocolate", true) });
+    expect((await staff.next("result", (m) => m.id === "chocolate-topping-out")).status).toBe("ok");
+    for (const client of [kioskA, kioskB, staff]) await client.settle();
+
+    for (const client of [kioskA, kioskB]) {
+      expect(supplyOut(client.state!, "vessel", "cone")).toBe(true);
+      expect(supplyOut(client.state!, "topping", "chocolate")).toBe(true);
+      expect(supplyOut(client.state!, "flavor", "chocolate")).toBe(false);
+      expect(client.state!.flavors.find((f) => f.id === "chocolate")!.soldOut).toBe(false);
+    }
+    const patches = staff.inbox.filter((m): m is Msg<"patch"> => m.type === "patch" && m.rev > startRev);
+    expect(patches.some((m) => m.change.kind === "flavors")).toBe(false);
+    expect(patches.filter((m) => m.change.kind === "supplies")).toHaveLength(2);
+
+    const alerts = (await serverState()).alerts.filter((a) => a.kind === "soldout" && !a.resolvedAt);
+    expect(alerts.find((a) => a.key === "soldout:vessel:cone")).toMatchObject({ title: "Waffle cones are sold out", severity: "info" });
+    expect(alerts.find((a) => a.key === "soldout:topping:chocolate")).toMatchObject({ title: "Chocolate Syrup is sold out", severity: "info" });
+
+    staff.send({ type: "action", action: setSupply("cone-back", "vessel", "cone", false) });
+    staff.send({ type: "action", action: setSupply("chocolate-topping-back", "topping", "chocolate", false) });
+    await staff.next("result", (m) => m.id === "chocolate-topping-back");
+    for (const client of [kioskA, kioskB, staff]) await client.settle();
+    const truth = comparable(await serverState());
+    expect(truth.supplies.every((s) => !s.soldOut)).toBe(true);
+    for (const client of [kioskA, kioskB, staff]) expect(comparable(client.state!)).toEqual(truth);
+  });
+
+  it("warns when cups and cones are both out", async () => {
+    const device = newDevice("web");
+    await post("/v1/actions", STAFF, device, { actions: [setSupply(`cup-${device}`, "vessel", "cup", true), setSupply(`cone-${device}`, "vessel", "cone", true)] });
+    const state = await serverState();
+    const cone = state.alerts.find((a) => a.key === "soldout:vessel:cone" && !a.resolvedAt)!;
+    expect(cone).toMatchObject({ severity: "warning", title: "Waffle cones are sold out" });
+    expect(cone.detail).toMatch(/^No cups or cones left, so the kiosks show Closed/);
+    expect(state.alerts.find((a) => a.key === "soldout:vessel:cup" && !a.resolvedAt)?.severity).toBe("info");
+    await post("/v1/actions", STAFF, device, { actions: [setSupply(`cup-back-${device}`, "vessel", "cup", false), setSupply(`cone-back-${device}`, "vessel", "cone", false)] });
+    expect((await serverState()).alerts.find((a) => a.key === "soldout:vessel:cone" && !a.resolvedAt)).toMatchObject({ title: "Waffle cones are back", severity: "info" });
+  });
+
+  it("keeps the legacy flavor action and the flavors list in step with supplies", async () => {
+    const staff = await open(STAFF, newDevice("s"));
+    const startRev = staff.state!.rev;
+    staff.send({ type: "action", action: setSoldOut("legacy-out", "cookies", true) });
+    await staff.next("result", (m) => m.id === "legacy-out");
+    await staff.settle();
+    const kinds = staff.inbox.filter((m): m is Msg<"patch"> => m.type === "patch" && m.rev > startRev).map((m) => m.change.kind);
+    expect(kinds.slice(0, 2)).toEqual(["flavors", "supplies"]);
+    expect(supplyOut(staff.state!, "flavor", "cookies")).toBe(true);
+
+    staff.send({ type: "action", action: setSupply("new-back", "flavor", "cookies", false) });
+    await staff.next("result", (m) => m.id === "new-back");
+    await staff.settle();
+    const state = await serverState();
+    expect(state.flavors.find((f) => f.id === "cookies")!.soldOut).toBe(false);
+    expect(supplyOut(state, "flavor", "cookies")).toBe(false);
+    expect(comparable(staff.state!)).toEqual(comparable(state));
+  });
+
+  it("rejects unknown kinds and items without failing the batch, and is idempotent", async () => {
+    const device = newDevice("web");
+    const response = await post("/v1/actions", STAFF, device, {
+      actions: [
+        setSupply(`napkins-${device}`, "napkin", "paper", true),
+        setSupply(`pistachio-${device}`, "topping", "pistachio", true),
+        setSupply(`bowl-${device}`, "vessel", "bowl", true),
+        setSupply(`sprinkles-${device}`, "topping", "sprinkles", true),
+        setSupply(`sprinkles-again-${device}`, "topping", "sprinkles", true),
+      ],
+    });
+    expect(response.body.results.map((r: ItemResult) => r.status)).toEqual(["rejected", "rejected", "rejected", "ok", "ok"]);
+    expect(response.body.results[0].error.code).toBe("bad_request");
+    expect(response.body.results[1].error.code).toBe("not_found");
+    const state = await serverState();
+    expect(state.alerts.filter((a) => a.key === "soldout:topping:sprinkles" && !a.resolvedAt)).toHaveLength(1);
+    const replay = await post("/v1/actions", STAFF, device, { actions: [setSupply(`sprinkles-${device}`, "topping", "sprinkles", true)] });
+    expect(replay.body.results[0].status).toBe("duplicate");
+    await post("/v1/actions", STAFF, device, { actions: [setSupply(`sprinkles-back-${device}`, "topping", "sprinkles", false)] });
+    expect(supplyOut(await serverState(), "topping", "sprinkles")).toBe(false);
+  });
+
+  it("converges when two staff pages toggle everything while a kiosk misses patches", async () => {
+    const scooper = await open(STAFF, newDevice("s"));
+    const toppings = await open(STAFF, newDevice("s"));
+    const kiosk = await open(KIOSK, newDevice("k"));
+    const scooperItems: [string, string][] = [["flavor", "vanilla"], ["flavor", "chocolate"], ["vessel", "cup"], ["vessel", "cone"]];
+    const toppingItems: [string, string][] = [["topping", "whip"], ["topping", "gummies"], ["topping", "mms"]];
+    const intended = new Map<string, boolean>();
+    kiosk.dropNextPatches = 4;
+    for (let i = 0; i < 24; i++) {
+      const [client, items] = i % 2 === 0 ? [scooper, scooperItems] : [toppings, toppingItems];
+      const [kind, item] = items[(i * 7) % items.length];
+      const soldOut = !(intended.get(`${kind}:${item}`) ?? false);
+      intended.set(`${kind}:${item}`, soldOut);
+      client.send({ type: "action", action: setSupply(`burst-${i}-${kiosk.state!.rev}`, kind, item, soldOut) });
+      await client.next("result", (m) => m.id.startsWith(`burst-${i}-`));
+    }
+    for (const client of [scooper, toppings, kiosk]) {
+      await client.settle();
+      await client.settle();
+    }
+    const truth = await serverState();
+    for (const [key, soldOut] of intended) {
+      const [kind, item] = key.split(":");
+      expect(supplyOut(truth, kind, item)).toBe(soldOut);
+    }
+    expect(kiosk.syncs).toBeGreaterThan(0);
+    for (const client of [scooper, toppings, kiosk]) expect(comparable(client.state!)).toEqual(comparable(truth));
+
+    const device = newDevice("web");
+    await post("/v1/actions", STAFF, device, {
+      actions: [...intended].filter(([, out]) => out).map(([key], i) => {
+        const [kind, item] = key.split(":");
+        return setSupply(`burst-reset-${i}-${device}`, kind, item, false);
+      }),
+    });
+    expect((await serverState()).supplies.every((s) => !s.soldOut)).toBe(true);
   });
 });
 
