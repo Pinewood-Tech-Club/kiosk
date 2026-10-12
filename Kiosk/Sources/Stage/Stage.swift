@@ -305,7 +305,7 @@ final class Stage {
 
         if let warmup {
             warmupFrames += 1
-            if warmupFrames > 12 {
+            if warmupFrames > 90 {
                 warmup.removeFromParent()
                 self.warmup = nil
             }
