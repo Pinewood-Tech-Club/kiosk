@@ -506,6 +506,14 @@ final class AppModel {
         }
     }
 
+    func discardCurrentItem() {
+        guard screen == .builder, mode == .customize, !isEditing, currentHasChoices else { return }
+        stage.dismissCurrentHero()
+        current = freshItem()
+        setStep(.vessel)
+        stage.presentNewItem(vessel: current.vessel, delay: 0.3)
+    }
+
     func requestStartOver() {
         confirmation = .startOver
     }

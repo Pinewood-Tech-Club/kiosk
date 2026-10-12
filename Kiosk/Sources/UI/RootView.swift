@@ -8,6 +8,9 @@ struct RootView: View {
 
     private func shows(_ screen: AppModel.Screen) -> Bool { app.screen == screen || app.leavingScreen == screen }
     private var builderShown: Bool { shows(.builder) || shows(.name) }
+    private var showsAssistBadge: Bool {
+        app.booth.assistActive && [.attract, .builder, .name, .confirmation].contains(app.screen)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -84,6 +87,14 @@ struct RootView: View {
             if app.show3DDebug, app.screen == .builder {
                 StageDebugOverlay(stage: app.stage).zIndex(3)
             }
+
+            ZStack {
+                if showsAssistBadge {
+                    AssistBadge().transition(.opacity.combined(with: .offset(y: -8)))
+                }
+            }
+            .animation(.easeInOut(duration: 0.3), value: showsAssistBadge)
+            .zIndex(3.5)
 
             VStack {
                 if app.screen != .staff, app.showsDebugBar {
