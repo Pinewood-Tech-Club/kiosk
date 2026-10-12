@@ -66,7 +66,7 @@ color:#fff;display:flex;align-items:center;gap:20px;box-shadow:0 10px 30px -8px 
 .empty{padding:26px 32px;font-size:19px;color:var(--label-2);display:flex;align-items:center;gap:10px}
 .who{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:12px;min-width:0}
 .who .num{font-size:20px;font-weight:600;color:var(--label-3);font-variant-numeric:tabular-nums;white-space:nowrap}
-.who .name{font-family:var(--serif);font-weight:600;letter-spacing:-.01em;line-height:1.05;overflow-wrap:break-word;min-width:0}
+.who .name{font-family:var(--serif);font-weight:600;letter-spacing:-.01em;line-height:1.05;min-width:0}
 .base{display:flex;align-items:center;gap:10px;color:var(--label-2);font-weight:500}
 .tops,.scoops{list-style:none}
 .tops li{display:flex;align-items:center;font-weight:650;letter-spacing:-.02em}
@@ -1012,7 +1012,20 @@ function render(){
   if(HAS.soldout)renderSupplies();
   if(HAS.open)renderOpen();
   if(HAS.health)renderKiosk();
+  fitNames();
 }
+
+function fitNames(){
+  var names=document.querySelectorAll(".who .name");
+  for(var i=0;i<names.length;i++){
+    var el=names[i];
+    el.style.fontSize="";
+    var size=parseFloat(getComputedStyle(el).fontSize),min=size*.6;
+    while(el.scrollWidth>el.clientWidth+1&&size>min){size-=2;el.style.fontSize=size+"px";}
+    el.style.overflowWrap=el.scrollWidth>el.clientWidth+1?"anywhere":"";
+  }
+}
+window.addEventListener("resize",fitNames);
 
 function setStatus(id,to,withUndo){
   var o=state&&state.orders.filter(function(x){return x.id===id;})[0];
