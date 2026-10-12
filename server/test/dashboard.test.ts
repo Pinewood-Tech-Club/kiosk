@@ -119,7 +119,9 @@ describe("dashboard page", () => {
     for (const op of ["addScoop", "removeScoop", "setVessel", "setTopping", "addItem", "removeItem", "setName", "navigate", "startOver"]) {
       expect(script).toContain(`"${op}"`);
     }
-    expect(script).toContain('send({type:"command",command:p.cmd})');
+    expect(script).toContain('send({type:"command",command:list[0].cmd})');
+    expect(script).toContain('send({type:"commands",commands:list.map(');
+    expect(script).toContain("function pjProject(");
     expect(script).toContain('send({type:"assist",kiosk:assistKiosk,by:ACTOR})');
     expect(text).not.toMatch(/\u2014/);
   });

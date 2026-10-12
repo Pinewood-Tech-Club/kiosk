@@ -5,6 +5,7 @@ import worker from "../src";
 import { ASSIST_TTL_MS, Booth, FLOOD_LIMIT, HEALTH_GRACE_MS, MAX_SNAPSHOT_ALERTS, OFFLINE_AFTER_MS, healthConditions } from "../src/booth";
 import type { Alert, BoothState, Change, ItemResult, ServerMessage } from "../src/protocol";
 import { KioskHealth } from "../src/schema";
+import { ITEM, type PjCommand, type PjSession, context, loadProjection } from "./assist-projection";
 
 const KIOSK = "test-kiosk-token";
 const STAFF = "test-staff-token";
@@ -835,8 +836,7 @@ describe("assist", () => {
     expect(await staff.next("result", (m) => m.id === "c-1")).toMatchObject({ status: "ok" });
     expect((await kiosk.next("command")).command).toEqual(add);
     staff.send({ type: "command", command: add });
-    expect((await kiosk.next("command")).command.id).toBe("c-1");
-    await staff.next("result", (m) => m.id === "c-1");
+    expect(await staff.next("result", (m) => m.id === "c-1")).toMatchObject({ status: "duplicate" });
 
     for (const op of [
       { op: "removeScoop", item: "item-1", flavor: "vanilla" },
@@ -875,6 +875,173 @@ describe("assist", () => {
     const offline = await staff.next("result", (m) => m.id === "o-2");
     expect(offline).toMatchObject({ status: "rejected", error: { code: "kiosk_offline" } });
     expect(offline.error?.message).toMatch(/isn't connected/);
+  });
+
+  it("relays single and batched commands to the kiosk in exactly the order staff sent them", async () => {
+    const staff = await open(STAFF, newDevice("s"));
+    const device = newDevice("k");
+    const kiosk = await open(KIOSK, device);
+    const sent: string[] = [];
+    const make = (seq: number) => {
+      const c = command(`o-${seq}`, device, { op: "addScoop", item: ITEM(1), flavor: "vanilla", stream: "st-1", seq, base: 0 });
+      sent.push(c.id);
+      return c;
+    };
+    for (let seq = 1; seq <= 40; ) {
+      if (seq % 3 === 0) {
+        const batch = [make(seq), make(seq + 1), make(seq + 2), make(seq + 3)];
+        staff.send({ type: "commands", commands: batch });
+        seq += batch.length;
+      } else {
+        staff.send({ type: "command", command: make(seq) });
+        seq++;
+      }
+    }
+    const got: string[] = [];
+    while (got.length < sent.length) got.push((await kiosk.next("command")).command.id);
+    expect(got).toEqual(sent);
+    const results: string[] = [];
+    while (results.length < sent.length) results.push((await staff.next("result", (m) => m.id.startsWith("o-"))).id);
+    expect(results).toEqual(sent);
+
+    staff.send({ type: "commands", commands: [] });
+    expect((await staff.next("error")).error.code).toBe("bad_request");
+    staff.send({ type: "commands", commands: Array.from({ length: 51 }, (_, i) => make(100 + i)) });
+    expect((await staff.next("error")).error.code).toBe("bad_request");
+    staff.send({ type: "commands", commands: [make(200), { ...make(201), ref: "not-a-uuid" }, { ...make(202), seq: 0 }, make(203)] });
+    expect((await staff.next("result", (m) => m.id === "o-200")).status).toBe("ok");
+    expect((await staff.next("result", (m) => m.id === "o-201")).error?.code).toBe("bad_request");
+    expect((await staff.next("result", (m) => m.id === "o-202")).error?.code).toBe("bad_request");
+    expect((await staff.next("result", (m) => m.id === "o-203")).status).toBe("ok");
+    expect((await kiosk.next("command")).command.id).toBe("o-200");
+    expect((await kiosk.next("command")).command).toMatchObject({ id: "o-203", stream: "st-1", seq: 203, base: 0 });
+  });
+
+  it("relays each command once per kiosk socket and again after the kiosk reconnects", async () => {
+    const staff = await open(STAFF, newDevice("s"));
+    const device = newDevice("k");
+    let kiosk = await open(KIOSK, device);
+    const a = command("i-1", device, { op: "setName", name: "Sam", stream: "st-2", seq: 1, base: 0 });
+    const b = command("i-2", device, { op: "setName", name: "Sky", stream: "st-2", seq: 2, base: 0, after: ["i-1"] });
+    staff.send({ type: "commands", commands: [a, b] });
+    expect((await kiosk.next("command")).command).toEqual(a);
+    expect((await kiosk.next("command")).command).toEqual(b);
+    expect((await staff.next("result", (m) => m.id === "i-1")).status).toBe("ok");
+    expect((await staff.next("result", (m) => m.id === "i-2")).status).toBe("ok");
+    staff.send({ type: "commands", commands: [a, b] });
+    expect((await staff.next("result", (m) => m.id === "i-1")).status).toBe("duplicate");
+    expect((await staff.next("result", (m) => m.id === "i-2")).status).toBe("duplicate");
+    await kiosk.settle();
+    expect(kiosk.inbox.filter((m) => m.type === "command")).toEqual([]);
+
+    await closed(kiosk);
+    kiosk = await open(KIOSK, device);
+    staff.send({ type: "commands", commands: [a, b] });
+    expect((await staff.next("result", (m) => m.id === "i-1")).status).toBe("ok");
+    expect((await kiosk.next("command")).command.id).toBe("i-1");
+    expect((await kiosk.next("command")).command.id).toBe("i-2");
+  });
+
+  it("converges a staff page's projected cart on the kiosk through rejections, skipped dependents and customer edits", async () => {
+    const pj = loadProjection();
+    const staffCtx = context();
+    const kioskCtx = context(["flavor:chocolate"]);
+    const device = newDevice("k");
+    const staff = await open(STAFF, newDevice("s"));
+    const socket = await open(KIOSK, device);
+
+    const model = pj.pjModel(
+      { screen: "builder", step: "vessel", items: [{ id: ITEM(1), vessel: "cup", flavors: [], toppings: [], cents: 0, current: true, inOrder: false }], maxScoops: 3 },
+      kioskCtx,
+    );
+    const results: { id: string; status: string; message?: string }[] = [];
+    const stream = { id: "st-3", received: 0, done: 0, waiting: 0 };
+    const queue: PjCommand[] = [];
+    const publish = () => {
+      const session = { ...pj.pjView(model), assisted: true, results: results.slice(-40), streams: [{ ...stream, waiting: queue.length }] };
+      socket.send({ type: "session", session });
+    };
+    const kioskStep = () => {
+      const c = queue.shift()!;
+      const blocked = (c.after ?? []).some((id) => results.find((r) => r.id === id)?.status === "rejected");
+      const why = blocked ? "Skipped because an earlier change didn't go through" : pj.pjApply(model, c);
+      results.push(why ? { id: c.id, status: "rejected", message: why } : { id: c.id, status: "applied" });
+      stream.done = c.seq!;
+      publish();
+    };
+
+    let latest: PjSession | null = null;
+    let pending: PjCommand[] = [];
+    const notices: string[] = [];
+    let seq = 0;
+    const tap = (op: string, fields: Partial<PjCommand> = {}) => {
+      const c: PjCommand = { id: `cv-${seq + 1}`, kiosk: device, by: "Toppings iPad", op, stream: stream.id, seq: seq + 1, ...fields };
+      const after = pj.pjAfter(pending, c);
+      if (after.length) c.after = after;
+      c.base = pj.pjBase(pending, seq);
+      expect(pj.pjProject(latest, [...pending, c], staffCtx).failed).toEqual([]);
+      seq++;
+      pending.push(c);
+      staff.send({ type: "command", command: c });
+      return c;
+    };
+    const staffView = () => pj.pjProject(latest, pending, staffCtx).view;
+    const nextSession = async () => {
+      latest = (await staff.next("session", (m) => m.kiosk === device)).session as PjSession;
+      const r = pj.pjReconcile(pending, latest, stream.id);
+      pending = r.pending;
+      if (r.rejected) notices.push(`${r.rejected.why} (${r.skipped} skipped)`);
+    };
+
+    publish();
+    await nextSession();
+    const ref = "00000000-0000-4000-8000-0000000000AA";
+    tap("addScoop", { item: ITEM(1), flavor: "vanilla" });
+    tap("addScoop", { item: ITEM(1), flavor: "chocolate" });
+    tap("setTopping", { item: ITEM(1), topping: "whip", on: true });
+    tap("addItem", { ref });
+    tap("setVessel", { item: ref, vessel: "cone" });
+    tap("addScoop", { item: ref, flavor: "cookies" });
+    tap("navigate", { to: "summary", ref: "00000000-0000-4000-8000-0000000000BB" });
+    expect(staffView().screen).toBe("summary");
+    expect(staffView().totalCents).toBe(750 + 550);
+
+    for (let i = 0; i < seq; i++) {
+      const c = (await socket.next("command")).command as unknown as PjCommand;
+      expect(c.seq).toBe(i + 1);
+      queue.push(c);
+      stream.received = c.seq!;
+    }
+    for (let i = 0; i < 3; i++) {
+      kioskStep();
+      await nextSession();
+    }
+    expect(notices).toEqual(["Chocolate is sold out (1 skipped)"]);
+    expect(pending.map((c) => c.op)).toEqual(["addItem", "setVessel", "addScoop", "navigate"]);
+    expect(staffView().items.map((i) => [i.vessel, i.flavors.join(), i.toppings.join()])).toEqual([
+      ["cup", "vanilla", ""],
+      ["cone", "cookies", ""],
+    ]);
+
+    expect(pj.pjApply(model, { id: "customer-1", op: "setName", name: "Robin" })).toBeNull();
+    expect(pj.pjApply(model, { id: "customer-2", op: "setTopping", item: ITEM(1), topping: "sprinkles", on: true })).toBeNull();
+    publish();
+    await nextSession();
+    expect(staffView().customerName).toBe("Robin");
+
+    while (queue.length) {
+      kioskStep();
+      await nextSession();
+    }
+    expect(pending).toEqual([]);
+    const truth = pj.pjView(model);
+    expect(truth.screen).toBe("summary");
+    expect(staffView()).toEqual(truth);
+    expect(truth.items.map((i) => [i.id, i.vessel, i.flavors.join(), i.toppings.join(), i.cents])).toEqual([
+      [ITEM(1), "cup", "vanilla", "sprinkles", 450],
+      [ref, "cone", "cookies", "", 550],
+    ]);
+    expect(truth.totalCents).toBe(1000);
   });
 
   it("converges every staff page on the kiosk's latest session, across eviction", async () => {

@@ -46,6 +46,7 @@ export const LOW_BATTERY_PERCENT = 20;
 export const MAX_FRAME_BYTES = 64 * 1024;
 export const FLOOD_LIMIT = 60;
 export const FLOOD_WINDOW_MS = 10_000;
+export const RELAY_MEMORY = 500;
 const RECENT_ALERTS_MS = 3 * 60 * 60_000;
 export const MAX_SNAPSHOT_ALERTS = 60;
 const RETENTION_MS = 7 * 24 * 60 * 60_000;
@@ -207,6 +208,7 @@ export function healthConditions(health: KioskHealth | null): Map<string, Condit
 export class Booth extends DurableObject<Env> {
   private sql: SqlStorage;
   private flood = new Map<WebSocket, { start: number; count: number }>();
+  private relayed = new Map<WebSocket, { ids: Set<string>; order: string[] }>();
   /** Patches wait here until their storage writes are committed, so a rolled-back write is never broadcast. */
   private outgoing: string[] = [];
   private pendingStatuses = new Map<string, OrderSummary>();
@@ -412,7 +414,10 @@ export class Booth extends DurableObject<Env> {
         this.setAssist(ws, attachment, msg.kiosk, msg.by ?? null, now);
         break;
       case "command":
-        this.relayCommand(ws, role, msg.command);
+        this.relayCommands(ws, role, [msg.command]);
+        break;
+      case "commands":
+        this.relayCommands(ws, role, msg.commands);
         break;
     }
   }
@@ -468,25 +473,45 @@ export class Booth extends DurableObject<Env> {
     for (const socket of this.kioskSockets(kiosk)) this.send(socket, message);
   }
 
-  private relayCommand(ws: WebSocket, role: Role, raw: unknown) {
+  private relayCommands(ws: WebSocket, role: Role, batch: unknown[]) {
     if (role !== "staff") {
-      this.send(ws, { type: "result", ...rejected(itemId(raw), "forbidden", "Only staff send assist commands") });
+      for (const raw of batch) this.send(ws, { type: "result", ...rejected(itemId(raw), "forbidden", "Only staff send assist commands") });
       return;
     }
-    const parsed = AssistCommand.safeParse(raw);
-    if (!parsed.success) {
-      this.send(ws, { type: "result", ...rejected(itemId(raw), "bad_request", describe(parsed.error)) });
-      return;
+    for (const raw of batch) {
+      const parsed = AssistCommand.safeParse(raw);
+      if (!parsed.success) {
+        this.send(ws, { type: "result", ...rejected(itemId(raw), "bad_request", describe(parsed.error)) });
+        continue;
+      }
+      const command = parsed.data;
+      const targets = this.kioskSockets(command.kiosk);
+      if (targets.length === 0) {
+        const name = this.kioskEntry(command.kiosk)?.name ?? "That kiosk";
+        this.send(ws, { type: "result", ...rejected(command.id, "kiosk_offline", `${name} isn't connected`) });
+        continue;
+      }
+      let relayed = false;
+      for (const socket of targets) {
+        if (this.alreadyRelayed(socket, command.id)) continue;
+        this.send(socket, { type: "command", command });
+        relayed = true;
+      }
+      this.send(ws, { type: "result", id: command.id, status: relayed ? "ok" : "duplicate" });
     }
-    const command = parsed.data;
-    const targets = this.kioskSockets(command.kiosk);
-    if (targets.length === 0) {
-      const name = this.kioskEntry(command.kiosk)?.name ?? "That kiosk";
-      this.send(ws, { type: "result", ...rejected(command.id, "kiosk_offline", `${name} isn't connected`) });
-      return;
+  }
+
+  private alreadyRelayed(socket: WebSocket, id: string): boolean {
+    let memory = this.relayed.get(socket);
+    if (!memory) {
+      memory = { ids: new Set(), order: [] };
+      this.relayed.set(socket, memory);
     }
-    for (const socket of targets) this.send(socket, { type: "command", command });
-    this.send(ws, { type: "result", id: command.id, status: "ok" });
+    if (memory.ids.has(id)) return true;
+    memory.ids.add(id);
+    memory.order.push(id);
+    if (memory.order.length > RELAY_MEMORY) memory.ids.delete(memory.order.shift()!);
+    return false;
   }
 
   private kioskSockets(device: string, except?: WebSocket): WebSocket[] {
@@ -516,6 +541,7 @@ export class Booth extends DurableObject<Env> {
 
   private socketGone(ws: WebSocket) {
     this.flood.delete(ws);
+    this.relayed.delete(ws);
     const attachment = ws.deserializeAttachment() as Attachment | null;
     if (attachment?.role === "staff" && attachment.assist) this.notifyAssist(attachment.assist.kiosk, Date.now(), ws);
     if (attachment?.role !== "kiosk") return;

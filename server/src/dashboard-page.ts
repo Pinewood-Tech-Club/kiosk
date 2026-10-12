@@ -1,3 +1,4 @@
+import { ASSIST_PROJECTION_JS } from "./assist-projection";
 import { escapeHtml } from "./http";
 import { TOPPING_TITLES } from "./pricing";
 import { NOTO_SERIF_SEMIBOLD_WOFF2 } from "./staff-font";
@@ -289,7 +290,7 @@ dialog.assist[open]{animation:rise .32s cubic-bezier(.2,.9,.3,1)}
 .as-eyebrow svg{font-size:20px}
 .navbtn.done{font-weight:700;font-size:19px;padding:0 4px}
 .as-cols{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:28px;align-items:start}
-.as-total{font-size:22px!important;font-weight:700!important;color:var(--label)!important;font-variant-numeric:tabular-nums}
+.as-total{font-size:22px!important;font-weight:700!important;color:var(--label)!important;font-variant-numeric:tabular-nums;white-space:nowrap}
 .as-note{margin-top:24px;display:flex;align-items:center;gap:16px;padding:16px 22px;border-radius:24px;background:var(--cell)}
 .as-note .aglyph{width:44px;height:44px;font-size:22px}
 .as-note.info .aglyph{background:var(--tint-wash);color:var(--tint)}
@@ -302,10 +303,13 @@ dialog.assist[open]{animation:rise .32s cubic-bezier(.2,.9,.3,1)}
 .as-ihead{display:flex;align-items:center;gap:14px;padding:18px 14px 8px 24px}
 .as-iname{font-size:24px;font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .as-ihead .sub{font-size:16px;color:var(--label-2);margin-top:3px}
+.as-desc{line-height:1.35;min-height:2.7em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .as-on{font-size:14px;font-weight:700;color:var(--tint-ink);background:var(--tint-wash);border-radius:9px;padding:3px 9px;letter-spacing:0}
-.as-price{font-size:21px;font-weight:650;font-variant-numeric:tabular-nums}
+.as-item:not(.cur) .as-on{visibility:hidden}
+.as-price{font-size:21px;font-weight:650;font-variant-numeric:tabular-nums;width:88px;flex:none;text-align:right;white-space:nowrap}
 .as-trash{width:52px;height:52px;border-radius:50%;color:var(--red);display:grid;place-items:center;font-size:23px;flex:none}
 .as-trash:active{background:rgba(255,59,48,.1)}
+.assist .as-trash.gone{visibility:hidden}
 .as-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin:8px 24px 4px;border-radius:18px;background:var(--fill)}
 .as-seg button{min-height:56px;border-radius:14px;font-size:19px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--label)}
 .as-seg button svg{font-size:21px}
@@ -319,15 +323,20 @@ dialog.assist[open]{animation:rise .32s cubic-bezier(.2,.9,.3,1)}
 .as-step button.plus{background:var(--tint-wash);color:var(--tint-ink)}
 .as-step button svg{stroke-width:2.5}
 .as-step .n{min-width:30px;text-align:center;font-size:24px;font-weight:650;font-variant-numeric:tabular-nums}
-.as-chips{display:flex;flex-wrap:wrap;gap:10px;padding:8px 24px 22px}
-.as-chip{min-height:52px;padding:0 20px;border-radius:26px;background:var(--fill);font-size:18px;font-weight:600;display:inline-flex;align-items:center;gap:8px}
+.as-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:10px;padding:8px 24px 22px}
+.as-chip{min-width:0;height:52px;padding:0 16px 0 12px;border-radius:26px;background:var(--fill);font-size:18px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .as-chip.on{background:var(--tint-wash);color:var(--tint-ink)}
-.as-chip svg{stroke-width:2.75}
+.as-chip svg{stroke-width:2.75;flex:none}
+.as-chip:not(.on) .as-tick{visibility:hidden}
+.as-cname{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.as-chip small{margin-left:auto;flex:none}
 .as-add{margin-top:18px;width:100%;min-height:68px;border-radius:24px;background:var(--cell);color:var(--tint-ink);font-size:21px;font-weight:650;display:flex;align-items:center;justify-content:center;gap:10px}
 .as-add svg{font-size:22px;stroke-width:2.5}
 .as-nav{width:100%;text-align:left;min-height:68px}
 .as-nav svg{color:var(--tint);font-size:24px;stroke-width:2.5}
 .as-nav.here .label{font-weight:650}
+.as-nav:not(.here) .as-here{visibility:hidden}
+.as-now{min-height:2.7em}
 .as-nav.here:disabled{opacity:1}
 .assist button:disabled{opacity:.35;cursor:default}
 .assist .as-seg button.sel:disabled{opacity:.55}
@@ -500,7 +509,9 @@ function load(k){try{return localStorage.getItem(k);}catch(e){return null;}}
 function uuid(){
   if(window.crypto&&crypto.randomUUID)return crypto.randomUUID();
   var b=new Uint8Array(16);crypto.getRandomValues(b);
-  return Array.prototype.map.call(b,function(x){return (x+256).toString(16).slice(1);}).join("");
+  b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;
+  var h=Array.prototype.map.call(b,function(x){return (x+256).toString(16).slice(1);}).join("");
+  return h.slice(0,8)+"-"+h.slice(8,12)+"-"+h.slice(12,16)+"-"+h.slice(16,20)+"-"+h.slice(20);
 }
 
 var deviceId = load(DEVICE_KEY);
@@ -729,14 +740,14 @@ function onMessage(socket,event){
   if(msg.type==="snapshot"){
     state=msg.state;state.liveSocket=socket;
     setSessions(msg.state.sessions);
-    if(assistKiosk)sendPresence();
+    if(assistKiosk){sendPresence();resendCommands(true);}
     if(state.serverTime)serverOffset=state.serverTime-Date.now();
     everLive=true;offlineSince=null;
     reconcile();render();scheduleStats(0);flush();
   }
   else if(msg.type==="patch")applyPatch(msg);
   else if(msg.type==="session")sessionArrived(msg.kiosk,msg.session);
-  else if(msg.type==="result"&&cmdPending[msg.id]&&msg.status==="rejected")commandDone(msg.id,"rejected",msg.error&&msg.error.message);
+  else if(msg.type==="result"&&msg.status==="rejected")commandRefused(msg.id,msg.error&&msg.error.message);
   else if(msg.type==="pong"){
     if(msg.serverTime)serverOffset=msg.serverTime-Date.now();
     if(state&&msg.rev>state.rev)send({type:"sync"});
@@ -1433,13 +1444,16 @@ document.addEventListener("submit",function(e){
 if($("assist"))$("assist").addEventListener("close",function(){if(assistKiosk)stopAssist();});
 if($("kioskSheet"))$("kioskSheet").addEventListener("close",function(){sheetKiosk=null;});
 
-var sessions={}, assistKiosk=null, assistOpenedAt=0, lastPresenceAt=0, cmdPending={}, assistNoteKey="";
+__PROJECTION__
+var sessions={}, assistKiosk=null, assistOpenedAt=0, lastPresenceAt=0, assistNoteKey="", asq=null;
 var SCREEN_LABEL={attract:"the welcome screen",builder:"building the order",summary:"reviewing the order",name:"entering a name",confirmation:"the receipt",roleSetup:"the role picker",staff:"a staff page"};
 var STEP_LABEL={vessel:"a cup or cone",flavors:"scoops",toppings:"toppings"};
 var ASSIST_NAV=[["builder","Building the order"],["summary","Reviewing the order"],["name","Entering a name"]];
+var NAV_TEXT={builder:"building the order",summary:"the order review",name:"name entry"};
+var RESEND_AFTER=3000, UNHEARD_AFTER=20000, STUCK_AFTER=90000;
 
 function dis(b){return b?" disabled":"";}
-function setSessions(list){sessions={};(list||[]).forEach(function(x){sessions[x.kiosk]=x;});}
+function setSessions(list){sessions={};(list||[]).forEach(function(x){sessions[x.kiosk]=x;});if(assistKiosk)reconcileCommands();}
 function assistable(k){return !!k&&k.online&&k.connected;}
 function showDialog(d){if(d.showModal){if(!d.open)d.showModal();}else d.setAttribute("open","");}
 function hideDialog(d){if(!d)return;if(d.close){if(d.open)d.close();}else d.removeAttribute("open");}
@@ -1447,8 +1461,7 @@ function pickerOpen(){var d=$("assistPick");return !!d&&d.open;}
 
 function sessionArrived(kiosk,session){
   if(session)sessions[kiosk]=session;else delete sessions[kiosk];
-  if(session)(session.results||[]).forEach(function(r){if(cmdPending[r.id])commandDone(r.id,r.status,r.message);});
-  if(assistKiosk===kiosk)renderAssist(false);
+  if(assistKiosk===kiosk){reconcileCommands();renderAssist(false);}
   if(pickerOpen())renderPicker();
 }
 
@@ -1483,7 +1496,8 @@ function askAssist(k){
 }
 
 function openAssist(id){
-  assistKiosk=id;assistOpenedAt=Date.now();cmdPending={};assistNoteKey="";
+  assistKiosk=id;assistOpenedAt=Date.now();assistNoteKey="";
+  asq={stream:"as-"+uuid().replace(/-/g,"").slice(0,20),seq:0,pending:[],received:0};
   sendPresence();
   renderAssist(true);
   showDialog($("assist"));
@@ -1491,7 +1505,7 @@ function openAssist(id){
 }
 
 function stopAssist(){
-  assistKiosk=null;cmdPending={};
+  assistKiosk=null;asq=null;
   sendPresence();
   hideDialog($("assist"));
   var t=$("toast");if(t.parentNode!==document.body)document.body.appendChild(t);
@@ -1503,32 +1517,99 @@ function sendPresence(){
   send({type:"assist",kiosk:assistKiosk,by:ACTOR});
 }
 
-function command(op,fields){
-  if(!assistKiosk)return;
-  var c={id:uuid(),kiosk:assistKiosk,op:op,by:ACTOR};
-  Object.keys(fields||{}).forEach(function(k){c[k]=fields[k];});
-  var p={cmd:c,firstAt:Date.now(),sentAt:0};
-  cmdPending[c.id]=p;
-  transmit(p);
-  renderAssistLink();
+function projectionContext(){
+  return {
+    soldOut:function(kind,id){var su=supplyByKey(kind+":"+id);return !!su&&supplyOut(su);},
+    title:function(kind,id){var su=supplyByKey(kind+":"+id);if(kind==="flavor")return flavorName(id);if(kind==="topping")return toppingName(id);return su?su.name:titleCase(id);}
+  };
 }
-function transmit(p){if(!isLive())return;p.sentAt=Date.now();send({type:"command",command:p.cmd});}
-function commandDone(id,status,message){
-  if(!cmdPending[id])return;
-  delete cmdPending[id];
-  if(status==="rejected")showToast(message||"The kiosk didn't make that change.");
-  renderAssistLink();
+function pendingCommands(){return asq?asq.pending.map(function(p){return p.cmd;}):[];}
+function projected(extra){
+  var x=sessions[assistKiosk];if(!x)return null;
+  return pjProject(x,pendingCommands().concat(extra||[]),projectionContext());
+}
+
+function commandText(c){
+  switch(c.op){
+    case "addScoop":return "add a "+flavorName(c.flavor)+" scoop";
+    case "removeScoop":return "remove a "+flavorName(c.flavor)+" scoop";
+    case "setVessel":return "switch to a "+(c.vessel==="cone"?"waffle cone":"cup");
+    case "setTopping":return (c.on?"add ":"take off ")+toppingName(c.topping);
+    case "addItem":return "add another item";
+    case "removeItem":return "remove that item";
+    case "setName":return "save the name";
+    case "navigate":return "move the kiosk to "+(NAV_TEXT[c.to]||"that screen");
+    case "startOver":return "start over";
+  }
+  return "make that change";
+}
+function sentence(s){s=String(s||"").trim();return !s?"":/[.!?]$/.test(s)?s:s+".";}
+function refusedNotice(c,why,skipped){
+  showToast("Couldn't "+commandText(c)+". "+sentence(why||"The kiosk didn't make that change")+(skipped?" "+plural(skipped,"later change")+" that depended on it "+(skipped===1?"was":"were")+" skipped.":""));
+}
+
+function command(op,fields){
+  if(!assistKiosk||!asq||!sessions[assistKiosk])return;
+  var c={id:uuid(),kiosk:assistKiosk,op:op,by:ACTOR,stream:asq.stream,seq:asq.seq+1};
+  Object.keys(fields||{}).forEach(function(k){c[k]=fields[k];});
+  if(op==="addItem"||op==="navigate"||op==="removeItem")c.ref=uuid().toUpperCase();
+  var pending=pendingCommands();
+  var after=pjAfter(pending,c);if(after.length)c.after=after;
+  c.base=pjBase(pending,asq.seq);
+  var trial=projected([c]),bad=trial&&trial.failed.filter(function(f){return f.id===c.id;})[0];
+  if(bad){refusedNotice(c,bad.why,0);renderAssist(false);return;}
+  asq.seq=c.seq;
+  var p={cmd:c,firstAt:Date.now(),sentAt:0};
+  asq.pending.push(p);
+  transmit([p]);
+  renderAssist(false);
+}
+function transmit(list){
+  if(!list.length||!isLive())return;
+  var t=Date.now();
+  list.forEach(function(p){p.sentAt=t;});
+  if(list.length===1)send({type:"command",command:list[0].cmd});
+  else send({type:"commands",commands:list.map(function(p){return p.cmd;})});
+}
+function unreceived(){return asq?asq.pending.filter(function(p){return p.cmd.seq>asq.received;}):[];}
+function resendCommands(force){
+  if(!asq)return;
+  var t=Date.now(),list=unreceived();
+  if(!list.length)return;
+  if(force||list.some(function(p){return t-p.sentAt>RESEND_AFTER;}))transmit(list.slice(0,50));
+}
+function applyReconcile(r){
+  asq.pending=asq.pending.filter(function(p){return r.pending.indexOf(p.cmd)>=0;});
+  if(r.received!=null)asq.received=Math.max(asq.received,r.received);
+  if(r.rejected)refusedNotice(r.rejected.command,r.rejected.why,r.skipped);
+}
+function reconcileCommands(){
+  if(!asq)return;
+  var x=sessions[assistKiosk];
+  if(!x)return;
+  applyReconcile(pjReconcile(pendingCommands(),x,asq.stream));
+}
+function commandRefused(id,message){
+  if(!asq||!asq.pending.some(function(p){return p.cmd.id===id;}))return;
+  applyReconcile(pjReconcile(pendingCommands(),{results:[{id:id,status:"rejected",message:message}]},null));
+  renderAssist(false);
+}
+function abandonCommands(text){
+  if(!asq||!asq.pending.length)return;
+  asq.pending=[];
+  showToast(text);
 }
 
 function assistTick(){
   if(!assistKiosk)return;
   var t=Date.now();
   if(isLive()&&t-lastPresenceAt>=10000)sendPresence();
-  Object.keys(cmdPending).forEach(function(id){
-    var p=cmdPending[id];
-    if(t-p.firstAt>15000){delete cmdPending[id];showToast("The kiosk didn't answer. Check it and try again.");}
-    else if(isLive()&&t-p.sentAt>3000)transmit(p);
-  });
+  if(asq&&asq.pending.length){
+    var first=asq.pending[0];
+    if(first.cmd.seq>asq.received&&t-first.firstAt>UNHEARD_AFTER)abandonCommands("The kiosk didn't answer, so your last changes weren't made. Check it and try again.");
+    else if(t-first.firstAt>STUCK_AFTER)abandonCommands("The kiosk stopped playing your changes. Check it and try again.");
+    else resendCommands(false);
+  }
   renderAssistLink();
   var v=asState(),n=asNotice(v,"");
   if((n?n[2]:"")!==assistNoteKey)renderAssist(false);
@@ -1536,9 +1617,10 @@ function assistTick(){
 
 function asState(){
   var k=kioskById(assistKiosk),x=sessions[assistKiosk]||null,live=isLive(),connected=assistable(k);
+  var pj=x?projected():null,s=pj?pj.view:null;
   var ready=live&&connected&&!!x;
-  var editable=ready&&!x.paying&&(x.screen==="builder"||x.screen==="summary"||x.screen==="name");
-  return {k:k,s:x,live:live,connected:connected,ready:ready,editable:editable};
+  var editable=ready&&!x.paying&&(s.screen==="builder"||s.screen==="summary"||s.screen==="name");
+  return {k:k,s:s,raw:x,live:live,connected:connected,ready:ready,editable:editable};
 }
 
 function asNotice(v,name){
@@ -1547,7 +1629,7 @@ function asNotice(v,name){
   if(!v.k)return ["bad","alert","This kiosk was removed","It isn't in the kiosk list any more."];
   if(!v.connected)return ["bad","wifiOff",name+" is offline","Assist needs a live connection to the kiosk. Changes are off until it reconnects."];
   if(!x)return Date.now()-assistOpenedAt<8000?["wait","loader","Connecting to "+name,"Waiting for the kiosk to share its order."]:["warn","alert",name+" isn't sharing its order","Its app may need an update before it can be assisted."];
-  if(x.paying)return ["warn","card","Payment in progress","The customer is paying on the kiosk. Changes are paused until they finish."];
+  if(v.raw.paying)return ["warn","card","Payment in progress","The customer is paying on the kiosk. Changes are paused until they finish."];
   if(x.screen==="attract")return x.orderingOpen?["info","tablet",name+" is on its welcome screen","Start an order for the customer, or let them tap Begin Order."]:["warn","ban",name+" is closed","It isn't taking new orders."];
   if(x.screen==="confirmation")return ["info","circleCheck","Paid","The kiosk is showing the receipt."];
   if(x.screen==="roleSetup"||x.screen==="staff")return ["warn","alert",name+" isn't running as a kiosk","Nothing to assist with right now."];
@@ -1556,10 +1638,10 @@ function asNotice(v,name){
 
 function renderAssistLink(){
   var el=$("asLink");if(!el||!assistKiosk)return;
-  var v=asState(),busy=Object.keys(cmdPending).length>0;
+  var v=asState(),n=asq?asq.pending.length:0;
   if(!v.live){el.className="live off";el.innerHTML='<span class="dot"></span>Offline';}
   else if(!v.connected){el.className="live off";el.innerHTML='<span class="dot"></span>Kiosk offline';}
-  else if(busy){el.className="live";el.innerHTML=ico("loader","spin")+"Sending";}
+  else if(n){el.className="live";el.innerHTML=ico("loader","spin")+plural(n,"change")+" playing on the kiosk";}
   else{el.className="live";el.innerHTML='<span class="dot"></span>Live';}
 }
 
@@ -1577,13 +1659,13 @@ function renderAssist(fresh){
   $("asOrder").innerHTML=assistOrder(v);
   $("asSide").innerHTML=assistSide(v);
   assistName(v,fresh);
-  var canStart=v.ready&&!v.s.paying&&["builder","summary","name","confirmation"].indexOf(v.s.screen)>=0;
+  var canStart=v.ready&&!v.raw.paying&&["builder","summary","name","confirmation"].indexOf(v.s.screen)>=0;
   $("asEnd").innerHTML='<div class="section-head"></div><div class="group"><div class="cell"><button class="destructive" type="button" id="asStartOver"'+dis(!canStart)+">Start over</button></div></div><p class=\"footnote\">Clears the whole order and takes the kiosk back to its welcome screen.</p><p class=\"footnote\">While this is open the kiosk shows \"A staff member is helping you\". Payment always happens on the kiosk, on Square's own screen.</p>";
 }
 
 function assistOrder(v){
   var x=v.s;
-  var head='<div class="section-head"><h2>Order</h2>'+(x&&x.items.length?'<span class="as-total">Total '+money(x.totalCents)+"</span>":"")+"</div>";
+  var head='<div class="section-head"><h2>Order</h2><span class="as-total">'+(x&&x.items.length?"Total "+money2(x.totalCents):"")+"</span></div>";
   if(!x||!x.items.length)return head+emptyGroup(x&&x.screen!=="attract"?"Nothing in the order yet.":"No order in progress.");
   var n=0;
   var html=x.items.map(function(it){return assistItem(it,it.inOrder?"Item "+(++n):"New item",v);}).join("");
@@ -1591,13 +1673,15 @@ function assistOrder(v){
   return head+html;
 }
 
+function money2(c){return "$"+(c/100).toFixed(2);}
+
 function assistItem(it,label,v){
   var x=v.s,e=v.editable,max=x.maxScoops||3,full=it.flavors.length>=max,id=esc(it.id);
   var onScreen=x.screen==="builder"&&it.current;
   var tops=it.toppings||[];
-  var desc=vesselName(it.vessel)+", "+(it.flavors.length?flavorText(it.flavors):"no scoops yet")+(tops.length?", "+joinAnd(tops.map(toppingName)):"");
+  var desc=vesselName(it.vessel)+", "+(it.flavors.length?flavorText(it.flavors):"no scoops yet")+(tops.length?", "+joinAnd(tops.map(toppingName)):"")+(it.inOrder?"":". It joins the order with its first scoop.");
   var removable=it.inOrder||it.flavors.length>0||tops.length>0;
-  var h='<article class="group as-item'+(onScreen?" cur":"")+'"><div class="as-ihead"><div class="grow"><div class="as-iname">'+esc(label)+(onScreen?'<span class="as-on">On screen</span>':"")+'</div><div class="sub">'+esc(desc)+(it.inOrder?"":". It joins the order with its first scoop.")+"</div></div>"+(it.inOrder?'<span class="as-price">'+money(it.cents)+"</span>":"")+(removable?'<button class="as-trash" type="button" data-asremove="'+id+'" aria-label="Remove '+esc(label)+'"'+dis(!e)+">"+ico("trash")+"</button>":"")+"</div>";
+  var h='<article class="group as-item'+(onScreen?" cur":"")+'"><div class="as-ihead"><div class="grow"><div class="as-iname">'+esc(label)+'<span class="as-on"'+(onScreen?"":" hidden")+'>On screen</span></div><div class="sub as-desc">'+esc(desc)+'</div></div><span class="as-price">'+(it.inOrder?money2(it.cents):"")+'</span><button class="as-trash'+(removable?"":" gone")+'" type="button" data-asremove="'+id+'" aria-label="Remove '+esc(label)+'"'+dis(!e||!removable)+(removable?"":' tabindex="-1" aria-hidden="true"')+">"+ico("trash")+"</button></div>";
   h+='<div class="as-seg" role="group" aria-label="Cup or cone for '+esc(label)+'">'+["cup","cone"].map(function(vs){
     var su=supplyByKey("vessel:"+vs),out=!!su&&supplyOut(su),sel=it.vessel===vs;
     return '<button type="button" class="'+(sel?"sel":"")+'" aria-pressed="'+sel+'" data-asvessel="'+vs+'" data-asitem="'+id+'"'+dis(!e||(!sel&&out))+">"+ico(vesselIcon(vs))+esc(vesselName(vs))+(out&&!sel?"<small>Sold out</small>":"")+"</button>";
@@ -1608,22 +1692,22 @@ function assistItem(it,label,v){
   }).join("")+"</div>";
   h+='<div class="as-label"><span>Toppings</span><span>'+(it.flavors.length?plural(tops.length,"topping"):"Add a scoop first")+'</span></div><div class="as-chips">'+supplies().filter(function(t){return t.kind==="topping";}).map(function(t){
     var on=tops.indexOf(t.id)>=0,out=supplyOut(t);
-    return '<button type="button" class="as-chip'+(on?" on":"")+'" aria-pressed="'+on+'" data-astopping="'+esc(t.id)+'" data-asitem="'+id+'"'+dis(!e||(!on&&(out||!it.flavors.length)))+">"+(on?ico("check"):"")+esc(t.name)+(out&&!on?" <small>Sold out</small>":"")+"</button>";
+    return '<button type="button" class="as-chip'+(on?" on":"")+'" aria-pressed="'+on+'" data-astopping="'+esc(t.id)+'" data-asitem="'+id+'"'+dis(!e||(!on&&(out||!it.flavors.length)))+">"+ico("check","as-tick")+'<span class="as-cname">'+esc(t.name)+"</span>"+(out&&!on?"<small>Sold out</small>":"")+"</button>";
   }).join("")+"</div>";
   return h+"</article>";
 }
 
 function assistSide(v){
-  var x=v.s,here=x&&!x.paying?x.screen:null;
+  var x=v.s,here=x&&!v.raw.paying?x.screen:null;
   var html='<div class="section-head"><h2>Kiosk screen</h2></div><div class="group list">'+ASSIST_NAV.map(function(r){
     var on=here===r[0];
-    return '<button class="cell as-nav'+(on?" here":"")+'" type="button" data-asnav="'+r[0]+'" aria-pressed="'+on+'"'+dis(!v.editable||on)+'><span class="label">'+r[1]+"</span>"+(on?ico("check"):"")+"</button>";
+    return '<button class="cell as-nav'+(on?" here":"")+'" type="button" data-asnav="'+r[0]+'" aria-pressed="'+on+'"'+dis(!v.editable||on)+'><span class="label">'+r[1]+"</span>"+ico("check","as-here")+"</button>";
   }).join("")+"</div>";
   var now="";
-  if(x&&x.paying)now="The customer is paying on Square's screen.";
+  if(x&&v.raw.paying)now="The customer is paying on Square's screen.";
   else if(x&&x.screen==="builder"&&x.step)now="The customer is choosing "+STEP_LABEL[x.step]+(x.editing?" for an item they're changing.":".");
   else if(x)now="The kiosk is on "+SCREEN_LABEL[x.screen]+".";
-  return html+(now?'<p class="footnote">'+esc(now)+"</p>":"");
+  return html+'<p class="footnote as-now">'+esc(now)+"</p>";
 }
 
 function assistName(v,fresh){
@@ -1641,17 +1725,17 @@ function saveCustomerName(){
   var input=$("asName");if(!input)return;
   var name=cleanName(input.value).slice(0,24);
   input.blur();
-  var x=sessions[assistKiosk];
-  if(x&&name===x.customerName)return;
+  var v=asState();
+  if(v.s&&name===v.s.customerName)return;
   command("setName",{name:name});
 }
 
-function assistItemByID(id){var x=sessions[assistKiosk];return x?x.items.filter(function(i){return i.id===id;})[0]||null:null;}
+function assistItemByID(id){var v=asState();return v.s?v.s.items.filter(function(i){return i.id===id;})[0]||null:null;}
 
 function askRemoveItem(id){
-  var x=sessions[assistKiosk],it=assistItemByID(id);if(!x||!it)return;
+  var v=asState(),it=assistItemByID(id);if(!v.s||!it)return;
   var n=0,label="the new item";
-  x.items.forEach(function(i){if(i.inOrder)n++;if(i.id===id&&i.inOrder)label="item "+n;});
+  v.s.items.forEach(function(i){if(i.inOrder)n++;if(i.id===id&&i.inOrder)label="item "+n;});
   var name=kioskName(kioskById(assistKiosk)||{id:assistKiosk,tag:""});
   ask("Remove "+label+"?",(it.inOrder?"It comes out of the order on "+name+".":"The item being built on "+name+" is cleared.")+" The customer sees it go.","Remove",true,"Cancel",function(){command("removeItem",{item:id});});
 }
@@ -1694,5 +1778,7 @@ renewSession();
 `;
 
 export function dashboardScript(): string {
-  return SCRIPT.replace("__ICONS__", () => JSON.stringify(ICONS)).replace("__TOPPINGS__", () => JSON.stringify(TOPPING_TITLES));
+  return SCRIPT.replace("__ICONS__", () => JSON.stringify(ICONS))
+    .replace("__TOPPINGS__", () => JSON.stringify(TOPPING_TITLES))
+    .replace("__PROJECTION__", () => ASSIST_PROJECTION_JS);
 }

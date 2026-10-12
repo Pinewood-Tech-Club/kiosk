@@ -86,6 +86,7 @@ export const EventsBody = z.object({ events: z.array(z.unknown()).min(1).max(100
 export const ActionsBody = z.object({ actions: z.array(z.unknown()).min(1).max(50) });
 
 export const Vessel = z.enum(["cup", "cone"]);
+export const MAX_COMMAND_BATCH = 50;
 const ItemRef = z.string().min(1).max(64);
 
 export const SessionItem = z.object({
@@ -111,12 +112,27 @@ export const KioskSession = z.object({
   maxScoops: z.number().int().min(1).max(10).default(3),
   results: z
     .array(z.object({ id, status: z.enum(["applied", "duplicate", "rejected"]), message: text(200).optional() }))
-    .max(20)
+    .max(40)
     .default([]),
+  streams: z
+    .array(z.object({ id, received: z.number().int().min(0), done: z.number().int().min(0), waiting: z.number().int().min(0).default(0) }))
+    .max(8)
+    .optional(),
 });
 export type KioskSession = z.infer<typeof KioskSession>;
 
-const commandBase = { id, kiosk: DeviceId, by: text(40).optional() };
+const ItemUUID = z.string().regex(/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/, "a UUID");
+
+const commandBase = {
+  id,
+  kiosk: DeviceId,
+  by: text(40).optional(),
+  stream: id.optional(),
+  seq: z.number().int().min(1).max(1_000_000_000).optional(),
+  base: z.number().int().min(0).max(1_000_000_000).optional(),
+  after: z.array(id).max(8).optional(),
+  ref: ItemUUID.optional(),
+};
 
 export const AssistCommand = z.discriminatedUnion("op", [
   z.object({ ...commandBase, op: z.literal("addScoop"), item: ItemRef, flavor: FlavorId }),
@@ -140,6 +156,7 @@ export const ClientMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("session"), session: z.unknown() }),
   z.object({ type: z.literal("assist"), kiosk: DeviceId.nullable(), by: text(40).optional() }),
   z.object({ type: z.literal("command"), command: z.unknown() }),
+  z.object({ type: z.literal("commands"), commands: z.array(z.unknown()).min(1).max(MAX_COMMAND_BATCH) }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
