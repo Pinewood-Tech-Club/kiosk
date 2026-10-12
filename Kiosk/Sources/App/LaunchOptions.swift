@@ -472,6 +472,8 @@ struct ScriptRunner {
             log(issues.isEmpty ? "vessel-spam consistent" : "vessel-spam FAIL: " + issues.joined(separator: "; "))
         case "stress", "stress-tray":
             await StressRunner(app: app, includeTray: script == "stress-tray").run()
+        case "attract-interrupts":
+            await AttractInterruptRunner(app: app).run()
         case "tray-remove":
             await wait(0.8)
             if let target = app.items.dropFirst().first {
@@ -1108,5 +1110,51 @@ struct SheetDragStress {
         issues += stage.consistencyIssues(current: open ? nil : app.current, items: app.items, editingID: app.editingID,
                                           showsCards: !open)
         tally.issues += issues.map { "\(label): \($0)" }
+    }
+}
+
+/// Starts an order at random moments of the attract scene (mid toss, mid swap, mid flight), checks the builder got a clean
+/// fresh item, and goes back to the attract screen, round after round. Results go to the log as `AttractInterrupts:` lines.
+@MainActor
+struct AttractInterruptRunner {
+    let app: AppModel
+
+    private func log(_ message: String) { app.square.record("AttractInterrupts: \(message)") }
+
+    private func sleep(_ seconds: Double) async {
+        try? await Task.sleep(for: .seconds(seconds / max(app.slowMotion, 0.01)))
+    }
+
+    func run() async {
+        let defaults = UserDefaults.standard
+        let seed = defaults.object(forKey: "kioskSeed") != nil ? UInt64(defaults.integer(forKey: "kioskSeed")) : UInt64(Date().timeIntervalSince1970)
+        let rounds = defaults.object(forKey: "kioskStressRounds") != nil ? defaults.integer(forKey: "kioskStressRounds") : 12
+        var rng = ToppingRandom(seed: seed)
+        let stage = app.stage
+        log("seed \(seed), \(rounds) rounds")
+        var failures = 0
+        for round in 1...rounds {
+            var waited = 0.0
+            while !(app.screen == .attract && stage.isAttractRunning), waited < 10 {
+                await sleep(0.1)
+                waited += 0.1
+            }
+            let delay = Double.random(in: 0.3...30, using: &rng)
+            await sleep(delay)
+            app.beginOrder(ignoringClosure: true)
+            var issues = stage.consistencyIssues(current: app.current, items: app.items, editingID: nil, showsCards: true)
+            if stage.isAttractRunning { issues.append("attract still running") }
+            if !stage.detachedToppings.isEmpty { issues.append("\(stage.detachedToppings.count) detached topping layer(s)") }
+            if stage.toppingStacks.count > 1 { issues.append("\(stage.toppingStacks.count) topping stacks") }
+            let census = "root \(stage.root.children.count), tweens \(stage.activeAnimationCount), live scoops \(stage.liveScoops.count), "
+                + "pool \(stage.scoopModelPool.values.reduce(0) { $0 + $1.count })"
+            log(String(format: "round %d after %.1f s: ", round, delay) + (issues.isEmpty ? "clean" : "FAIL " + issues.joined(separator: "; "))
+                + " (\(census))")
+            if !issues.isEmpty { failures += 1 }
+            await sleep(Double.random(in: 0.2...1.5, using: &rng))
+            app.resetToAttract()
+            await sleep(1.0)
+        }
+        log("done: \(rounds - failures)/\(rounds) rounds clean, seed \(seed)")
     }
 }
