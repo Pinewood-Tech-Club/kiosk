@@ -135,7 +135,6 @@ struct GlassViewOrderButton: View {
                     Text("$00.00").hidden()
                     Text(totalCents.formattedAsUSD)
                         .contentTransition(.numericText(value: Double(totalCents)))
-                        .opacity(totalCents > 0 ? 1 : 0)
                 }
                 .font(Theme.sans(19, .semibold))
                 .monospacedDigit()
