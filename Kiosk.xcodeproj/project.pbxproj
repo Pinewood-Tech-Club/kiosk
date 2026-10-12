@@ -87,6 +87,7 @@
 		E21404B759B7FBEE10853958 /* ToppingStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5406E8E764595F07AE47CDAC /* ToppingStack.swift */; };
 		E4F831145DF772EE0B60DCBF /* BoothConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C430771D6BEE6DF3E2F669E /* BoothConnection.swift */; };
 		E6F75105196B73C5CB554BE7 /* CandyMeshes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */; };
+		5A1E11A7C0FFEE0000000002 /* JellyMaterial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1E11A7C0FFEE0000000001 /* JellyMaterial.swift */; };
 		E914998623BE51ECE8266AF6 /* GiftCardUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = 9E6A9AC65579D36CEE73A675 /* GiftCardUITests.m */; };
 		EEE905EC1942EFD25A5F0730 /* PlaceholderScatterKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */; };
 		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
@@ -175,6 +176,7 @@
 		95A84ADD1ADC27EDD4A1F2B3 /* GiftCardNumber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiftCardNumber.swift; sourceTree = "<group>"; };
 		96A26E074420B8AC97F15E75 /* FrameStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStats.swift; sourceTree = "<group>"; };
 		984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandyMeshes.swift; sourceTree = "<group>"; };
+		5A1E11A7C0FFEE0000000001 /* JellyMaterial.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JellyMaterial.swift; sourceTree = "<group>"; };
 		989E4F9F6FFDC723DDD4BEA7 /* LogShipper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogShipper.swift; sourceTree = "<group>"; };
 		98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopMesh.swift; sourceTree = "<group>"; };
 		9E6A9AC65579D36CEE73A675 /* GiftCardUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GiftCardUITests.m; sourceTree = "<group>"; };
@@ -403,6 +405,7 @@
 				4649965D4D60FFAD3C4019DC /* CandyKinds.swift */,
 				984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */,
 				8B8B17032539D12086EC034E /* DrizzleLayer.swift */,
+				5A1E11A7C0FFEE0000000001 /* JellyMaterial.swift */,
 				C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */,
 				D65867471778683C1CB36618 /* ScatterLayer.swift */,
 				C6EB437FE04FC84CEA440D1E /* ScatterPhysics.swift */,
@@ -659,6 +662,7 @@
 				9202055A9FECFAEDCE95CD2D /* BuilderView.swift in Sources */,
 				CD5E3ED59D3759FB531081DF /* CandyKinds.swift in Sources */,
 				E6F75105196B73C5CB554BE7 /* CandyMeshes.swift in Sources */,
+				5A1E11A7C0FFEE0000000002 /* JellyMaterial.swift in Sources */,
 				4BC227CBF102A437BF69488A /* Cards.swift in Sources */,
 				6AD8D94397D99092AF46F1B7 /* Config.swift in Sources */,
 				8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */,
