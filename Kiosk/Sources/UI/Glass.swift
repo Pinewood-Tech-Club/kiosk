@@ -131,13 +131,15 @@ struct GlassViewOrderButton: View {
         Button(action: action) {
             VStack(spacing: 1) {
                 Text("View Order").font(Theme.serif(24))
-                if totalCents > 0 {
+                ZStack(alignment: .trailing) {
+                    Text("$00.00").hidden()
                     Text(totalCents.formattedAsUSD)
-                        .font(Theme.sans(19, .semibold))
-                        .monospacedDigit()
                         .contentTransition(.numericText(value: Double(totalCents)))
-                        .opacity(0.82)
+                        .opacity(totalCents > 0 ? 1 : 0)
                 }
+                .font(Theme.sans(19, .semibold))
+                .monospacedDigit()
+                .opacity(0.82)
             }
             .foregroundStyle(Theme.onText)
             .frame(width: size.width - 2 * KioskGlassButtonStyle.horizontalInset, height: size.height - 2 * KioskGlassButtonStyle.verticalInset)
