@@ -15,6 +15,8 @@ final class BoothLink {
     private struct SoldOutSnapshot: Codable {
         var rev: Int
         var soldOut: [String]
+        var vessels: [String]?
+        var toppings: [String]?
     }
 
     private static let kioskOpenKey = "boothKioskOpen"
@@ -29,6 +31,8 @@ final class BoothLink {
 
     private(set) var connectionState: BoothConnection.ConnectionState = .idle
     private(set) var soldOut: Set<Flavor>
+    private(set) var soldOutVessels: Set<Vessel>
+    private(set) var soldOutToppings: Set<Topping>
     private(set) var kioskOpen: Bool
     private(set) var debugEnabled: Bool
     private(set) var kioskName: String?
@@ -53,6 +57,8 @@ final class BoothLink {
     init() {
         let stored = UserDefaults.standard.data(forKey: Self.soldOutKey).flatMap { try? JSONDecoder().decode(SoldOutSnapshot.self, from: $0) }
         soldOut = Set((stored?.soldOut ?? []).compactMap(Flavor.init(rawValue:)))
+        soldOutVessels = Set((stored?.vessels ?? []).compactMap(Vessel.init(rawValue:)))
+        soldOutToppings = Set((stored?.toppings ?? []).compactMap(Topping.init(rawValue:)))
         kioskOpen = UserDefaults.standard.object(forKey: Self.kioskOpenKey) as? Bool ?? true
         debugEnabled = UserDefaults.standard.bool(forKey: Self.debugKey)
         kioskName = UserDefaults.standard.string(forKey: Self.nameKey)
@@ -61,6 +67,9 @@ final class BoothLink {
     var isEnabled: Bool { BoothConfig.current != nil }
 
     func isSoldOut(_ flavor: Flavor) -> Bool { soldOut.contains(flavor) }
+    func isSoldOut(_ vessel: Vessel) -> Bool { soldOutVessels.contains(vessel) }
+    func isSoldOut(_ topping: Topping) -> Bool { soldOutToppings.contains(topping) }
+    var outOfVessels: Bool { Vessel.allCases.allSatisfy(soldOutVessels.contains) }
 
     func start(square: SquareService, app: AppModel) {
         guard !started else { return }
@@ -169,12 +178,28 @@ final class BoothLink {
         } else {
             setOpen(state.kioskOpen.open)
         }
-        let updated = Set(state.flavors.filter(\.soldOut).compactMap { Flavor(rawValue: $0.id) })
-        guard updated != soldOut else { return }
-        soldOut = updated
-        let snapshot = SoldOutSnapshot(rev: state.rev, soldOut: updated.map(\.rawValue).sorted())
+        let flavors: Set<Flavor>
+        var vessels = soldOutVessels
+        var toppings = soldOutToppings
+        if let supplies = state.supplies {
+            let out = supplies.filter(\.soldOut)
+            flavors = Set(out.filter { $0.kind == "flavor" }.compactMap { Flavor(rawValue: $0.id) })
+            vessels = Set(out.filter { $0.kind == "vessel" }.compactMap { Vessel(rawValue: $0.id) })
+            toppings = Set(out.filter { $0.kind == "topping" }.compactMap { Topping(rawValue: $0.id) })
+        } else {
+            flavors = Set(state.flavors.filter(\.soldOut).compactMap { Flavor(rawValue: $0.id) })
+        }
+        guard flavors != soldOut || vessels != soldOutVessels || toppings != soldOutToppings else { return }
+        let vesselsChanged = vessels != soldOutVessels
+        soldOut = flavors
+        soldOutVessels = vessels
+        soldOutToppings = toppings
+        let snapshot = SoldOutSnapshot(rev: state.rev, soldOut: flavors.map(\.rawValue).sorted(),
+                                       vessels: vessels.map(\.rawValue).sorted(), toppings: toppings.map(\.rawValue).sorted())
         UserDefaults.standard.set(try? JSONEncoder().encode(snapshot), forKey: Self.soldOutKey)
-        log("Booth: sold out is now " + (snapshot.soldOut.isEmpty ? "none" : snapshot.soldOut.joined(separator: ", ")))
+        let all = snapshot.soldOut + (snapshot.vessels ?? []) + (snapshot.toppings ?? []).map { "\($0) topping" }
+        log("Booth: sold out is now " + (all.isEmpty ? "none" : all.joined(separator: ", ")))
+        if vesselsChanged { app?.vesselsChanged() }
     }
 
     private func applyOwnEntry(_ entry: KioskEntry) {
@@ -244,7 +269,7 @@ final class BoothLink {
 
     private func checkIdle(_ now: Date) {
         guard !idleSent, let app, !app.isPaying, app.screen == .builder || app.screen == .name,
-              !app.items.isEmpty || app.current.hasChoices,
+              !app.items.isEmpty || app.currentHasChoices,
               now.timeIntervalSince(lastTouch) >= Self.idleLimit else { return }
         idleSent = true
         requestHelp(.idle, message: "Customer has been idle for a minute mid-order on the \(app.screen.boothName) screen")

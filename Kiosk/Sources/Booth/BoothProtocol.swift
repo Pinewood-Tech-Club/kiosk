@@ -37,6 +37,21 @@ struct BoothFlavorState: Codable, Equatable, Sendable {
     }
 }
 
+struct BoothSupplyState: Codable, Equatable, Sendable {
+    var kind: String
+    var id: String
+    var name: String
+    var soldOut: Bool
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        kind = c.lenient(AnyKey("kind"), "")
+        id = c.lenient(AnyKey("id"), "")
+        name = c.lenient(AnyKey("name"), "")
+        soldOut = c.lenient(AnyKey("soldOut"), false)
+    }
+}
+
 struct BoothAlert: Codable, Equatable, Identifiable, Sendable {
     var id: String
     var key: String
@@ -346,6 +361,8 @@ struct KioskOpenState: Codable, Equatable, Sendable {
 struct BoothState: Codable, Equatable, Sendable {
     var rev: Int
     var flavors: [BoothFlavorState]
+    /// Nil from servers that only track flavors.
+    var supplies: [BoothSupplyState]?
     var kiosk: KioskState
     var kioskOpen: KioskOpenState
     /// Nil from servers that predate the kiosk registry; those only have the shared `kioskOpen`.
@@ -359,6 +376,7 @@ struct BoothState: Codable, Equatable, Sendable {
         rev = c.lenient(AnyKey("rev"), 0)
         kiosks = c.lenientOptional(AnyKey("kiosks"))
         flavors = c.lenient(AnyKey("flavors"), [])
+        supplies = c.lenientOptional(AnyKey("supplies"))
         kiosk = c.lenient(AnyKey("kiosk"), KioskState())
         kioskOpen = c.lenient(AnyKey("kioskOpen"), KioskOpenState())
         alerts = c.lenient(AnyKey("alerts"), [])
@@ -369,6 +387,7 @@ struct BoothState: Codable, Equatable, Sendable {
 
 enum BoothChange: Sendable {
     case flavors([BoothFlavorState])
+    case supplies([BoothSupplyState])
     case alert(BoothAlert)
     case kiosk(KioskState)
     case order(BoothOrderSummary)
@@ -383,6 +402,8 @@ extension BoothChange: Decodable {
         switch c.lenient(AnyKey("kind"), "") {
         case "flavors":
             self = c.lenientOptional(AnyKey("flavors")).map(BoothChange.flavors) ?? .unknown
+        case "supplies":
+            self = c.lenientOptional(AnyKey("supplies")).map(BoothChange.supplies) ?? .unknown
         case "alert":
             self = c.lenientOptional(AnyKey("alert")).map(BoothChange.alert) ?? .unknown
         case "kiosk":

@@ -138,7 +138,7 @@ struct BuilderBackdrop: View {
         case .vessel:
             ZStack {
                 ForEach(Vessel.allCases) { vessel in
-                    CardBackground(highlighted: app.current.vessel == vessel)
+                    CardBackground(highlighted: app.current.vessel == vessel, dimmed: app.booth.isSoldOut(vessel))
                         .frame(width: Layout.cardSize.width, height: Layout.cardSize.height)
                         .modifier(PressEffect(pressed: app.pressedCards.contains(.vessel(vessel))))
                         .position(Layout.vesselCardCenter(vessel))
@@ -353,18 +353,26 @@ struct BuilderForeground: View {
     private var vesselCards: some View {
         ZStack {
             ForEach(Vessel.allCases) { vessel in
+                let soldOut = app.booth.isSoldOut(vessel)
                 card(.vessel(vessel), center: Layout.vesselCardCenter(vessel), action: { app.selectVessel(vessel) }) {
                     VStack(spacing: 4) {
                         Spacer()
                         Text(vessel.title)
                             .font(Theme.serif(26))
                             .foregroundStyle(Theme.text)
-                        Text(vessel.priceLabel)
-                            .font(Theme.sans(18, .medium))
-                            .foregroundStyle(Theme.textSecondary)
+                        Text(soldOut ? "Sold out" : vessel.priceLabel)
+                            .font(Theme.sans(18, soldOut ? .semibold : .medium))
+                            .foregroundStyle(soldOut ? Theme.text : Theme.textSecondary)
                     }
                     .padding(.bottom, 22)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background {
+                        RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
+                            .fill(Theme.background.opacity(soldOut ? 0.7 : 0))
+                    }
                 }
+                .disabled(soldOut)
+                .accessibilityAddTraits(app.current.vessel == vessel ? .isSelected : [])
             }
         }
     }

@@ -24,7 +24,7 @@ struct AttractView: View {
                         BeginOrderButton { app.beginOrder() }
                             .glassEffectTransition(.materialize)
                     } else {
-                        ClosedNotice()
+                        ClosedNotice(reason: app.closedReason)
                             .glassEffectTransition(.materialize)
                     }
                 }
@@ -71,6 +71,8 @@ private struct NotReadyNotice: View {
 }
 
 private struct ClosedNotice: View {
+    let reason: String
+
     var body: some View {
         VStack(spacing: 18) {
             Button {} label: {
@@ -79,7 +81,7 @@ private struct ClosedNotice: View {
             .buttonStyle(.glassOnMedia())
             .disabled(true)
             .opacity(0.55)
-            Text("Ordering is paused. Please see a staff member.")
+            Text(reason)
                 .font(Theme.serif(26, .regular))
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.6), radius: 8)

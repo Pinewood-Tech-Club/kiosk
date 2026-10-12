@@ -341,6 +341,8 @@ final class BoothConnection {
         switch change {
         case .flavors(let flavors):
             current.flavors = flavors
+        case .supplies(let supplies):
+            current.supplies = supplies
         case .alert(let alert):
             if let index = current.alerts.firstIndex(where: { $0.id == alert.id }) {
                 current.alerts[index] = alert

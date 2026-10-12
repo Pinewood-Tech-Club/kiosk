@@ -416,7 +416,7 @@ extension Stage {
 
     /// Replaces the builder with a fresh cup while the sheet covers it, so the builder is already complete
     /// whenever the sheet folds away.
-    func resetBuilderUnderSheet() {
+    func resetBuilderUnderSheet(vessel: Vessel) {
         for rig in heroes.values { discard(rig) }
         heroes.removeAll()
         for scoop in scoops { discard(scoop) }
@@ -426,7 +426,7 @@ extension Stage {
         for flavor in Flavor.allCases { setFlavorIconAppear(flavor, to: 1, duration: 0) }
         controlsVisible = true
         setStep(.vessel, animated: false)
-        placeFreshHero(.cup)
+        placeFreshHero(vessel)
         updateIcons()
     }
 
