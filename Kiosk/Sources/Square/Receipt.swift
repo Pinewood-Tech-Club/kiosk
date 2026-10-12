@@ -14,6 +14,7 @@ struct Receipt: Sendable {
     let eventName: String
     let date: Date
     let orderNumber: Int
+    let orderRef: String
     let customerName: String
     let squareOrderID: String
     let paymentID: String
@@ -64,13 +65,14 @@ struct Receipt: Sendable {
     }
 
     static func simulated(quote: OrderQuote, customerName: String, orderNumber: Int, merchantName: String,
-                          checkout: CheckoutIdentity = .make()) -> Receipt {
+                          checkout: CheckoutIdentity? = nil) -> Receipt {
+        let checkout = checkout ?? .make(orderNumber: orderNumber)
         func randomID(_ length: Int) -> String {
             let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789")
             return String((0..<length).map { _ in alphabet.randomElement()! })
         }
         return Receipt(merchantName: merchantName, eventName: Config.eventName, date: Date(), orderNumber: orderNumber,
-                       customerName: customerName, squareOrderID: "SIM-" + randomID(22), paymentID: "SIM-" + randomID(22),
+                       orderRef: checkout.orderRef, customerName: customerName, squareOrderID: "SIM-" + randomID(22), paymentID: "SIM-" + randomID(22),
                        cardDescription: "Visa •••• 1111", lines: chargedLines(for: quote), subtotalCents: quote.totalCents,
                        taxCents: 0, totalCents: quote.totalCents, isSimulated: true, checkoutID: checkout.id,
                        receiptToken: checkout.receiptToken)

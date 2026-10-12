@@ -10,14 +10,17 @@ struct BoothConfig: Sendable {
         return make(token: token)
     }()
 
-    static let staffSessionAccount = "boothStaffSession"
+    static var staffToken: String? {
+        clean(UserDefaults.standard.string(forKey: "boothStaffToken")) ?? plistValue("BoothStaffToken")
+    }
 
-    /// The staff role's token: `-boothStaffToken`, then `BOOTH_STAFF_TOKEN`, then a staff session saved after a PIN sign-in.
-    static func staff() -> BoothConfig? {
-        let session = Keychain.data(for: staffSessionAccount).flatMap { String(data: $0, encoding: .utf8) }
-        guard let token = clean(UserDefaults.standard.string(forKey: "boothStaffToken")) ?? plistValue("BoothStaffToken") ?? clean(session)
-        else { return nil }
-        return make(token: token)
+    static var kioskName: String? {
+        (clean(UserDefaults.standard.string(forKey: "kioskName")) ?? plistValue("KioskName")).map { String($0.prefix(40)) }
+    }
+
+    static var staffPage: String {
+        let page = clean(UserDefaults.standard.string(forKey: "staffPage")) ?? plistValue("StaffPage") ?? "scooper"
+        return page.range(of: "^[A-Za-z0-9_-]{1,40}$", options: .regularExpression) != nil ? page : "scooper"
     }
 
     static var publicBaseURL: URL? { anonymous()?.baseURL }

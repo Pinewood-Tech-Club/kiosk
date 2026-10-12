@@ -3,10 +3,16 @@ import SwiftUI
 struct ConfirmationView: View {
     let app: AppModel
     let receipt: Receipt
-    @State private var deadline = Date().addingTimeInterval(Self.timeout)
+    @State private var deadline: Date
     @State private var printed = false
+    private let timeout: TimeInterval
 
-    private static let timeout: TimeInterval = 10
+    init(app: AppModel, receipt: Receipt) {
+        self.app = app
+        self.receipt = receipt
+        timeout = receipt.receiptURL == nil ? 10 : 30
+        _deadline = State(initialValue: Date().addingTimeInterval(timeout))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,14 +46,30 @@ struct ConfirmationView: View {
                 }
                 .padding(.top, 36)
 
-            HStack(spacing: 10) {
-                LucideIcon(name: "camera", size: 20)
+            if let url = receipt.receiptURL {
+                HStack(spacing: 22) {
+                    QRCodeView(url: url)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 10) {
+                            LucideIcon(name: "qr-code", size: 22)
+                            Text("Scan for your receipt")
+                                .font(Theme.serif(26))
+                        }
+                        .foregroundStyle(Theme.text)
+                        Text("Point your phone's camera at the code.")
+                            .font(Theme.serif(19, .regular))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                .padding(.top, 24)
+                .opacity(printed ? 1 : 0)
+            } else {
                 Text("Take a photo to keep this receipt.")
+                    .font(Theme.serif(19, .regular))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 20)
+                    .opacity(printed ? 1 : 0)
             }
-            .font(Theme.serif(19, .regular))
-            .foregroundStyle(Theme.textSecondary)
-            .padding(.top, 20)
-            .opacity(printed ? 1 : 0)
 
             Spacer(minLength: 24)
 
@@ -58,7 +80,7 @@ struct ConfirmationView: View {
                         Text("New Order").frame(minWidth: 320)
                     }
                     .buttonStyle(.glassCTA(height: 88, fontSize: 30))
-                    Countdown(remaining: remaining, total: Self.timeout)
+                    Countdown(remaining: remaining, total: timeout)
                 }
                 .onChange(of: remaining <= 0) { _, expired in
                     if expired { app.resetToAttract() }
@@ -68,7 +90,7 @@ struct ConfirmationView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onReceive(NotificationCenter.default.publisher(for: TouchObserver.didTouch)) { _ in
-            deadline = Date().addingTimeInterval(Self.timeout)
+            deadline = Date().addingTimeInterval(timeout)
         }
         .onAppear {
             withAnimation(.easeOut(duration: 1.1).delay(0.25)) { printed = true }
@@ -217,12 +239,14 @@ private struct ReceiptView: View {
             Text(receipt.date.formatted(.dateTime.month(.wide).day().year().hour().minute()))
                 .font(Theme.sans(14))
                 .foregroundStyle(Theme.textSecondary)
-            HStack {
-                Text("Order \(receipt.orderNumber)")
-                Spacer()
+            HStack(alignment: .firstTextBaseline) {
                 Text(receipt.customerName)
+                    .font(Theme.serif(20))
+                Spacer()
+                Text("Order \(receipt.orderRef)")
+                    .font(Theme.sans(13))
+                    .foregroundStyle(Theme.textSecondary)
             }
-            .font(Theme.serif(20))
             .padding(.top, 16)
         }
     }

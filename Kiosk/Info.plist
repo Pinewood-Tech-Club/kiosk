@@ -28,10 +28,14 @@
 	<string>0.1</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>KioskName</key>
+	<string>$(KIOSK_NAME)</string>
 	<key>KioskEventName</key>
 	<string>$(KIOSK_EVENT_NAME)</string>
 	<key>KioskRole</key>
 	<string>$(KIOSK_ROLE)</string>
+	<key>StaffPage</key>
+	<string>$(STAFF_PAGE)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>

@@ -23,7 +23,8 @@ enum BoothHealth {
             screen: screen,
             lastError: lastError.map { String($0.message.prefix(300)) },
             lastErrorAt: lastError.map { BoothTime.string($0.date) },
-            flavors: Flavor.allCases.map { KioskHealth.FlavorInfo(id: $0.rawValue, name: $0.title) }
+            flavors: Flavor.allCases.map { KioskHealth.FlavorInfo(id: $0.rawValue, name: $0.title) },
+            kioskName: BoothConfig.kioskName
         )
     }
 

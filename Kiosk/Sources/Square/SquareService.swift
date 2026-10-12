@@ -307,7 +307,7 @@ final class SquareService: NSObject {
             return refuse(.paymentsPaused, because: problem)
         }
 
-        let referenceID = String(format: "kiosk-%04d", orderNumber)
+        let referenceID = "kiosk-\(checkout.orderRef)"
         phase = .creatingOrder
         record("Creating order \(referenceID) for \(customerName) (\(quote.lines.count) items, local total \(quote.totalCents.formattedAsUSD))…")
 
@@ -521,7 +521,7 @@ extension SquareService: PaymentManagerDelegate {
         }
         let receipt = Receipt(
             merchantName: merchantName, eventName: Config.eventName, date: Date(), orderNumber: pending.number,
-            customerName: pending.name, squareOrderID: payment.orderID ?? pending.order.id, paymentID: paymentID,
+            orderRef: pending.checkout.orderRef, customerName: pending.name, squareOrderID: payment.orderID ?? pending.order.id, paymentID: paymentID,
             cardDescription: card, lines: pending.order.lines,
             subtotalCents: total - pending.order.taxCents, taxCents: pending.order.taxCents, totalCents: total,
             isSimulated: false, checkoutID: pending.checkout.id, receiptToken: pending.checkout.receiptToken

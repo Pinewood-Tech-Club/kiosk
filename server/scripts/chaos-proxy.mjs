@@ -1,7 +1,7 @@
 // A local HTTP and websocket proxy in front of a booth Worker that can drop, refuse or black-hole traffic on
 // demand, for chaos tests of the kiosk app and the Node client simulator.
 //
-//   node scripts/chaos-proxy.mjs --upstream https://techclub-icecream-staging.adamxu.workers.dev --port 8790
+//   node scripts/chaos-proxy.mjs --upstream https://kiosk-staging.jamboree.techclub.pw --port 8790
 //   curl -X POST localhost:8791/mode/down      # up | down | blackhole
 //   curl -X POST localhost:8791/kill           # cut every open connection without a close frame
 import http from "node:http";
@@ -133,7 +133,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   };
   const port = Number(arg("port", "8790"));
   const proxy = startProxy({
-    upstream: arg("upstream", "https://techclub-icecream-staging.adamxu.workers.dev"),
+    upstream: arg("upstream", "https://kiosk-staging.jamboree.techclub.pw"),
     port,
     log: (line) => console.log(`${new Date().toISOString()} ${line}`),
   });

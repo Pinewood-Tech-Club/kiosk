@@ -114,7 +114,7 @@ struct BuilderBackdrop: View {
         case .vessel:
             ZStack {
                 ForEach(Vessel.allCases) { vessel in
-                    CardBackground(highlighted: app.current.vessel == vessel)
+                    CardBackground(highlighted: app.current.vessel == vessel, dimmed: app.booth.isSoldOut(vessel))
                         .frame(width: Layout.cardSize.width, height: Layout.cardSize.height)
                         .modifier(PressEffect(pressed: app.pressedCards.contains(.vessel(vessel))))
                         .position(Layout.vesselCardCenter(vessel))
@@ -318,9 +318,20 @@ struct BuilderForeground: View {
     private var vesselCards: some View {
         ZStack {
             ForEach(Vessel.allCases) { vessel in
+                let soldOut = app.booth.isSoldOut(vessel)
                 card(.vessel(vessel), center: Layout.vesselCardCenter(vessel), action: { app.selectVessel(vessel) }) {
-                    CardCaption(title: vessel.title) { Text(vessel.priceLabel) }
+                    CardCaption(title: vessel.title) {
+                        Text(soldOut ? "Sold out" : vessel.priceLabel)
+                            .font(Theme.sans(18, soldOut ? .semibold : .medium))
+                            .foregroundStyle(soldOut ? Theme.text : Theme.textSecondary)
+                    }
+                    .background {
+                        RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
+                            .fill(Theme.background.opacity(soldOut ? 0.7 : 0))
+                    }
                 }
+                .disabled(soldOut)
+                .accessibilityAddTraits(app.current.vessel == vessel ? .isSelected : [])
             }
         }
     }

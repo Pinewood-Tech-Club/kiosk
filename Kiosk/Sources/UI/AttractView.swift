@@ -20,12 +20,18 @@ struct AttractView: View {
                     NotReadyNotice()
                         .glassEffectTransition(.materialize)
                 } else if showsButton {
-                    BeginOrderButton { app.beginOrder() }
-                        .glassEffectTransition(.materialize)
+                    if app.orderingOpen {
+                        BeginOrderButton { app.beginOrder() }
+                            .glassEffectTransition(.materialize)
+                    } else {
+                        ClosedNotice(reason: app.closedReason)
+                            .glassEffectTransition(.materialize)
+                    }
                 }
             }
             .position(x: Layout.midX, y: 1228)
             .animation(.smooth(duration: 0.8), value: app.assetsFailed)
+            .animation(.smooth(duration: 0.5), value: app.orderingOpen)
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
         .contentShape(Rectangle())
@@ -61,6 +67,25 @@ private struct NotReadyNotice: View {
         .padding(.vertical, 30)
         .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(Theme.background.opacity(0.78)).padding(2))
         .glassEffect(.regular, in: .rect(cornerRadius: 44))
+    }
+}
+
+private struct ClosedNotice: View {
+    let reason: String
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Button {} label: {
+                Text("Closed")
+            }
+            .buttonStyle(.glassOnMedia())
+            .disabled(true)
+            .opacity(0.55)
+            Text(reason)
+                .font(Theme.serif(26, .regular))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.6), radius: 8)
+        }
     }
 }
 

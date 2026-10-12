@@ -9,6 +9,7 @@ export const OAUTH_SCOPES = [
   "ORDERS_READ",
   "ORDERS_WRITE",
   "ITEMS_READ",
+  "GIFTCARDS_READ",
 ];
 export const STATE_TTL_MS = 10 * 60_000;
 /** Square asks for a refresh every 7 days or less; the daily cron refreshes once a token is 6 days old. */

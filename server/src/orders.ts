@@ -4,10 +4,12 @@ import { describe, Order, OrdersBody, parseTimestamp } from "./schema";
 
 const D1_CHUNK = 50;
 
-export function orderSummary(o: Order, receivedAt: number): OrderSummary {
+export function orderSummary(o: Order, receivedAt: number, device: string | null): OrderSummary {
   return {
     id: o.id,
     orderNumber: o.orderNumber ?? null,
+    orderRef: o.orderRef ?? null,
+    kioskId: device,
     customerName: o.customerName ?? null,
     items: o.items.map((i) => ({ vessel: i.vessel, flavors: i.flavors, toppings: i.toppings ?? [] })),
     totalCents: o.totalCents,
@@ -29,8 +31,9 @@ async function ingestOrders(request: Request, env: Env, client: Client): Promise
   const now = Date.now();
   const statement = env.DB.prepare(
     `INSERT OR IGNORE INTO orders (id, order_number, square_order_id, square_payment_id, customer_name, total_cents,
-       subtotal_cents, tax_cents, card, simulated, items, lines, paid_at, device, app_version, received_at, receipt_token, status, status_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?)`,
+       subtotal_cents, tax_cents, card, simulated, items, lines, paid_at, device, app_version, received_at, receipt_token, status, status_at, order_ref,
+       gift_card_payment_id, gift_card_cents, gift_card_last4)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?)`,
   );
   const results: ItemResult[] = [];
   const pending: { index: number; statement: D1PreparedStatement; order: Order }[] = [];
@@ -50,7 +53,8 @@ async function ingestOrders(request: Request, env: Env, client: Client): Promise
         o.id, o.orderNumber ?? null, o.squareOrderId ?? null, o.squarePaymentId || null, o.customerName ?? null, o.totalCents,
         o.subtotalCents ?? null, o.taxCents ?? null, o.card ?? null, o.simulated ? 1 : 0, JSON.stringify(o.items),
         o.lines ? JSON.stringify(o.lines) : null, parseTimestamp(o.paidAt, now), client.device, o.appVersion ?? null, now,
-        o.receiptToken ?? null, now,
+        o.receiptToken ?? null, now, o.orderRef ?? null,
+        o.giftCardPaymentId ?? null, o.giftCardCents ?? null, o.giftCardLast4 ?? null,
       ),
     });
   }
@@ -63,7 +67,7 @@ async function ingestOrders(request: Request, env: Env, client: Client): Promise
   }
   const feed = await feedable(env, pending.map((p) => ({ order: p.order, duplicate: results[p.index].status === "duplicate" })));
   if (feed.length > 0) {
-    await callHub("orders", () => hub(env).recordOrders(feed.map((o) => orderSummary(o, now))));
+    await callHub("orders", () => hub(env).recordOrders(feed.map((o) => orderSummary(o, now, client.device))));
   }
   for (const result of results) {
     console.log({ event: "order", id: result.id, status: result.status, device: client.device });
@@ -91,7 +95,8 @@ async function listOrders(url: URL, env: Env): Promise<Response> {
   const { results } = await withRetry("D1", () =>
     env.DB.prepare(
       `SELECT id, order_number, square_order_id, square_payment_id, customer_name, total_cents, subtotal_cents, tax_cents,
-              card, simulated, items, lines, paid_at, device, status, status_at, status_by
+              card, simulated, items, lines, paid_at, device, order_ref, status, status_at, status_by,
+              gift_card_payment_id, gift_card_cents, gift_card_last4
        FROM orders WHERE paid_at >= ? ORDER BY paid_at DESC LIMIT ?`,
     )
       .bind(since, limit)
@@ -109,7 +114,7 @@ export const routes: Route[] = [
     async handle({ request, env, ctx }) {
       const client = await authenticate(request, env, ["kiosk"]);
       const response = await ingestOrders(request, env, client);
-      noteKioskContact(env, ctx);
+      noteKioskContact(env, ctx, client.device);
       return response;
     },
   },

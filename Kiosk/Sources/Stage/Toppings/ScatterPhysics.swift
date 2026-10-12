@@ -157,6 +157,8 @@ struct ScatterSettle {
     static let gravity: Float = 9.8
     static let creamFriction: Float = 1.5
     static let candyFriction: Float = 0.4
+    /// Candy pressed onto candy, as when laid by hand rather than tossed.
+    static let tackyFriction: Float = 1
     static let creamBounce: Float = 0
     static let candyBounce: Float = 0.15
     /// Soft ice cream soaks up motion: per-second damping while touching it.
@@ -192,8 +194,9 @@ struct ScatterSettle {
 
     @_optimize(speed)
     func run(_ shape: ScatterShape, from start: ScatterPose, velocity: SIMD3<Float>, spin: SIMD3<Float>,
-             among obstacles: [ScatterFootprint], maxTime: Float = 1.6) -> Outcome {
+             among obstacles: [ScatterFootprint], grip: Float = 0, maxTime: Float = 1.6) -> Outcome {
         let dt = Self.step
+        let candyFriction = lerp(Self.candyFriction, Self.tackyFriction, grip)
         var x = start.position
         var q = start.rotation
         var v = velocity
@@ -213,7 +216,7 @@ struct ScatterSettle {
         var wasOnCream = false
         var touchedLast = false
         for i in 1...steps {
-            if wasOnCream {
+            if wasOnCream || (grip > 0 && touchedLast) {
                 v *= max(1 - Self.creamDrag * dt, 0)
                 w *= max(1 - Self.creamSpinDrag * dt, 0)
             }
@@ -234,7 +237,7 @@ struct ScatterSettle {
                 let r = q.act(s)
                 let p = x + r
                 if let ground = surface.sample(x: p.x, z: p.z) {
-                    let give = surface.softness(x: p.x, z: p.z)
+                    let give = max(surface.softness(x: p.x, z: p.z), grip)
                     let height = ground.height - give * Self.whipSink
                     let depth = (height - p.y) * ground.normal.y
                     sink = max(sink, height - p.y)
@@ -255,7 +258,7 @@ struct ScatterSettle {
                     if hit.distance < slop {
                         let normal = other.rotation.act(hit.normal)
                         contacts.append(Contact(r: r, n: normal, depth: -hit.distance,
-                                                friction: Self.candyFriction, bounce: Self.candyBounce))
+                                                friction: candyFriction, bounce: Self.candyBounce))
                         if -hit.distance > overlapDepth {
                             overlapDepth = -hit.distance
                             overlap = normal
@@ -273,7 +276,7 @@ struct ScatterSettle {
                     if hit.distance < slop {
                         let normal = -q.act(hit.normal)
                         contacts.append(Contact(r: p - x, n: normal, depth: -hit.distance,
-                                                friction: Self.candyFriction, bounce: Self.candyBounce))
+                                                friction: candyFriction, bounce: Self.candyBounce))
                         if -hit.distance > overlapDepth {
                             overlapDepth = -hit.distance
                             overlap = normal
@@ -290,7 +293,7 @@ struct ScatterSettle {
                         let gx = x.x - reach + Float(gi) * gridSpacing
                         let gz = x.z - reach + Float(gj) * gridSpacing
                         guard let ground = surface.sample(x: gx, z: gz) else { continue }
-                        let give = surface.softness(x: gx, z: gz)
+                        let give = max(surface.softness(x: gx, z: gz), grip)
                         let g = SIMD3(gx, ground.height - give * Self.whipSink, gz)
                         let local = inverse.act(g - x)
                         guard simd_length_squared(local) < shape.bound * shape.bound else { continue }

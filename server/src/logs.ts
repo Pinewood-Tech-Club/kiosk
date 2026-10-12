@@ -53,7 +53,7 @@ export const routes: Route[] = [
     async handle({ request, env, ctx }) {
       const client = await authenticate(request, env, ["kiosk"]);
       const response = await ingestLogs(request, env, client);
-      noteKioskContact(env, ctx);
+      noteKioskContact(env, ctx, client.device);
       return response;
     },
   },
