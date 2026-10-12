@@ -13,6 +13,7 @@ import {
   type Change,
   type FlavorState,
   type ItemResult,
+  type KioskControl,
   type KioskEntry,
   type KioskSessionState,
   type KioskState,
@@ -31,6 +32,7 @@ import {
   Event,
   KioskSession,
   describe,
+  type ControlOp,
   type HelpReason,
   type KioskHealth,
   type OrderStatus,
@@ -53,6 +55,25 @@ const MAX_FEED_ORDERS = 100;
 export const MAX_KIOSKS = 20;
 export const ASSIST_TTL_MS = 30_000;
 const SCHEMA_VERSION = 2;
+const RESET_META_KEYS = ["soldOut", "conditions", "healthSeq"];
+const RESET_TABLES = ["alerts", "processed", "orders_feed", "kiosks", "sessions"] as const;
+
+export interface HubCounts {
+  alerts: number;
+  openAlerts: number;
+  orders: number;
+  kiosks: number;
+  processed: number;
+  sessions: number;
+  soldOut: number;
+}
+
+export interface HubReset {
+  epoch: number;
+  resetAt: number;
+  rev: number;
+  erased: HubCounts;
+}
 
 interface Attachment {
   role: Role;
@@ -546,12 +567,21 @@ export class Booth extends DurableObject<Env> {
     }
   }
 
-  /** Adds newly paid orders to the staff feed. Orders already in the feed are left alone, so retries are harmless. */
-  async recordOrders(orders: OrderSummary[]): Promise<{ added: number; rev: number }> {
+  /**
+   * Adds newly paid orders to the staff feed. Orders already in the feed are left alone, so retries are harmless.
+   * Orders stamped with an epoch from before the last reset are refused and returned as stale.
+   */
+  async recordOrders(orders: OrderSummary[], epochs: Record<string, number> = {}): Promise<{ added: number; rev: number; stale: string[] }> {
     try {
       let added = 0;
+      const epoch = this.epoch();
+      const stale: string[] = [];
       this.transaction(() => {
         for (const order of orders) {
+          if (epochs[order.id] !== undefined && epochs[order.id] < epoch) {
+            stale.push(order.id);
+            continue;
+          }
           const exists = this.sql.exec("SELECT 1 FROM orders_feed WHERE id = ?", order.id).toArray().length > 0;
           if (exists) continue;
           this.sql.exec(
@@ -562,14 +592,121 @@ export class Booth extends DurableObject<Env> {
           added++;
         }
       });
-      return { added, rev: this.rev() };
+      return { added, rev: this.rev(), stale };
     } finally {
       this.flushPatches();
     }
   }
 
+  async currentEpoch(): Promise<number> {
+    return this.epoch();
+  }
+
+  async counts(): Promise<HubCounts> {
+    const count = (sql: string) => this.sql.exec<{ n: number }>(sql).one().n;
+    return {
+      alerts: count("SELECT COUNT(*) AS n FROM alerts"),
+      openAlerts: count("SELECT COUNT(*) AS n FROM alerts WHERE acked_at IS NULL AND resolved_at IS NULL"),
+      orders: count("SELECT COUNT(*) AS n FROM orders_feed"),
+      kiosks: count("SELECT COUNT(*) AS n FROM kiosks"),
+      processed: count("SELECT COUNT(*) AS n FROM processed"),
+      sessions: count("SELECT COUNT(*) AS n FROM sessions"),
+      soldOut: Object.values(this.getMeta<Record<string, boolean>>("soldOut") ?? {}).filter(Boolean).length,
+    };
+  }
+
+  /** Everything staff would lose in a reset, for the admin backup. */
+  async backup(): Promise<{ epoch: number; rev: number; kiosks: KioskEntry[]; alerts: Alert[]; orders: OrderSummary[]; supplies: SupplyState[] }> {
+    return {
+      epoch: this.epoch(),
+      rev: this.rev(),
+      kiosks: this.kiosks(),
+      alerts: this.sql.exec<AlertRow>("SELECT * FROM alerts ORDER BY created_at DESC, rowid DESC").toArray().map(toAlert),
+      orders: this.sql.exec<{ data: string }>("SELECT data FROM orders_feed ORDER BY paid_at DESC").toArray().map((row) => JSON.parse(row.data) as OrderSummary),
+      supplies: this.supplies(),
+    };
+  }
+
+  /**
+   * Erases the hub's alerts, kiosk registry, order feed, sold-out map, processed ids and assist state, and bumps the
+   * epoch so items a kiosk queued before the reset are refused. Kiosks still connected get a fresh entry, and every
+   * socket gets a new snapshot carrying the epoch; the revision keeps counting up so no client mistakes it for stale.
+   */
+  async reset(by: string | null): Promise<HubReset> {
+    const now = Date.now();
+    this.flushPatches();
+    const erased = await this.counts();
+    const epoch = this.epoch() + 1;
+    this.transaction(() => {
+      for (const table of RESET_TABLES) this.sql.exec(`DELETE FROM ${table}`);
+      for (const key of RESET_META_KEYS) this.sql.exec("DELETE FROM meta WHERE key = ?", key);
+      this.putMeta("epoch", epoch);
+      this.putMeta("resetAt", now);
+      this.putMeta("resetBy", by);
+      this.putMeta("rev", this.rev() + 1);
+    });
+    this.pendingStatuses.clear();
+    for (const ws of this.ctx.getWebSockets("staff")) {
+      const attachment = ws.deserializeAttachment() as Attachment | null;
+      if (attachment?.assist) ws.serializeAttachment({ role: attachment.role, device: attachment.device, connectedAt: attachment.connectedAt });
+    }
+    const connected = new Set(
+      this.ctx.getWebSockets("kiosk")
+        .filter((ws) => ws.readyState === WebSocket.OPEN)
+        .map((ws) => (ws.deserializeAttachment() as Attachment | null)?.device)
+        .filter((d): d is string => !!d),
+    );
+    for (const device of connected) this.kioskContact(device, now, { connected: true });
+    await this.evaluate(now);
+    this.resnapshot(now);
+    console.log({ event: "hub-reset", epoch, by, erased });
+    return { epoch, resetAt: now, rev: this.rev(), erased };
+  }
+
+  async control(kiosk: string, op: ControlOp, by: string | null): Promise<{ id: string; relayed: boolean }> {
+    const control: KioskControl = { id: crypto.randomUUID(), op, by };
+    const targets = this.kioskSockets(kiosk);
+    for (const socket of targets) this.send(socket, { type: "control", control });
+    return { id: control.id, relayed: targets.length > 0 };
+  }
+
+  async ackAll(by: string | null): Promise<{ acknowledged: number; rev: number }> {
+    const now = Date.now();
+    try {
+      const open = this.sql.exec<AlertRow>("SELECT * FROM alerts WHERE acked_at IS NULL AND resolved_at IS NULL").toArray();
+      this.transaction(() => {
+        for (const row of open) this.updateAlert(row.id, { acked_at: now, acked_by: by }, now);
+      });
+      return { acknowledged: open.length, rev: this.rev() };
+    } finally {
+      this.flushPatches();
+    }
+  }
+
+  /** The order feed has no removal patch, so after dropping orders every client gets a fresh snapshot. */
+  async dropOrders(ids: string[]): Promise<{ removed: number; rev: number }> {
+    let removed = 0;
+    this.transaction(() => {
+      for (const id of ids) removed += this.sql.exec("DELETE FROM orders_feed WHERE id = ? RETURNING id", id).toArray().length;
+      if (removed > 0) this.putMeta("rev", this.rev() + 1);
+    });
+    if (removed > 0) this.resnapshot(Date.now());
+    return { removed, rev: this.rev() };
+  }
+
+  private resnapshot(now: number) {
+    this.outgoing = [];
+    for (const ws of this.ctx.getWebSockets()) {
+      const attachment = ws.deserializeAttachment() as Attachment | null;
+      if (!attachment) continue;
+      this.send(ws, { type: "snapshot", state: this.state(now, attachment.role) });
+      if (attachment.role === "kiosk") this.send(ws, this.assistMessage(attachment.device, now));
+    }
+  }
+
   private async ingest(device: string, items: unknown[], now: number): Promise<{ results: ItemResult[]; rev: number }> {
     const results: ItemResult[] = [];
+    const epoch = this.epoch();
     this.kioskContact(device, now, {});
     for (const item of items) {
       const parsed = Event.safeParse(item);
@@ -578,6 +715,10 @@ export class Booth extends DurableObject<Env> {
         continue;
       }
       const event = parsed.data;
+      if (event.epoch !== undefined && event.epoch < epoch) {
+        results.push({ id: event.id, status: "stale" });
+        continue;
+      }
       const previous = this.processed(device, event.id);
       if (previous) {
         results.push({ ...previous, status: previous.status === "ok" ? "duplicate" : previous.status });
@@ -695,17 +836,23 @@ export class Booth extends DurableObject<Env> {
     const alertKey = `soldout:${key}`;
     for (const row of this.unresolved(alertKey)) this.updateAlert(row.id, { resolved_at: now }, now);
     const verb = item.plural ? "are" : "is";
-    const vessels = supplies.filter((s) => s.kind === "vessel");
-    const noVessels = kind === "vessel" && soldOut && vessels.every((s) => s.soldOut);
+    const allOut = (k: SupplyKind) => {
+      const list = supplies.filter((s) => s.kind === k);
+      return kind === k && soldOut && list.length > 0 && list.every((s) => s.soldOut);
+    };
+    const noVessels = allOut("vessel");
+    const noFlavors = allOut("flavor");
     const setBy = by ? `, set by ${by}` : "";
     this.createAlert({
       key: alertKey,
       kind: "soldout",
-      severity: noVessels ? "warning" : "info",
+      severity: noVessels || noFlavors ? "warning" : "info",
       title: `${item.name} ${verb} ${soldOut ? "sold out" : "back"}`,
-      detail: noVessels
-        ? `No cups or cones left, so the kiosks show Closed until one is back${setBy}.`
-        : `${soldOut ? "Greyed out" : "Available again"} on the kiosks${setBy}.`,
+      detail: noFlavors
+        ? `Every flavor is sold out, so the kiosks show Closed until one is back${setBy}.`
+        : noVessels
+          ? `No cups or cones left, so the kiosks show Closed until one is back${setBy}.`
+          : `${soldOut ? "Greyed out" : "Available again"} on the kiosks${setBy}.`,
     }, now);
     return null;
   }
@@ -938,6 +1085,8 @@ export class Booth extends DurableObject<Env> {
     const latest = kiosks.reduce<KioskEntry | undefined>((best, k) => ((k.lastSeenAt ?? -1) > (best?.lastSeenAt ?? -1) ? k : best), undefined);
     return {
       rev: this.rev(),
+      epoch: this.epoch(),
+      resetAt: this.getMeta<number>("resetAt"),
       ...(role === "staff" ? { sessions: this.sessions() } : {}),
       kiosks,
       kioskOpen: this.legacyOpen(),
@@ -952,6 +1101,10 @@ export class Booth extends DurableObject<Env> {
 
   private rev(): number {
     return this.getMeta<number>("rev") ?? 0;
+  }
+
+  private epoch(): number {
+    return this.getMeta<number>("epoch") ?? 0;
   }
 
   /** Every visible change bumps the revision by one and is broadcast as one patch carrying it. */

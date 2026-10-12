@@ -51,13 +51,17 @@ export const KioskHealth = z.object({
   lastErrorAt: text(64).nullable().default(null),
   flavors: z.array(Flavor).min(1).max(24).optional(),
   kioskName: KioskName.optional(),
+  epoch: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  outbox: z.object({ orders: z.number().int().min(0).max(1_000_000), events: z.number().int().min(0).max(1_000_000) }).optional(),
 });
 export type KioskHealth = z.infer<typeof KioskHealth>;
 
 export const HelpReason = z.enum(["button", "payment_failed", "no_reader", "idle"]);
 export type HelpReason = z.infer<typeof HelpReason>;
 
-const eventBase = { id, seq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), at: timestamp };
+export const Epoch = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+
+const eventBase = { id, seq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), at: timestamp, epoch: Epoch.optional() };
 
 export const Event = z.discriminatedUnion("type", [
   z.object({ ...eventBase, type: z.literal("help"), reason: HelpReason, message: text(500).optional() }),
@@ -150,6 +154,7 @@ export type LogLine = z.infer<typeof LogLine>;
 
 export const LogsBody = z.object({
   appVersion: text(40).optional(),
+  epoch: Epoch.optional(),
   lines: z.array(z.unknown()).min(1).max(500),
 });
 
@@ -171,6 +176,7 @@ export const Order = z.object({
   giftCardPaymentId: text(64).nullable().optional(),
   giftCardCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   giftCardLast4: text(4).nullable().optional(),
+  epoch: Epoch.optional(),
   items: z
     .array(z.object({ vessel: text(20), flavors: z.array(text(32)).max(10), toppings: z.array(text(32)).max(20).optional() }))
     .min(1)
@@ -223,3 +229,14 @@ export function parseTimestamp(value: string | number | undefined, fallback: num
   }
   return fallback;
 }
+
+export const CONTROL_OPS = ["attract", "reloadCatalog", "resync"] as const;
+export const ControlOp = z.enum(CONTROL_OPS);
+export type ControlOp = z.infer<typeof ControlOp>;
+
+export const AdminSessionBody = z.object({ pin: z.string().min(1).max(256) });
+export const AdminResetBody = z.object({ confirm: z.literal("RESET"), by: text(40).optional() });
+export const AdminControlBody = z.object({ op: ControlOp, by: text(40).optional() });
+export const AdminDebugBody = z.object({ debug: z.boolean(), by: text(40).optional() });
+export const AdminOrderStatusBody = z.object({ status: OrderStatus, by: text(40).optional() });
+export const AdminByBody = z.object({ by: text(40).optional() });

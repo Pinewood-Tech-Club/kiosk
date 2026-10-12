@@ -1,5 +1,5 @@
 import type { SquareCredentials } from "./oauth";
-import { pricingMismatch, type Catalog, type CatalogEntry } from "./pricing";
+import { pricingMismatch, scoopCents, TOPPING_CENTS, WAFFLE_CONE_CENTS, type Catalog, type CatalogEntry } from "./pricing";
 import { squareRequest } from "./square";
 
 export const CATALOG_FRESH_MS = 10 * 60_000;
@@ -39,7 +39,7 @@ export function buildCatalog(categoryName: string, items: Record<string, unknown
   };
 }
 
-export async function fetchCatalog(credentials: SquareCredentials, categoryName: string): Promise<Catalog> {
+async function fetchCategoryItems(credentials: SquareCredentials, categoryName: string): Promise<Record<string, unknown>[]> {
   const { environment, accessToken } = credentials;
   const categories: Record<string, unknown>[] = [];
   let cursor: string | undefined;
@@ -65,7 +65,85 @@ export async function fetchCatalog(credentials: SquareCredentials, categoryName:
     items.push(...(body.items ?? []));
     cursor = body.cursor || undefined;
   } while (cursor);
-  return buildCatalog(categoryName, items);
+  return items;
+}
+
+export async function fetchCatalog(credentials: SquareCredentials, categoryName: string): Promise<Catalog> {
+  return buildCatalog(categoryName, await fetchCategoryItems(credentials, categoryName));
+}
+
+export const EXPECTED_PRICES: Record<string, number> = {
+  "1 Scoop": scoopCents(1),
+  "2nd Scoop": scoopCents(2),
+  "3rd+ Scoop": scoopCents(3),
+  "Waffle Cone": WAFFLE_CONE_CENTS,
+  Topping: TOPPING_CENTS,
+};
+
+export interface CatalogItemCheck {
+  name: string;
+  expectedCents: number;
+  foundCents: number | null;
+  ok: boolean;
+  problem: string | null;
+}
+
+export interface CatalogReport {
+  categoryName: string;
+  ok: boolean;
+  error: string | null;
+  items: CatalogItemCheck[];
+  extras: string[];
+}
+
+export function checkCatalogItems(categoryName: string, items: Record<string, unknown>[]): CatalogReport {
+  const byName = new Map<string, { name: string; prices: (number | null)[] }>();
+  for (const object of items) {
+    const data = object.item_data as Record<string, unknown> | undefined;
+    if (!data || typeof data.name !== "string" || data.is_archived === true) continue;
+    const variations = Array.isArray(data.variations) ? (data.variations as Record<string, unknown>[]) : [];
+    const prices = variations
+      .map((v) => v.item_variation_data as Record<string, unknown> | undefined)
+      .filter((v) => v?.sellable !== false)
+      .map((v) => {
+        const amount = (v?.price_money as { amount?: unknown } | undefined)?.amount;
+        return v?.pricing_type === "FIXED_PRICING" && typeof amount === "number" ? amount : null;
+      });
+    byName.set(data.name.toLowerCase(), { name: data.name, prices });
+  }
+  const checks = REQUIRED_ITEMS.map((name): CatalogItemCheck => {
+    const expectedCents = EXPECTED_PRICES[name];
+    const found = byName.get(name.toLowerCase());
+    if (!found) return { name, expectedCents, foundCents: null, ok: false, problem: "Missing from the category" };
+    if (found.prices.length !== 1) {
+      return { name, expectedCents, foundCents: found.prices[0] ?? null, ok: false, problem: `Has ${found.prices.length} sellable variations, needs exactly one` };
+    }
+    const cents = found.prices[0];
+    if (cents === null) return { name, expectedCents, foundCents: null, ok: false, problem: "Variable price, needs a fixed price" };
+    if (cents !== expectedCents) return { name, expectedCents, foundCents: cents, ok: false, problem: "Wrong price" };
+    return { name, expectedCents, foundCents: cents, ok: true, problem: null };
+  });
+  const required = new Set(REQUIRED_ITEMS.map((n) => n.toLowerCase()));
+  const extras = [...byName.entries()].filter(([key]) => !required.has(key)).map(([, v]) => v.name);
+  return { categoryName, ok: checks.every((c) => c.ok), error: null, items: checks, extras };
+}
+
+/** Always asks Square, bypassing the cache, so a fix made in the Square dashboard shows up at once. */
+export async function catalogReport(env: Env, credentials: SquareCredentials): Promise<CatalogReport> {
+  const categoryName = env.SQUARE_CATEGORY_NAME?.trim() ?? "";
+  const empty = (error: string): CatalogReport => ({
+    categoryName,
+    ok: false,
+    error,
+    items: REQUIRED_ITEMS.map((name) => ({ name, expectedCents: EXPECTED_PRICES[name], foundCents: null, ok: false, problem: null })),
+    extras: [],
+  });
+  if (!categoryName) return empty("SQUARE_CATEGORY_NAME isn't set");
+  try {
+    return checkCatalogItems(categoryName, await fetchCategoryItems(credentials, categoryName));
+  } catch (error) {
+    return empty(error instanceof Error ? error.message : String(error));
+  }
 }
 
 function cacheKey(credentials: SquareCredentials, categoryName: string): string {

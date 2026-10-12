@@ -13,13 +13,13 @@ function csp(nonce: string, url: URL): Record<string, string> {
   };
 }
 
-function page(url: URL, title: string, body: string, status = 200, script = ""): Response {
+export function staffPage(url: URL, title: string, body: string, status = 200, script = ""): Response {
   const nonce = randomToken(12);
   return html(shell(title, body, nonce, script), status, csp(nonce, url));
 }
 
 function loginPage(url: URL, message: string | null, status = 200, next = "/staff"): Response {
-  return page(url, "Booth staff sign-in", loginBody(message, next), status);
+  return staffPage(url, "Booth staff sign-in", loginBody(message, next), status);
 }
 
 function safeNext(raw: unknown): string {
@@ -52,7 +52,7 @@ export const routes: Route[] = [
     path: "/staff",
     async handle({ request, env, url }) {
       if (!(await staffSessionFromCookie(request, env))) return loginPage(url, null);
-      return page(url, "Booth staff", pickerBody());
+      return staffPage(url, "Booth staff", pickerBody());
     },
   },
   {
@@ -61,9 +61,9 @@ export const routes: Route[] = [
     async handle({ request, env, url, params }) {
       const role = staffRole(params[0]);
       const signedIn = await staffSessionFromCookie(request, env);
-      if (!role) return signedIn ? page(url, "Booth staff", pickerBody(`There is no "${params[0]}" page.`), 404) : loginPage(url, null, 404);
+      if (!role) return signedIn ? staffPage(url, "Booth staff", pickerBody(`There is no "${params[0]}" page.`), 404) : loginPage(url, null, 404);
       if (!signedIn) return loginPage(url, null, 200, url.pathname);
-      return page(url, role.title, dashboardBody(params[0], role), 200, dashboardScript());
+      return staffPage(url, role.title, dashboardBody(params[0], role), 200, dashboardScript());
     },
   },
   {

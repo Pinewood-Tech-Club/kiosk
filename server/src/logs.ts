@@ -1,4 +1,4 @@
-import { authenticate, json, noteKioskContact, readBody, withRetry, type Client, type Route } from "./http";
+import { authenticate, callHub, hub, json, noteKioskContact, readBody, withRetry, type Client, type Route } from "./http";
 import { LogLine, LogsBody, parseTimestamp } from "./schema";
 
 const D1_CHUNK = 50;
@@ -6,6 +6,10 @@ const D1_CHUNK = 50;
 async function ingestLogs(request: Request, env: Env, client: Client): Promise<Response> {
   const body = await readBody(request, LogsBody, 1024 * 1024);
   const now = Date.now();
+  if (body.epoch !== undefined) {
+    const epoch = await callHub("epoch", () => hub(env).currentEpoch());
+    if (body.epoch < epoch) return json({ accepted: 0, stored: 0, duplicates: 0, rejected: 0, stale: body.lines.length });
+  }
   const statement = env.DB.prepare(
     "INSERT OR IGNORE INTO logs (id, device, app_version, ts, level, message, context, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
   );

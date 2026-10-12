@@ -37,6 +37,8 @@ async function ingestOrders(request: Request, env: Env, client: Client): Promise
   );
   const results: ItemResult[] = [];
   const pending: { index: number; statement: D1PreparedStatement; order: Order }[] = [];
+  const stamped = body.orders.some((o) => typeof (o as { epoch?: unknown })?.epoch === "number");
+  const epoch = stamped ? await callHub("epoch", () => hub(env).currentEpoch()) : 0;
   for (const item of body.orders) {
     const parsed = Order.safeParse(item);
     if (!parsed.success) {
@@ -45,6 +47,11 @@ async function ingestOrders(request: Request, env: Env, client: Client): Promise
       continue;
     }
     const o = parsed.data;
+    if (o.epoch !== undefined && o.epoch < epoch) {
+      console.warn({ event: "order-dropped-before-reset", device: client.device, epoch: o.epoch, current: epoch, order: o });
+      results.push({ id: o.id, status: "stale" });
+      continue;
+    }
     results.push({ id: o.id, status: "ok" });
     pending.push({
       index: results.length - 1,
@@ -67,12 +74,21 @@ async function ingestOrders(request: Request, env: Env, client: Client): Promise
   }
   const feed = await feedable(env, pending.map((p) => ({ order: p.order, duplicate: results[p.index].status === "duplicate" })));
   if (feed.length > 0) {
-    await callHub("orders", () => hub(env).recordOrders(feed.map((o) => orderSummary(o, now, client.device))));
+    const epochs = Object.fromEntries(feed.filter((o) => o.epoch !== undefined).map((o) => [o.id, o.epoch!]));
+    const recorded = await callHub("orders", () => hub(env).recordOrders(feed.map((o) => orderSummary(o, now, client.device)), epochs));
+    if (recorded.stale.length > 0) await dropRaced(env, recorded.stale, results, client.device);
   }
   for (const result of results) {
     console.log({ event: "order", id: result.id, status: result.status, device: client.device });
   }
   return json({ results });
+}
+
+/** A reset landed between the epoch check and the insert: the hub refused these, so they leave D1 too. */
+async function dropRaced(env: Env, ids: string[], results: ItemResult[], device: string) {
+  await withRetry("D1", () => env.DB.batch(ids.map((id) => env.DB.prepare("DELETE FROM orders WHERE id = ?").bind(id))));
+  for (const result of results) if (ids.includes(result.id)) result.status = "stale";
+  console.warn({ event: "orders-dropped-reset-race", device, ids });
 }
 
 /** New orders, plus duplicates stored under the same id (not ones that only share a Square payment id with another order). */

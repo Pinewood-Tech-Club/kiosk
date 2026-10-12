@@ -216,6 +216,7 @@ details.finished[open] summary h2 svg{transform:rotate(90deg)}
 .roles .role{display:flex;align-items:center;gap:18px;min-height:96px;padding:18px 24px 18px 20px}
 .list>.role+.role::before{left:90px}
 .role .ric{width:52px;height:52px;border-radius:14px;background:var(--tint);color:#fff;display:grid;place-items:center;font-size:28px;flex:none}
+.role .ric.admin{background:#636366}
 .role .rt{flex:1;display:grid;gap:3px;min-width:0}
 .role b{font-size:22px;font-weight:600;letter-spacing:-.015em}
 .role .rt span{font-size:16px;color:var(--label-2)}
@@ -395,7 +396,8 @@ export function pickerBody(message: string | null = null): string {
     return `<div class="section-head"><h2>${heading}</h2></div><nav class="group list roles">${rows}</nav>`;
   };
   const error = message ? `<div class="section-head"><p class="err" role="alert">${icon("alert")} ${escapeHtml(message)}</p></div>` : "";
-  return `<div class="page">${nav("Booth staff", signOut(), false)}${error}${group("ipad", "iPads")}${group("display", "Laptop displays")}</div>`;
+  const admin = `<div class="section-head"><h2>Admin</h2></div><nav class="group list roles"><a class="role" href="/staff/admin"><span class="ric admin">${icon("lock")}</span><span class="rt"><b>Admin</b><span>Kiosk diagnostics, logs, Square check, order lookup, self-test, cleanup and reset. Asks for the PIN every time.</span></span>${icon("chevron", "chev")}</a></nav>`;
+  return `<div class="page">${nav("Booth staff", signOut(), false)}${error}${group("ipad", "iPads")}${group("display", "Laptop displays")}${admin}</div>`;
 }
 
 const SUPPLY_KINDS: SupplyKind[] = ["flavor", "vessel", "topping"];

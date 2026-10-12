@@ -1,3 +1,4 @@
+import * as admin from "./admin";
 import * as checkout from "./checkout";
 import * as dashboard from "./dashboard";
 import * as giftcards from "./giftcards";
@@ -14,7 +15,7 @@ export { Booth } from "./booth";
 
 const SERVICE = "techclub-icecream";
 
-export const FEATURES = ["square-oauth", "square-credentials", "checkout", "receipt-tokens", "order-feed", "stats", "staff-session", "kiosk-registry", "supplies", "gift-cards", "assist"];
+export const FEATURES = ["square-oauth", "square-credentials", "checkout", "receipt-tokens", "order-feed", "stats", "staff-session", "kiosk-registry", "supplies", "gift-cards", "assist", "admin", "reset-epoch"];
 
 const core: Route[] = [
   {
@@ -81,6 +82,7 @@ export const routes: Route[] = [
   ...giftcards.routes,
   ...stats.routes,
   ...receipts.routes,
+  ...admin.routes,
   ...dashboard.routes,
 ];
 

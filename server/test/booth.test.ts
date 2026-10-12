@@ -477,6 +477,19 @@ describe("supplies", () => {
     expect((await serverState()).alerts.find((a) => a.key === "soldout:vessel:cone" && !a.resolvedAt)).toMatchObject({ title: "Waffle cones are back", severity: "info" });
   });
 
+  it("warns when every flavor is sold out", async () => {
+    const device = newDevice("web");
+    const flavors = ["vanilla", "chocolate", "cookies"];
+    await post("/v1/actions", STAFF, device, { actions: flavors.map((f) => setSupply(`out-${f}-${device}`, "flavor", f, true)) });
+    const state = await serverState();
+    const last = state.alerts.find((a) => a.key === "soldout:cookies" && !a.resolvedAt)!;
+    expect(last).toMatchObject({ severity: "warning", title: "Cookies & Cream is sold out" });
+    expect(last.detail).toMatch(/^Every flavor is sold out, so the kiosks show Closed/);
+    expect(state.alerts.find((a) => a.key === "soldout:vanilla" && !a.resolvedAt)?.severity).toBe("info");
+    await post("/v1/actions", STAFF, device, { actions: flavors.map((f) => setSupply(`back-${f}-${device}`, "flavor", f, false)) });
+    expect((await serverState()).supplies.filter((s) => s.kind === "flavor").every((s) => !s.soldOut)).toBe(true);
+  });
+
   it("keeps the legacy flavor action and the flavors list in step with supplies", async () => {
     const staff = await open(STAFF, newDevice("s"));
     const startRev = staff.state!.rev;
