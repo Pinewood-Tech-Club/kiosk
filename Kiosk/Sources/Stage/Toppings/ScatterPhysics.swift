@@ -532,7 +532,7 @@ struct ScatterPlanner {
     static let steepestAim: Float = 0.6
     /// Carried onto a new surface, a piece tips with it by no more than this (radians), so pieces near the edge of a
     /// fresh swirl of cream lean on its side instead of standing up against it.
-    static let steepestCarry: Float = 0.7
+    static let steepestCarry: Float = 0.5
 
     let field: SurfaceField
     let settle: ScatterSettle

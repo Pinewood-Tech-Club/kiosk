@@ -311,6 +311,15 @@ struct ScriptRunner {
                 await toggle(.chocolate)
                 await wait(4.0)
             }
+            if app.current.toppings.contains(.sprinkles) {
+                await toggle(.sprinkles)
+                await wait(1.5)
+                log("whip under a toss")
+                await toggle(.sprinkles)
+                await wait(0.25)
+                app.toggleTopping(.whip)
+                await wait(3.0)
+            }
         case "toppings-retoss":
             await openToppings()
             await wait(1.5)
