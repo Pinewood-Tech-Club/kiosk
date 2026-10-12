@@ -56,6 +56,22 @@ color:#fff;display:flex;align-items:center;gap:20px;box-shadow:0 10px 30px -8px 
 .alert .meta{font-size:18px;font-weight:500;opacity:.85;margin-top:4px}
 .alert button{background:#fff;color:var(--red);font-size:20px;font-weight:650;height:60px;padding:0 30px;border-radius:30px;flex:none}
 .times{font-weight:600;opacity:.8}
+.needs .section-head{margin-top:28px}
+.needs .alert:first-of-type{margin-top:0}
+.needs .alert+.alert{margin-top:12px}
+.needs .alert+.group,.needs .group+.group{margin-top:14px}
+.acell2{min-height:96px;padding:16px 18px 16px 22px;gap:18px}
+.acell2 .aglyph{width:52px;height:52px;font-size:25px}
+.acell2 .label{font-size:23px;font-weight:650;letter-spacing:-.015em}
+.acell2 .sub{font-size:17px}
+.acell2 .ack{height:52px;padding:0 24px;border-radius:26px;background:rgba(255,59,48,.1);color:var(--red-ink);font-size:19px;font-weight:650;flex:none}
+.acell2.sev-warning .ack{background:rgba(255,149,0,.13);color:var(--orange-ink)}
+.acell2 .ack:active{transform:scale(.97)}
+.ktag{font-weight:600;color:var(--label)}
+.alert .ktag{color:#fff}
+.jump{margin-top:16px;align-self:center;display:inline-flex;align-items:center;gap:12px;min-height:56px;padding:0 26px 0 14px;border-radius:28px;background:rgba(255,59,48,.94);color:#fff;font-size:19px;font-weight:650;
+-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:0 10px 30px -8px rgba(255,59,48,.55)}
+.jump .glyph{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.2);display:grid;place-items:center;font-size:20px}
 .section-head{margin:34px 0 14px;display:flex;align-items:baseline;justify-content:space-between;gap:16px}
 .section-head h2{font-size:28px;font-weight:700;letter-spacing:-.02em}
 .section-head>span{font-size:18px;color:var(--label-2);font-weight:500}
@@ -412,7 +428,7 @@ function suppliesSection(display: boolean, role: StaffRole): string {
   const owned = SUPPLY_KINDS.filter((kind) => role.owns.includes(kind));
   const others = SUPPLY_KINDS.filter((kind) => !role.owns.includes(kind));
   const note = owned.includes("vessel")
-    ? "Switch an item off when it runs out. Customers can't choose it on the kiosks until it's back on; anything already in a cart stays. With no cups or cones left, the kiosks show Closed."
+    ? "Switch an item off when it runs out. Customers can't choose it on the kiosks until it's back on; anything already in a cart stays. With no cups or cones left, or every flavor out, the kiosks show Closed."
     : "Switch a topping off when it runs out. Customers can't add it on the kiosks until it's back on; toppings already in a cart stay.";
   const html = owned.map((kind) => `<div class="section-head"><h2>${SUPPLY_TITLES[kind]}</h2></div>${supplyGroup([kind], "edit")}`).join("")
     + (owned.length ? `<p class="footnote">${note}</p>` : "");
@@ -453,7 +469,7 @@ export function dashboardBody(roleId: string, role: StaffRole): string {
 ${nav(role.title, bar)}
 <div class="float"><div id="banner" class="banner" hidden role="status"></div>${role.alerts === "none" ? "" : `<div id="urgent" aria-live="assertive"></div>`}</div>
 ${role.alerts === "none" ? "" : `<section id="alerts" aria-live="polite"></section>`}
-${main}${role.alerts === "front" ? `<section id="updates" aria-live="polite"></section>` : ""}</div>
+${main}</div>
 <div id="toast" class="toast" hidden role="status"></div>
 ${display ? "" : `<dialog id="kioskSheet" class="sheet" aria-labelledby="ksTitle"><div class="sheet-head"><h3 id="ksTitle"></h3><button class="link" id="ksDone" type="button">Done</button></div><div id="ksNameWrap"></div><div id="ksRest"></div></dialog>`}
 ${display ? "" : `<dialog id="assistPick" class="sheet" aria-labelledby="apTitle"><div class="sheet-head"><h3 id="apTitle">Assist a customer</h3><button class="link" id="apDone" type="button">Cancel</button></div><p class="footnote">Pick the kiosk the customer is standing at.</p><div class="group list ap-list" id="apList"></div></dialog>`}
@@ -667,10 +683,13 @@ function supplies(){
 }
 function supplyByKey(k){return supplies().filter(function(x){return x.kind+":"+x.id===k;})[0]||null;}
 function supplyOut(x){var i=intended("supply:"+x.kind+":"+x.id);return i?i.value:x.soldOut;}
-function noVessels(){
-  var v=supplies().filter(function(x){return x.kind==="vessel";});
+function allOut(kind){
+  var v=supplies().filter(function(x){return x.kind===kind;});
   return v.length>0&&v.every(supplyOut);
 }
+function noVessels(){return allOut("vessel");}
+function noFlavors(){return allOut("flavor");}
+function supplyClosedReason(){return noFlavors()?"Out of ice cream":noVessels()?"No cups or cones left":"";}
 function orderStatus(o){var i=intended("order:"+o.id);return i?i.value:o.status;}
 function alertAcked(a){return !!intended("ack:"+a.id);}
 
@@ -827,7 +846,7 @@ function chime(fromTap){
 
 function urgentOpen(){
   if(!state)return [];
-  return state.alerts.filter(function(a){return a.severity==="urgent"&&a.ackedAt==null&&a.resolvedAt==null&&!alertAcked(a);});
+  return state.alerts.filter(function(a){return a.severity==="urgent"&&a.ackedAt==null&&a.resolvedAt==null&&!alertAcked(a);}).sort(byTier);
 }
 
 function soundTick(){
@@ -926,15 +945,34 @@ function pendingTag(key){
   return '<span class="pending">'+(isLive()?ico("loader","spin")+"Saving":ico("clock")+"Waiting to send")+"</span>";
 }
 
-function alertIcon(a){return a.kind==="help"?"bellRing":a.kind==="soldout"?"ban":a.kind==="offline"?"wifiOff":"alert";}
+function alertIcon(a){
+  if(a.kind==="help")return a.key.indexOf("help:payment_failed:")===0||a.key.indexOf("help:no_reader:")===0?"card":"bellRing";
+  return a.kind==="soldout"?"ban":a.kind==="offline"?"wifiOff":a.key.indexOf("health:reader")===0||a.key.indexOf("health:auth:")===0?"card":"alert";
+}
+
+var PAYMENT_KEYS=["help:payment_failed:","help:no_reader:","health:reader:","health:reader-battery:","health:auth:"];
+function alertTier(a){
+  for(var i=0;i<PAYMENT_KEYS.length;i++)if(a.key.indexOf(PAYMENT_KEYS[i])===0)return 2;
+  if(a.kind==="help")return 1;
+  if(a.kind==="offline")return 2;
+  return 3;
+}
+var SEVERITY_RANK={urgent:0,warning:1,info:2};
+function byTier(a,b){return alertTier(a)-alertTier(b)||(SEVERITY_RANK[a.severity]||0)-(SEVERITY_RANK[b.severity]||0)||b.updatedAt-a.updatedAt;}
+function alertKiosk(a){
+  if(!a.kioskId)return a.kind==="soldout"?"All kiosks":"";
+  var k=kioskById(a.kioskId);
+  return k?kioskName(k):"";
+}
 
 function openAlerts(){
   return state.alerts.filter(function(a){return a.ackedAt==null&&a.resolvedAt==null&&!alertAcked(a);});
 }
 
 function alertMeta(a){
-  var d=String(a.detail||"").replace(/[.\s]+$/,"");
-  return (d?esc(d)+", ":"")+agoSpan(a.updatedAt);
+  var d=String(a.detail||"").replace(/[.\s]+$/,""),k=alertKiosk(a);
+  var where=k&&a.title.indexOf(k)<0?'<span class="ktag">'+esc(k)+"</span> · ":"";
+  return where+(d?esc(d)+", ":"")+agoSpan(a.updatedAt);
 }
 function times(a){return a.count>1?' <span class="times">×'+a.count+"</span>":"";}
 
@@ -947,30 +985,55 @@ function alertCell(a){
   return '<div class="cell acell sev-'+esc(a.severity)+'"><span class="aglyph">'+ico(alertIcon(a))+'</span><div class="grow"><div class="label">'+esc(a.title)+times(a)+'</div><div class="sub">'+alertMeta(a)+"</div></div>"+pendingTag("ack:"+a.id)+(READONLY?"":'<button class="link" type="button" data-ack="'+esc(a.id)+'">'+(info?"Clear":"Acknowledge")+"</button>")+"</div>";
 }
 
+function alertCell2(a){
+  return '<div class="cell acell acell2 sev-'+esc(a.severity)+'"><span class="aglyph">'+ico(alertIcon(a))+'</span><div class="grow"><div class="label">'+esc(a.title)+times(a)+'</div><div class="sub">'+alertMeta(a)+"</div></div>"+pendingTag("ack:"+a.id)+(READONLY?"":'<button class="ack" type="button" data-ack="'+esc(a.id)+'">Acknowledge</button>')+"</div>";
+}
+
+function ackAllButton(list,label){
+  return !READONLY&&list.length?'<button class="link" type="button" data-ackids="'+esc(list.map(function(a){return a.id;}).join(","))+'">'+label+"</button>":"";
+}
+
+function compactList(list,max){
+  return '<div class="group list">'+list.slice(0,max).map(alertCell).join("")+(list.length>max?'<div class="cell more">And '+(list.length-max)+" more</div>":"")+"</div>";
+}
+
 function alertList(title,list,ackLabel,max){
   if(!list.length)return "";
-  var ids=list.map(function(a){return a.id;}).join(",");
-  var right=!READONLY&&list.length>1?'<button class="link" type="button" data-ackids="'+esc(ids)+'">'+ackLabel+"</button>":list.length>1?"<span>"+list.length+"</span>":"";
-  return '<div class="section-head"><h2>'+title+"</h2>"+right+'</div><div class="group list">'+list.slice(0,max).map(alertCell).join("")+(list.length>max?'<div class="cell more">And '+(list.length-max)+" more</div>":"")+"</div>";
+  var right=list.length>1?(READONLY?"<span>"+list.length+"</span>":ackAllButton(list,ackLabel)):"";
+  return '<div class="section-head"><h2>'+title+"</h2>"+right+"</div>"+compactList(list,max);
+}
+
+function needsYou(open){
+  if(!open.length)return "";
+  var help=open.filter(function(a){return alertTier(a)===1;}),pay=open.filter(function(a){return alertTier(a)===2;}),rest=open.filter(function(a){return alertTier(a)===3;});
+  return '<div class="needs"><div class="section-head"><h2>Needs you</h2>'+ackAllButton(open,"Acknowledge all")+"</div>"+
+    help.map(alertBar).join("")+
+    (pay.length?'<div class="group list">'+pay.map(alertCell2).join("")+"</div>":"")+
+    (rest.length?compactList(rest,6):"")+"</div>";
 }
 
 function renderAlerts(){
-  var open=openAlerts().sort(function(a,b){return b.updatedAt-a.updatedAt;});
-  var urgent=open.filter(function(a){return a.severity==="urgent";});
-  var warn=open.filter(function(a){return a.severity==="warning";});
-  var info=open.filter(function(a){return a.severity==="info";});
+  var open=openAlerts().sort(byTier);
   var bars="",rest="";
-  if(ALERTS==="front"){
-    bars=urgent.slice(0,2).map(alertBar).join("");
-    rest=alertList(urgent.length>2?"More alerts":"Alerts",urgent.slice(2).concat(warn),"Acknowledge all",5);
-    $("updates").innerHTML=alertList("Updates",info,"Clear all",3);
-  } else if(ALERTS==="display"){
-    bars=urgent.slice(0,3).map(alertBar).join("");
-    rest=alertList("Alerts",urgent.slice(3).concat(warn),"",6);
-  } else rest=alertList("Alerts",urgent.concat(warn),"Acknowledge all",3);
-  if($("urgent"))$("urgent").innerHTML=bars;
+  if(ALERTS==="front")rest=needsYou(open);
+  else if(ALERTS==="display"){
+    var help=open.filter(function(a){return alertTier(a)===1;});
+    bars=help.slice(0,3).map(alertBar).join("");
+    rest=alertList("Alerts",help.slice(3).concat(open.filter(function(a){return alertTier(a)>1&&a.severity!=="info";})),"",6);
+  } else rest=alertList("Alerts",open.filter(function(a){return a.severity!=="info";}),"Acknowledge all",3);
   $("alerts").innerHTML=rest;
+  if($("urgent"))$("urgent").innerHTML=bars;
+  renderJump();
 }
+
+function renderJump(){
+  if(ALERTS!=="front"||!$("urgent"))return;
+  var help=state?openAlerts().filter(function(a){return alertTier(a)===1;}).sort(byTier):[];
+  var section=$("alerts").firstElementChild,hidden=!!section&&section.getBoundingClientRect().bottom<80;
+  var html=help.length&&hidden?'<button class="jump" type="button" id="jumpAlerts"><span class="glyph">'+ico("bellRing")+"</span>"+esc(help[0].title)+(help.length>1?" and "+(help.length-1)+" more":"")+"</button>":"";
+  if($("urgent").innerHTML!==html)$("urgent").innerHTML=html;
+}
+window.addEventListener("scroll",function(){if(state)renderJump();},{passive:true});
 
 function vesselName(v){return v==="cone"?"Waffle cone":titleCase(v);}
 function vesselIcon(v){return v==="cone"?"cone":"cup";}
@@ -1130,10 +1193,10 @@ function renderKiosks(){
   var list=kioskList();
   $("kioskCount").textContent=list.length>1?plural(list.length,"kiosk"):"";
   if(!list.length){$("kiosks").innerHTML='<div class="empty">No kiosk has connected yet. A kiosk iPad shows up here once it starts.</div>';if(sheetKiosk)closeSheet();return;}
-  var empty=noVessels();
+  var reason=supplyClosedReason();
   var html=list.map(function(k){
-    var open=kioskOpenNow(k),s=kioskShort(k),taking=open&&!empty;
-    var text='<div class="label">'+esc(kioskName(k))+'</div><div class="sub'+(s.bad?" bad":"")+'">'+s.html+"</div>"+(open&&empty?'<div class="sub warn">No cups or cones left</div>':"")+(kioskDebug(k)?'<div class="sub warn">Debug tools on</div>':"")+openPending(k)+pendingTag("name:"+k.id)+pendingTag("debug:"+k.id);
+    var open=kioskOpenNow(k),s=kioskShort(k),taking=open&&!reason;
+    var text='<div class="label">'+esc(kioskName(k))+'</div><div class="sub'+(s.bad?" bad":"")+'">'+s.html+"</div>"+(open&&reason?'<div class="sub warn">'+esc(reason)+"</div>":"")+(kioskDebug(k)?'<div class="sub warn">Debug tools on</div>':"")+openPending(k)+pendingTag("name:"+k.id)+pendingTag("debug:"+k.id);
     var inner='<span class="kglyph'+(k.online?"":" off")+'">'+ico("tablet")+'</span><div class="grow">'+text+'</div><span class="value'+(taking?"":" bad")+'">'+(taking?"Open":"Closed")+"</span>";
     return READONLY?'<div class="cell kcell">'+inner+"</div>":'<button class="cell kcell" type="button" data-kiosk="'+esc(k.id)+'" aria-label="'+esc(kioskName(k))+', '+(taking?"open":"closed")+'">'+inner+ico("chevron","chev")+"</button>";
   }).join("");
@@ -1191,7 +1254,7 @@ function renderSheet(fresh){
     $("ksNameWrap").innerHTML='<div class="section-head"><h2>Name</h2></div><div class="group"><form class="cell" id="ksForm"><input id="ksName" class="field" maxlength="40" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" aria-label="Kiosk name" value="'+esc(name)+'" placeholder="'+esc(defaultName(k))+'"><button class="link" type="submit">Save</button></form></div><p class="footnote">Shown on alerts and staff pages. Leave it empty to use '+esc(defaultName(k))+".</p>";
   }
   var html='<div class="section-head"><h2>Controls</h2></div><div class="group list">';
-  html+='<div class="cell"><div class="grow"><div class="label">Taking orders</div><div class="sub">'+(!open?"Begin Order is off. Customers mid-order can still finish.":noVessels()?"Paused while cups and cones are both sold out.":"Customers can start new orders.")+"</div>"+openPending(k)+'</div><button class="switch" role="switch" type="button" data-kopen="'+esc(k.id)+'" aria-checked="'+open+'" aria-label="Taking orders"></button></div>';
+  html+='<div class="cell"><div class="grow"><div class="label">Taking orders</div><div class="sub">'+(!open?"Begin Order is off. Customers mid-order can still finish.":noFlavors()?"Paused while every flavor is sold out.":noVessels()?"Paused while cups and cones are both sold out.":"Customers can start new orders.")+"</div>"+openPending(k)+'</div><button class="switch" role="switch" type="button" data-kopen="'+esc(k.id)+'" aria-checked="'+open+'" aria-label="Taking orders"></button></div>';
   html+='<div class="cell"><div class="grow"><div class="label">Debug tools</div><div class="sub">Shows the debug bar at the top of this kiosk\'s screen.</div>'+pendingTag("debug:"+k.id)+'</div><button class="switch" role="switch" type="button" data-kdebug="'+esc(k.id)+'" aria-checked="'+debug+'" aria-label="Debug tools"></button></div>';
   html+='</div><div class="section-head"><h2>Customer</h2></div><div class="group list"><div class="cell"><div class="grow"><div class="label">Assist</div><div class="sub">'+(assistable(k)?"See the order on this kiosk live and change it for the customer.":"Needs the kiosk to be online.")+'</div></div><button class="tinted" type="button" data-kassist="'+esc(k.id)+'"'+dis(!assistable(k))+">"+ico("handHelping")+"Assist</button></div></div>";
   html+='<div class="section-head"><h2>Status</h2></div><div class="group list health">'+healthRows(k)+"</div>";
@@ -1319,14 +1382,17 @@ function askSupply(x){
   var n=x.name,lower=x.kind==="vessel"?n.toLowerCase():n,go=function(v){enqueue({type:"setSupply",kind:x.kind,item:x.id,soldOut:v});};
   if(supplyOut(x)){
     var back=x.kind==="topping"?"Customers will be able to add "+n+" on the kiosks right away.":"Customers will be able to choose "+lower+" on the kiosks right away.";
-    if(x.kind==="vessel"&&noVessels())back+=" Kiosks showing Closed for lack of cups and cones take orders again.";
+    if(x.kind==="vessel"&&noVessels()&&!noFlavors())back+=" Kiosks showing Closed for lack of cups and cones take orders again.";
+    if(x.kind==="flavor"&&noFlavors()&&!noVessels())back+=" Kiosks showing Closed because they were out of ice cream take orders again.";
     ask("Mark "+n+" available again?",back,"Mark available",false,"Cancel",function(){go(false);});
     return;
   }
   var out=x.kind==="flavor"?"Customers won't be able to choose "+n+" on the kiosks. Scoops already in a cart stay."
     :x.kind==="vessel"?"Customers won't be able to choose "+lower+" on the kiosks. Items already in a cart stay."
     :"Customers won't be able to add "+n+" on the kiosks. Toppings already in a cart stay.";
-  if(x.kind==="vessel"&&supplies().filter(function(v){return v.kind==="vessel"&&v.id!==x.id;}).every(supplyOut))out+=" With no cups or cones left, every kiosk shows Closed until one is back.";
+  var othersOut=supplies().filter(function(v){return v.kind===x.kind&&v.id!==x.id;}).every(supplyOut);
+  if(x.kind==="vessel"&&othersOut)out+=" With no cups or cones left, every kiosk shows Closed until one is back.";
+  if(x.kind==="flavor"&&othersOut)out+=" That's the last flavor: every kiosk shows Closed, \"We're out of ice cream for now\", until one is back.";
   ask("Mark "+n+" sold out?",out,"Mark sold out",true,"Cancel",function(){go(true);});
 }
 
@@ -1337,6 +1403,7 @@ document.addEventListener("click",function(e){
   if(el.id==="confirmNo"){closeConfirm();return;}
   if(el.id==="ksDone"){closeSheet();return;}
   if(el.id==="exitStaff"){askExit();return;}
+  if(el.id==="jumpAlerts"){window.scrollTo({top:0,behavior:"smooth"});return;}
   if(el.id==="sound"){
     if(soundState==="on"){soundState="off";store(MUTE_KEY,"1");renderSound();}
     else{store(MUTE_KEY,null);soundState="on";chime(true);renderSound();}
