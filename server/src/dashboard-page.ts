@@ -654,8 +654,8 @@ function loadStats(){
   }).then(function(s){if(s){stats=s;renderStats();}}).catch(function(){});
 }
 
-var audio=null, audioURL=null, soundState=IN_APP?"on":"locked", heard={}, lastChimeAt=0;
-if(load(MUTE_KEY)==="1")soundState="off";
+var audio=null, audioURL=null, soundState=IN_APP?"on":"off", heard={}, lastChimeAt=0;
+if(IN_APP&&load(MUTE_KEY)==="1")soundState="off";
 
 function chimeURL(){
   if(audioURL)return audioURL;
@@ -674,7 +674,7 @@ function chimeURL(){
 }
 
 function chime(fromTap){
-  if(soundState==="off"&&!fromTap)return;
+  if(!IN_APP||(soundState==="off"&&!fromTap))return;
   lastChimeAt=Date.now();
   try{
     if(!audio){audio=new Audio(chimeURL());audio.preload="auto";}
@@ -702,7 +702,7 @@ function soundTick(){
 function renderSound(){
   var b=$("sound");
   if(!b)return;
-  b.hidden=!HAS.alerts||ALERTS!=="front"||(IN_APP&&soundState==="on");
+  b.hidden=!IN_APP||!HAS.alerts||ALERTS!=="front"||soundState==="on";
   if(soundState==="locked"){b.className="navbtn attn";b.innerHTML=ico("volumeX")+"Enable sound";b.setAttribute("aria-label","Enable alert sound");}
   else if(soundState==="on"){b.className="navbtn";b.innerHTML=ico("volume")+"Sound on";b.setAttribute("aria-label","Alert sound on, tap to mute");}
   else{b.className="navbtn dim";b.innerHTML=ico("volumeX")+"Muted";b.setAttribute("aria-label","Alert sound muted, tap to turn on");}

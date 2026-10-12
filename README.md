@@ -104,7 +104,7 @@ Behavior shared by every page:
 - **Confirmations**: anything customers can see asks first in a large in-page dialog that says what will happen: marking a flavor sold out or available again, closing or reopening the kiosk, and cancelling an order. Acknowledging an alert and moving an order along don't.
 - **Offline-proof actions**: every change goes into a queue in `localStorage` with its own id and a per-browser device id (`X-Booth-Device`), shows at once, and is sent oldest first as soon as the booth is reachable, including after a reload or relaunch. A newer change to the same flavor, order or open state replaces an unsent older one. Unsent changes older than an hour are dropped with a notice.
 - **Connection**: *Live*, *Connecting* or *Offline since 2:41 PM*, with a banner saying how many changes are waiting.
-- **Sound**: new urgent alerts chime on the toppings page and repeat every 30 s until acknowledged. A browser needs one tap on *Enable sound*; the app's web view plays without one.
+- **Sound**: new urgent alerts chime on the toppings page and repeat every 30 s until acknowledged, only in the app's web view. In a browser the pages are silent.
 - **Undo**: status changes show a toast with *Undo* for a few seconds.
 - **Unattended displays**: pages renew their session cookie (`POST /dashboard/renew`) every 30 minutes, so a display left running never falls back to the PIN prompt.
 
