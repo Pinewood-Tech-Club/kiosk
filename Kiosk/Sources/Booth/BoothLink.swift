@@ -12,7 +12,7 @@ enum HelpReason: String, Sendable {
 @Observable
 @MainActor
 final class BoothLink {
-    private enum Work {
+    private enum Work: AssistQueueItem {
         case assist(AssistCommand)
         case control(BoothControl)
 
@@ -22,6 +22,16 @@ final class BoothLink {
             case .control(let control): control.id
             }
         }
+
+        private var command: AssistCommand? {
+            if case .assist(let command) = self { return command }
+            return nil
+        }
+
+        var stream: String? { command?.stream }
+        var seq: Int? { command?.seq }
+        var base: Int? { command?.base }
+        var after: [String] { command?.after ?? [] }
     }
 
     private struct SoldOutSnapshot: Codable {
@@ -41,8 +51,7 @@ final class BoothLink {
     private static let healthDebounce: TimeInterval = 2
     private static let healthRefresh: TimeInterval = 60
     private static let sessionInterval: TimeInterval = 0.25
-    private static let keptResults = 20
-    private static let rememberedCommands = 500
+    private static let keptResults = 30
 
     private(set) var connectionState: BoothConnection.ConnectionState = .idle
     private(set) var soldOut: Set<Flavor>
@@ -73,11 +82,9 @@ final class BoothLink {
     @ObservationIgnored private var deviceID: String?
     @ObservationIgnored private var assistExpiry = Date.distantPast
     @ObservationIgnored private var lastSession: AssistSession?
-    @ObservationIgnored private var commandQueue: [Work] = []
+    @ObservationIgnored private var commandQueue = AssistQueue<Work>()
     @ObservationIgnored private var runningCommands = false
-    @ObservationIgnored private var runningCommandID: String?
-    @ObservationIgnored private var handledCommands: [String: AssistSession.Result] = [:]
-    @ObservationIgnored private var handledOrder: [String] = []
+    @ObservationIgnored private var nextAssistAt = Date.distantPast
     @ObservationIgnored private var assistResults: [AssistSession.Result] = []
     @ObservationIgnored private var outboxCounts: KioskHealth.OutboxCounts?
 
@@ -199,7 +206,8 @@ final class BoothLink {
 
     private func publishSession() {
         guard connectionState == .connected, let app, let connection else { return }
-        let session = app.assistSession(assisted: assistActive, results: assistResults)
+        var session = app.assistSession(assisted: assistActive, results: assistResults)
+        session.streams = commandQueue.streamStates
         guard session != lastSession, connection.send(session: session) else { return }
         lastSession = session
     }
@@ -220,31 +228,40 @@ final class BoothLink {
     }
 
     private func enqueue(_ work: Work) {
-        let id = work.id
-        guard !id.isEmpty else { return }
-        if let done = handledCommands[id] {
-            record(AssistSession.Result(id: id, status: done.status == "applied" ? "duplicate" : done.status, message: done.message))
-            return
+        switch commandQueue.receive(work, now: Date()) {
+        case .answered(let result): record(result)
+        case .queued: runQueuedCommands()
+        case .ignored: break
         }
-        guard id != runningCommandID, !commandQueue.contains(where: { $0.id == id }) else { return }
-        commandQueue.append(work)
+    }
+
+    private func runQueuedCommands() {
+        lastSession = nil
         guard !runningCommands else { return }
         runningCommands = true
         Task { [weak self] in await self?.runCommands() }
     }
 
     private func runCommands() async {
-        while !commandQueue.isEmpty, let app {
-            let work = commandQueue.removeFirst()
-            runningCommandID = work.id
+        while let app, let work = commandQueue.next() {
             let outcome: AppModel.AssistOutcome
             let label: String
             switch work {
             case .assist(let command):
                 lastTouch = Date()
                 idleSent = false
-                outcome = await app.applyAssist(command.op)
                 label = "assist \(command.op) from \(command.by ?? "staff")"
+                if commandQueue.blocker(of: work) != nil {
+                    outcome = .rejected(AssistQueue<Work>.skipped)
+                    break
+                }
+                let wait = nextAssistAt.timeIntervalSinceNow
+                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                outcome = await app.applyAssist(command.op)
+                if outcome == .applied {
+                    if let ref = command.ref { app.adoptItemID(ref) }
+                    nextAssistAt = Date().addingTimeInterval(command.op.pace)
+                }
             case .control(let control):
                 outcome = await apply(control.op, app: app)
                 label = "control \(control.op.name) from \(control.by ?? "admin")"
@@ -255,12 +272,7 @@ final class BoothLink {
             case .rejected(let reason): result = AssistSession.Result(id: work.id, status: "rejected", message: reason)
             }
             log("Booth: \(label): \(result.status)" + (result.message.map { " (\($0))" } ?? ""))
-            handledCommands[work.id] = result
-            handledOrder.append(work.id)
-            if handledOrder.count > Self.rememberedCommands {
-                handledCommands[handledOrder.removeFirst()] = nil
-            }
-            runningCommandID = nil
+            commandQueue.finish(work, result)
             record(result)
         }
         runningCommands = false
@@ -369,8 +381,7 @@ final class BoothLink {
         UserDefaults.standard.set(epoch, forKey: BoothEpoch.key)
         app?.resetOrderCounter()
         clearCachedFlags()
-        handledCommands = [:]
-        handledOrder = []
+        if !runningCommands { commandQueue = AssistQueue<Work>() }
         assistResults = []
         lastSession = nil
         forceHealth = true
@@ -442,6 +453,8 @@ final class BoothLink {
     private func tick() {
         let now = Date()
         if assistActive, now >= assistExpiry { assistChanged(false, expiresIn: 0) }
+        commandQueue.releaseGaps(now: now)
+        if !commandQueue.ready.isEmpty { runQueuedCommands() }
         checkIdle(now)
         refreshOutboxCounts()
         queueHealth(now)

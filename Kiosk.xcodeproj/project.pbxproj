@@ -35,6 +35,7 @@
 		5C03C19E8737AD328AC9C08E /* MockReaderUI in Frameworks */ = {isa = PBXBuildFile; productRef = 71F7D5957E77382361776981 /* MockReaderUI */; };
 		5C4E87910C7013DDFEBDB6ED /* SummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF79193415195B4A4327886 /* SummaryView.swift */; };
 		5E0527E4240E6371F48181A6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7703DC11C0C31F62DC6BD09D /* Assets.xcassets */; };
+		5F86B8903E485D1E472AD15A /* AssistQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4460074B7A42DFDD0F0B5B8C /* AssistQueueTests.swift */; };
 		5F9C7D0544857EDEAD4E22C6 /* StageActors.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB1DFC96A2B464467CC2110 /* StageActors.swift */; };
 		63314811021B7CBD9DC6174D /* SquareCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B362FE7742C73DA7798FF13 /* SquareCredentials.swift */; };
 		671DD6E8074DB0373D2C6FC5 /* GiftCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EAA0A9FBB33CC50418C00AD /* GiftCardView.swift */; };
@@ -147,6 +148,7 @@
 		4238ECFC69ADA5E1BBAEC6CE /* AppModel+GiftCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+GiftCard.swift"; sourceTree = "<group>"; };
 		425B72639F56A451EDADC970 /* Layout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Layout.swift; sourceTree = "<group>"; };
 		428CD2F085AA3A554343014C /* BoothAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothAssist.swift; sourceTree = "<group>"; };
+		4460074B7A42DFDD0F0B5B8C /* AssistQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistQueueTests.swift; sourceTree = "<group>"; };
 		4649965D4D60FFAD3C4019DC /* CandyKinds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandyKinds.swift; sourceTree = "<group>"; };
 		48740B6EF1BC55783B05082A /* ToppingLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingLayer.swift; sourceTree = "<group>"; };
 		48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothProtocol.swift; sourceTree = "<group>"; };
@@ -363,6 +365,7 @@
 		74B039B131E804BEA28E5293 /* KioskTests */ = {
 			isa = PBXGroup;
 			children = (
+				4460074B7A42DFDD0F0B5B8C /* AssistQueueTests.swift */,
 				07F672994A6FAD8246F61015 /* GiftCardCheckoutTests.swift */,
 				7583A458965A4739B6D98A9A /* PricingTests.swift */,
 			);
@@ -730,6 +733,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5F86B8903E485D1E472AD15A /* AssistQueueTests.swift in Sources */,
 				7F40A9A487AC2F434B50982C /* GiftCardCheckoutTests.swift in Sources */,
 				6C80EAA3CFF70EE4FAEB6241 /* PricingTests.swift in Sources */,
 			);

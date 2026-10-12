@@ -539,6 +539,13 @@ final class AppModel {
         }
     }
 
+    /// Staff assist picks the id of an item it starts, so commands sent before the kiosk's next session can name it.
+    func adoptItemID(_ id: UUID) {
+        guard screen == .builder, mode == .customize, !isEditing, current.flavors.isEmpty, current.toppings.isEmpty,
+              current.id != id, !items.contains(where: { $0.id == id }) else { return }
+        current = IceCreamItem(id: id, vessel: current.vessel)
+    }
+
     func discardCurrentItem() {
         guard screen == .builder, mode == .customize, !isEditing, currentHasChoices else { return }
         stage.dismissCurrentHero()
