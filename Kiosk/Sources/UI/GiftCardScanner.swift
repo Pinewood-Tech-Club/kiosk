@@ -55,7 +55,9 @@ final class GiftCardCamera: NSObject, AVCaptureMetadataOutputObjectsDelegate, @u
         }
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
               let input = try? AVCaptureDeviceInput(device: device) else {
+            #if !targetEnvironment(simulator)
             onUnavailable("No front camera")
+            #endif
             return
         }
         let output = AVCaptureMetadataOutput()
