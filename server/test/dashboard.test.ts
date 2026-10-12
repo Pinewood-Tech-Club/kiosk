@@ -102,6 +102,26 @@ describe("dashboard page", () => {
     const board = await page("board");
     expect(board).toContain('id="boardMaking"');
     expect(board).not.toContain('id="alerts"');
+    for (const ipad of [scooper, toppings]) {
+      for (const id of ["assistOpen", "assistPick", "assist", "asOrder", "asNameWrap"]) expect(ipad).toContain(`id="${id}"`);
+      expect(ipad).toMatch(/<dialog id="assist" class="assist"/);
+    }
+    for (const display of [organizer, board]) {
+      for (const id of ["assistOpen", "assistPick", "assist"]) expect(display).not.toContain(`id="${id}"`);
+    }
+  });
+
+  it("ships an assist script that parses, sends commands over the socket and never shows an em dash", async () => {
+    const cookie = await signIn();
+    const text = (await call("/staff/toppings", { headers: { Cookie: cookie } })).text;
+    const script = /<script nonce="[^"]+">([\s\S]*)<\/script>/.exec(text)![1];
+    expect(() => new Function(script)).not.toThrow();
+    for (const op of ["addScoop", "removeScoop", "setVessel", "setTopping", "addItem", "removeItem", "setName", "navigate", "startOver"]) {
+      expect(script).toContain(`"${op}"`);
+    }
+    expect(script).toContain('send({type:"command",command:p.cmd})');
+    expect(script).toContain('send({type:"assist",kiosk:assistKiosk,by:ACTOR})');
+    expect(text).not.toMatch(/\u2014/);
   });
 
   it("serves a self-contained live page to a signed-in session", async () => {

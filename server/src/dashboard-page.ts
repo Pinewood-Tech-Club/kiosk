@@ -262,6 +262,60 @@ dialog.sheet{width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);o
 .sheet .group+.group{margin-top:16px}
 .field{font:inherit;font-size:21px;border:0;background:none;color:var(--label);flex:1;min-width:0;height:44px}
 .field:focus,.field:focus-visible{outline:none}
+dialog.assist{width:100vw;height:100vh;max-width:100vw;max-height:100vh;margin:0;padding:0;border-radius:0;background:var(--bg);box-shadow:none;overflow:auto;overscroll-behavior:contain;-webkit-backdrop-filter:none;backdrop-filter:none}
+dialog.assist[open]{animation:rise .32s cubic-bezier(.2,.9,.3,1)}
+@keyframes rise{from{transform:translateY(36px);opacity:0}}
+.assist-page{max-width:1032px;margin:0 auto;padding:env(safe-area-inset-top) max(40px,env(safe-area-inset-right)) calc(72px + env(safe-area-inset-bottom)) max(40px,env(safe-area-inset-left))}
+.assist .nav .bar{justify-content:space-between}
+.as-eyebrow{font-size:17px;font-weight:600;color:var(--tint-ink);display:inline-flex;align-items:center;gap:8px}
+.as-eyebrow svg{font-size:20px}
+.navbtn.done{font-weight:700;font-size:19px;padding:0 4px}
+.as-cols{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:28px;align-items:start}
+.as-total{font-size:22px!important;font-weight:700!important;color:var(--label)!important;font-variant-numeric:tabular-nums}
+.as-note{margin-top:24px;display:flex;align-items:center;gap:16px;padding:16px 22px;border-radius:24px;background:var(--cell)}
+.as-note .aglyph{width:44px;height:44px;font-size:22px}
+.as-note.info .aglyph{background:var(--tint-wash);color:var(--tint)}
+.as-note.bad .aglyph{background:var(--red)}
+.as-note.wait .aglyph{background:var(--fill);color:var(--label-2)}
+.as-note b{display:block;font-size:20px;font-weight:650;letter-spacing:-.015em}
+.as-note .sub{display:block;font-size:16px;color:var(--label-2);margin-top:2px}
+.as-item+.as-item{margin-top:18px}
+.as-item.cur{box-shadow:0 0 0 3px var(--tint-soft)}
+.as-ihead{display:flex;align-items:center;gap:14px;padding:18px 14px 8px 24px}
+.as-iname{font-size:24px;font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.as-ihead .sub{font-size:16px;color:var(--label-2);margin-top:3px}
+.as-on{font-size:14px;font-weight:700;color:var(--tint-ink);background:var(--tint-wash);border-radius:9px;padding:3px 9px;letter-spacing:0}
+.as-price{font-size:21px;font-weight:650;font-variant-numeric:tabular-nums}
+.as-trash{width:52px;height:52px;border-radius:50%;color:var(--red);display:grid;place-items:center;font-size:23px;flex:none}
+.as-trash:active{background:rgba(255,59,48,.1)}
+.as-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin:8px 24px 4px;border-radius:18px;background:var(--fill)}
+.as-seg button{min-height:56px;border-radius:14px;font-size:19px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--label)}
+.as-seg button svg{font-size:21px}
+.as-seg button.sel{background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+.as-seg small,.as-chip small{font-size:14px;font-weight:600;color:var(--red-ink)}
+.as-label{display:flex;justify-content:space-between;gap:12px;padding:16px 24px 4px;font-size:15px;font-weight:600;color:var(--label-2)}
+.as-flavors .cell{min-height:72px}
+.as-flavors .label{font-size:21px;font-weight:550}
+.as-step{display:flex;align-items:center;gap:12px;flex:none}
+.as-step button{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:24px;background:var(--fill);color:var(--label)}
+.as-step button.plus{background:var(--tint-wash);color:var(--tint-ink)}
+.as-step button svg{stroke-width:2.5}
+.as-step .n{min-width:30px;text-align:center;font-size:24px;font-weight:650;font-variant-numeric:tabular-nums}
+.as-chips{display:flex;flex-wrap:wrap;gap:10px;padding:8px 24px 22px}
+.as-chip{min-height:52px;padding:0 20px;border-radius:26px;background:var(--fill);font-size:18px;font-weight:600;display:inline-flex;align-items:center;gap:8px}
+.as-chip.on{background:var(--tint-wash);color:var(--tint-ink)}
+.as-chip svg{stroke-width:2.75}
+.as-add{margin-top:18px;width:100%;min-height:68px;border-radius:24px;background:var(--cell);color:var(--tint-ink);font-size:21px;font-weight:650;display:flex;align-items:center;justify-content:center;gap:10px}
+.as-add svg{font-size:22px;stroke-width:2.5}
+.as-nav{width:100%;text-align:left;min-height:68px}
+.as-nav svg{color:var(--tint);font-size:24px;stroke-width:2.5}
+.as-nav.here .label{font-weight:650}
+.as-nav.here:disabled{opacity:1}
+.assist button:disabled{opacity:.35;cursor:default}
+.assist .as-seg button.sel:disabled{opacity:.55}
+.as-note .tinted{margin-left:auto}
+.ap-list{margin-top:14px}
+@media (max-width:900px){.as-cols{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion:reduce){.alert,dialog[open],.spin{animation:none}.switch,.switch::after{transition:none}}
 @media (max-width:1240px){.cols-3{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cols-3>.col:nth-child(2){grid-row:span 2}}
 @media (max-width:760px){
@@ -303,6 +357,10 @@ const ICONS: Record<string, string> = {
   chevron: '<path d="m9 18 6-6-6-6"/>',
   tablet: '<rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><line x1="12" x2="12.01" y1="18" y2="18"/>',
   layout: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+  handHelping: '<path d="M11 12h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 14"/><path d="m7 18 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9"/><path d="m2 13 6 6"/>',
+  minus: '<path d="M5 12h14"/>',
+  trash: '<path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  card: '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><path d="M6 14h2"/>',
 };
 
 export function icon(name: string, cls = ""): string {
@@ -387,7 +445,7 @@ export function dashboardBody(roleId: string, role: StaffRole): string {
   const main = display
     ? `<main class="cols cols-${role.columns.length}">${role.columns.map(column).join("")}</main>`
     : `<main>${column(first)}${rest.length ? `<div class="split">${rest.map(column).join("")}</div>` : ""}</main>`;
-  const bar = display ? "" : `<button class="navbtn" id="sound" type="button" hidden></button><a class="navbtn web-only" href="/staff">${icon("layout")}Pages</a>${signOut()}<button class="navbtn app-only" id="exitStaff" type="button">${icon("logOut")}Exit staff mode</button>`;
+  const bar = display ? "" : `<button class="navbtn" id="sound" type="button" hidden></button><button class="navbtn" id="assistOpen" type="button">${icon("handHelping")}Assist</button><a class="navbtn web-only" href="/staff">${icon("layout")}Pages</a>${signOut()}<button class="navbtn app-only" id="exitStaff" type="button">${icon("logOut")}Exit staff mode</button>`;
   return `<div class="page${display ? " wide" : ""} role-${escapeHtml(roleId)} kind-${role.kind}" id="wrap" data-title="${escapeHtml(role.title)}" data-kind="${role.kind}" data-alerts="${role.alerts}">
 ${nav(role.title, bar)}
 <div class="float"><div id="banner" class="banner" hidden role="status"></div>${role.alerts === "none" ? "" : `<div id="urgent" aria-live="assertive"></div>`}</div>
@@ -395,6 +453,8 @@ ${role.alerts === "none" ? "" : `<section id="alerts" aria-live="polite"></secti
 ${main}${role.alerts === "front" ? `<section id="updates" aria-live="polite"></section>` : ""}</div>
 <div id="toast" class="toast" hidden role="status"></div>
 ${display ? "" : `<dialog id="kioskSheet" class="sheet" aria-labelledby="ksTitle"><div class="sheet-head"><h3 id="ksTitle"></h3><button class="link" id="ksDone" type="button">Done</button></div><div id="ksNameWrap"></div><div id="ksRest"></div></dialog>`}
+${display ? "" : `<dialog id="assistPick" class="sheet" aria-labelledby="apTitle"><div class="sheet-head"><h3 id="apTitle">Assist a customer</h3><button class="link" id="apDone" type="button">Cancel</button></div><p class="footnote">Pick the kiosk the customer is standing at.</p><div class="group list ap-list" id="apList"></div></dialog>`}
+${display ? "" : `<dialog id="assist" class="assist" aria-labelledby="asTitle"><div class="assist-page"><header class="nav"><div class="bar"><span class="as-eyebrow">${icon("handHelping")}Assisting</span><button class="navbtn done" id="asDone" type="button">Done</button></div><div class="title"><h1 id="asTitle"></h1><div class="live connecting" id="asLink" role="status"></div></div></header><div id="asAlerts" aria-live="assertive"></div><div id="asNote" aria-live="polite"></div><div class="as-cols"><section id="asOrder"></section><section><div id="asSide"></div><div id="asNameWrap"></div><div id="asEnd"></div></section></div></div></dialog>`}
 ${display ? "" : `<dialog id="confirm" aria-labelledby="confirmTitle" aria-describedby="confirmText"><h3 id="confirmTitle"></h3><p id="confirmText"></p><div class="dialog-actions"><button class="cancel" id="confirmNo" type="button">Cancel</button><button class="confirm" id="confirmYes" type="button">Confirm</button></div></dialog>`}`;
 }
 
@@ -646,11 +706,15 @@ function onMessage(socket,event){
   var msg;try{msg=JSON.parse(event.data);}catch(e){return;}
   if(msg.type==="snapshot"){
     state=msg.state;state.liveSocket=socket;
+    setSessions(msg.state.sessions);
+    if(assistKiosk)sendPresence();
     if(state.serverTime)serverOffset=state.serverTime-Date.now();
     everLive=true;offlineSince=null;
     reconcile();render();scheduleStats(0);flush();
   }
   else if(msg.type==="patch")applyPatch(msg);
+  else if(msg.type==="session")sessionArrived(msg.kiosk,msg.session);
+  else if(msg.type==="result"&&cmdPending[msg.id]&&msg.status==="rejected")commandDone(msg.id,"rejected",msg.error&&msg.error.message);
   else if(msg.type==="pong"){
     if(msg.serverTime)serverOffset=msg.serverTime-Date.now();
     if(state&&msg.rev>state.rev)send({type:"sync"});
@@ -709,6 +773,7 @@ setInterval(function(){
   if(reconcile())render();
   else{renderLink();refreshTimes();}
   soundTick();
+  assistTick();
 },1000);
 window.addEventListener("online",reconnectNow);
 window.addEventListener("offline",function(){if(ws)abandonSocket();});
@@ -783,6 +848,8 @@ function renderSound(){
 
 function showToast(text,undo){
   var t=$("toast");
+  var host=assistKiosk&&$("assist")?$("assist"):document.body;
+  if(t.parentNode!==host)host.appendChild(t);
   clearTimeout(toastTimer);
   t.className="toast"+(undo?"":" plain");
   t.innerHTML='<span>'+esc(text)+'</span>'+(undo?'<button class="undo" type="button" id="undo">'+ico("undo")+"Undo</button>":"");
@@ -1123,7 +1190,8 @@ function renderSheet(fresh){
   var html='<div class="section-head"><h2>Controls</h2></div><div class="group list">';
   html+='<div class="cell"><div class="grow"><div class="label">Taking orders</div><div class="sub">'+(!open?"Begin Order is off. Customers mid-order can still finish.":noVessels()?"Paused while cups and cones are both sold out.":"Customers can start new orders.")+"</div>"+openPending(k)+'</div><button class="switch" role="switch" type="button" data-kopen="'+esc(k.id)+'" aria-checked="'+open+'" aria-label="Taking orders"></button></div>';
   html+='<div class="cell"><div class="grow"><div class="label">Debug tools</div><div class="sub">Shows the debug bar at the top of this kiosk\'s screen.</div>'+pendingTag("debug:"+k.id)+'</div><button class="switch" role="switch" type="button" data-kdebug="'+esc(k.id)+'" aria-checked="'+debug+'" aria-label="Debug tools"></button></div>';
-  html+='</div><div class="section-head"><h2>Status</h2></div><div class="group list health">'+healthRows(k)+"</div>";
+  html+='</div><div class="section-head"><h2>Customer</h2></div><div class="group list"><div class="cell"><div class="grow"><div class="label">Assist</div><div class="sub">'+(assistable(k)?"See the order on this kiosk live and change it for the customer.":"Needs the kiosk to be online.")+'</div></div><button class="tinted" type="button" data-kassist="'+esc(k.id)+'"'+dis(!assistable(k))+">"+ico("handHelping")+"Assist</button></div></div>";
+  html+='<div class="section-head"><h2>Status</h2></div><div class="group list health">'+healthRows(k)+"</div>";
   if(!k.online)html+='<div class="section-head"></div><div class="group list"><div class="cell"><button class="destructive" type="button" data-kremove="'+esc(k.id)+'">Remove kiosk</button></div></div><p class="footnote">For an iPad that isn\'t a kiosk any more. Its alerts close; if it connects again it comes back as '+esc(defaultName(k))+".</p>";
   $("ksRest").innerHTML=html;
 }
@@ -1199,6 +1267,8 @@ function render(){
   if(HAS.feed)renderFeed();
   if(HAS.soldout)renderSupplies();
   if(HAS.kiosks)renderKiosks();
+  if(assistKiosk)renderAssist(false);
+  if(pickerOpen())renderPicker();
   fitNames();
 }
 
@@ -1270,6 +1340,7 @@ document.addEventListener("click",function(e){
     return;
   }
   if(READONLY)return;
+  if(assistClick(el))return;
   if(el.dataset.ack){enqueue({type:"ack",alertId:el.dataset.ack});}
   else if(el.dataset.ackids){el.dataset.ackids.split(",").forEach(function(id){if(id)enqueue({type:"ack",alertId:id});});}
   else if(el.dataset.supplyKey){
@@ -1287,8 +1358,257 @@ document.addEventListener("click",function(e){
 
 document.addEventListener("submit",function(e){
   if(e.target&&e.target.id==="ksForm"){e.preventDefault();saveName();}
+  if(e.target&&e.target.id==="asNameForm"){e.preventDefault();saveCustomerName();}
 });
+if($("assist"))$("assist").addEventListener("close",function(){if(assistKiosk)stopAssist();});
 if($("kioskSheet"))$("kioskSheet").addEventListener("close",function(){sheetKiosk=null;});
+
+var sessions={}, assistKiosk=null, assistOpenedAt=0, lastPresenceAt=0, cmdPending={}, assistNoteKey="";
+var SCREEN_LABEL={attract:"the welcome screen",builder:"building the order",summary:"reviewing the order",name:"entering a name",confirmation:"the receipt",roleSetup:"the role picker",staff:"a staff page"};
+var STEP_LABEL={vessel:"a cup or cone",flavors:"scoops",toppings:"toppings"};
+var ASSIST_NAV=[["builder","Building the order"],["summary","Reviewing the order"],["name","Entering a name"]];
+
+function dis(b){return b?" disabled":"";}
+function setSessions(list){sessions={};(list||[]).forEach(function(x){sessions[x.kiosk]=x;});}
+function assistable(k){return !!k&&k.online&&k.connected;}
+function showDialog(d){if(d.showModal){if(!d.open)d.showModal();}else d.setAttribute("open","");}
+function hideDialog(d){if(!d)return;if(d.close){if(d.open)d.close();}else d.removeAttribute("open");}
+function pickerOpen(){var d=$("assistPick");return !!d&&d.open;}
+
+function sessionArrived(kiosk,session){
+  if(session)sessions[kiosk]=session;else delete sessions[kiosk];
+  if(session)(session.results||[]).forEach(function(r){if(cmdPending[r.id])commandDone(r.id,r.status,r.message);});
+  if(assistKiosk===kiosk)renderAssist(false);
+  if(pickerOpen())renderPicker();
+}
+
+function sessionLine(k){
+  var x=sessions[k.id];
+  if(!assistable(k))return "Offline";
+  if(!x)return "Online";
+  if(x.paying)return "Payment in progress";
+  var n=x.items.filter(function(i){return i.inOrder;}).length;
+  return "On "+SCREEN_LABEL[x.screen]+(n?", "+plural(n,"item")+", "+money(x.totalCents):"");
+}
+
+function startAssist(){
+  var list=kioskList();
+  if(!list.length){showToast("No kiosk has connected yet.");return;}
+  var online=list.filter(assistable);
+  if(online.length===1)return askAssist(online[0]);
+  renderPicker();
+  showDialog($("assistPick"));
+}
+
+function renderPicker(){
+  $("apList").innerHTML=kioskList().map(function(k){
+    var ok=assistable(k);
+    return '<button class="cell kcell" type="button" data-assistk="'+esc(k.id)+'"'+dis(!ok)+'><span class="kglyph'+(ok?"":" off")+'">'+ico("tablet")+'</span><div class="grow"><div class="label">'+esc(kioskName(k))+'</div><div class="sub">'+esc(sessionLine(k))+"</div></div>"+ico("chevron","chev")+"</button>";
+  }).join("")||'<div class="empty">No kiosk has connected yet.</div>';
+}
+
+function askAssist(k){
+  var name=kioskName(k);
+  ask("Assist at "+name+"?","You'll see the order on "+name+" as it happens and can change it for the customer. The kiosk shows \"A staff member is helping you\" until you tap Done.","Start assisting",false,"Cancel",function(){hideDialog($("assistPick"));openAssist(k.id);});
+}
+
+function openAssist(id){
+  assistKiosk=id;assistOpenedAt=Date.now();cmdPending={};assistNoteKey="";
+  sendPresence();
+  renderAssist(true);
+  showDialog($("assist"));
+  $("assist").scrollTop=0;
+}
+
+function stopAssist(){
+  assistKiosk=null;cmdPending={};
+  sendPresence();
+  hideDialog($("assist"));
+  var t=$("toast");if(t.parentNode!==document.body)document.body.appendChild(t);
+}
+
+function sendPresence(){
+  if(!isLive())return;
+  lastPresenceAt=Date.now();
+  send({type:"assist",kiosk:assistKiosk,by:ACTOR});
+}
+
+function command(op,fields){
+  if(!assistKiosk)return;
+  var c={id:uuid(),kiosk:assistKiosk,op:op,by:ACTOR};
+  Object.keys(fields||{}).forEach(function(k){c[k]=fields[k];});
+  var p={cmd:c,firstAt:Date.now(),sentAt:0};
+  cmdPending[c.id]=p;
+  transmit(p);
+  renderAssistLink();
+}
+function transmit(p){if(!isLive())return;p.sentAt=Date.now();send({type:"command",command:p.cmd});}
+function commandDone(id,status,message){
+  if(!cmdPending[id])return;
+  delete cmdPending[id];
+  if(status==="rejected")showToast(message||"The kiosk didn't make that change.");
+  renderAssistLink();
+}
+
+function assistTick(){
+  if(!assistKiosk)return;
+  var t=Date.now();
+  if(isLive()&&t-lastPresenceAt>=10000)sendPresence();
+  Object.keys(cmdPending).forEach(function(id){
+    var p=cmdPending[id];
+    if(t-p.firstAt>15000){delete cmdPending[id];showToast("The kiosk didn't answer. Check it and try again.");}
+    else if(isLive()&&t-p.sentAt>3000)transmit(p);
+  });
+  renderAssistLink();
+  var v=asState(),n=asNotice(v,"");
+  if((n?n[2]:"")!==assistNoteKey)renderAssist(false);
+}
+
+function asState(){
+  var k=kioskById(assistKiosk),x=sessions[assistKiosk]||null,live=isLive(),connected=assistable(k);
+  var ready=live&&connected&&!!x;
+  var editable=ready&&!x.paying&&(x.screen==="builder"||x.screen==="summary"||x.screen==="name");
+  return {k:k,s:x,live:live,connected:connected,ready:ready,editable:editable};
+}
+
+function asNotice(v,name){
+  var x=v.s;
+  if(!v.live)return ["bad","wifiOff","This iPad is offline","Assist needs a live connection. Showing the last known order; changes are off until it reconnects."];
+  if(!v.k)return ["bad","alert","This kiosk was removed","It isn't in the kiosk list any more."];
+  if(!v.connected)return ["bad","wifiOff",name+" is offline","Assist needs a live connection to the kiosk. Changes are off until it reconnects."];
+  if(!x)return Date.now()-assistOpenedAt<8000?["wait","loader","Connecting to "+name,"Waiting for the kiosk to share its order."]:["warn","alert",name+" isn't sharing its order","Its app may need an update before it can be assisted."];
+  if(x.paying)return ["warn","card","Payment in progress","The customer is paying on the kiosk. Changes are paused until they finish."];
+  if(x.screen==="attract")return x.orderingOpen?["info","tablet",name+" is on its welcome screen","Start an order for the customer, or let them tap Begin Order."]:["warn","ban",name+" is closed","It isn't taking new orders."];
+  if(x.screen==="confirmation")return ["info","circleCheck","Paid","The kiosk is showing the receipt."];
+  if(x.screen==="roleSetup"||x.screen==="staff")return ["warn","alert",name+" isn't running as a kiosk","Nothing to assist with right now."];
+  return null;
+}
+
+function renderAssistLink(){
+  var el=$("asLink");if(!el||!assistKiosk)return;
+  var v=asState(),busy=Object.keys(cmdPending).length>0;
+  if(!v.live){el.className="live off";el.innerHTML='<span class="dot"></span>Offline';}
+  else if(!v.connected){el.className="live off";el.innerHTML='<span class="dot"></span>Kiosk offline';}
+  else if(busy){el.className="live";el.innerHTML=ico("loader","spin")+"Sending";}
+  else{el.className="live";el.innerHTML='<span class="dot"></span>Live';}
+}
+
+function renderAssist(fresh){
+  if(!assistKiosk||!$("assist"))return;
+  var v=asState(),name=v.k?kioskName(v.k):"Kiosk";
+  $("asTitle").textContent=name;
+  renderAssistLink();
+  var urgent=urgentOpen();
+  $("asAlerts").innerHTML=urgent.slice(0,2).map(alertBar).join("");
+  var n=asNotice(v,name);
+  assistNoteKey=n?n[2]:"";
+  var start=n&&v.ready&&v.s.screen==="attract"&&v.s.orderingOpen?'<button class="tinted" type="button" data-asnav="builder">'+ico("play")+"Start an order</button>":"";
+  $("asNote").innerHTML=n?'<div class="as-note '+n[0]+'"><span class="aglyph">'+ico(n[1],n[0]==="wait"?"spin":"")+'</span><span><b>'+esc(n[2])+"</b>"+(n[3]?'<span class="sub">'+esc(n[3])+"</span>":"")+"</span>"+start+"</div>":"";
+  $("asOrder").innerHTML=assistOrder(v);
+  $("asSide").innerHTML=assistSide(v);
+  assistName(v,fresh);
+  var canStart=v.ready&&!v.s.paying&&["builder","summary","name","confirmation"].indexOf(v.s.screen)>=0;
+  $("asEnd").innerHTML='<div class="section-head"></div><div class="group"><div class="cell"><button class="destructive" type="button" id="asStartOver"'+dis(!canStart)+">Start over</button></div></div><p class=\"footnote\">Clears the whole order and takes the kiosk back to its welcome screen.</p><p class=\"footnote\">While this is open the kiosk shows \"A staff member is helping you\". Payment always happens on the kiosk, on Square's own screen.</p>";
+}
+
+function assistOrder(v){
+  var x=v.s;
+  var head='<div class="section-head"><h2>Order</h2>'+(x&&x.items.length?'<span class="as-total">Total '+money(x.totalCents)+"</span>":"")+"</div>";
+  if(!x||!x.items.length)return head+emptyGroup(x&&x.screen!=="attract"?"Nothing in the order yet.":"No order in progress.");
+  var n=0;
+  var html=x.items.map(function(it){return assistItem(it,it.inOrder?"Item "+(++n):"New item",v);}).join("");
+  if(["builder","summary","name"].indexOf(x.screen)>=0)html+='<button class="as-add" type="button" id="asAdd"'+dis(!v.editable)+">"+ico("plus")+"Add another item</button>";
+  return head+html;
+}
+
+function assistItem(it,label,v){
+  var x=v.s,e=v.editable,max=x.maxScoops||3,full=it.flavors.length>=max,id=esc(it.id);
+  var onScreen=x.screen==="builder"&&it.current;
+  var tops=it.toppings||[];
+  var desc=vesselName(it.vessel)+", "+(it.flavors.length?flavorText(it.flavors):"no scoops yet")+(tops.length?", "+joinAnd(tops.map(toppingName)):"");
+  var removable=it.inOrder||it.flavors.length>0||tops.length>0;
+  var h='<article class="group as-item'+(onScreen?" cur":"")+'"><div class="as-ihead"><div class="grow"><div class="as-iname">'+esc(label)+(onScreen?'<span class="as-on">On screen</span>':"")+'</div><div class="sub">'+esc(desc)+(it.inOrder?"":". It joins the order with its first scoop.")+"</div></div>"+(it.inOrder?'<span class="as-price">'+money(it.cents)+"</span>":"")+(removable?'<button class="as-trash" type="button" data-asremove="'+id+'" aria-label="Remove '+esc(label)+'"'+dis(!e)+">"+ico("trash")+"</button>":"")+"</div>";
+  h+='<div class="as-seg" role="group" aria-label="Cup or cone for '+esc(label)+'">'+["cup","cone"].map(function(vs){
+    var su=supplyByKey("vessel:"+vs),out=!!su&&supplyOut(su),sel=it.vessel===vs;
+    return '<button type="button" class="'+(sel?"sel":"")+'" aria-pressed="'+sel+'" data-asvessel="'+vs+'" data-asitem="'+id+'"'+dis(!e||(!sel&&out))+">"+ico(vesselIcon(vs))+esc(vesselName(vs))+(out&&!sel?"<small>Sold out</small>":"")+"</button>";
+  }).join("")+"</div>";
+  h+='<div class="as-label"><span>Scoops</span><span>'+it.flavors.length+" of "+max+'</span></div><div class="list as-flavors">'+supplies().filter(function(f){return f.kind==="flavor";}).map(function(f){
+    var c=it.flavors.filter(function(x){return x===f.id;}).length,out=supplyOut(f);
+    return '<div class="cell"><div class="grow"><div class="label">'+esc(f.name)+"</div>"+(out?'<div class="soldout">Sold out</div>':"")+'</div><div class="as-step"><button type="button" data-asminus="'+esc(f.id)+'" data-asitem="'+id+'" aria-label="Remove a '+esc(f.name)+' scoop from '+esc(label)+'"'+dis(!e||!c)+">"+ico("minus")+'</button><span class="n">'+c+'</span><button type="button" class="plus" data-asplus="'+esc(f.id)+'" data-asitem="'+id+'" aria-label="Add a '+esc(f.name)+' scoop to '+esc(label)+'"'+dis(!e||full||out)+">"+ico("plus")+"</button></div></div>";
+  }).join("")+"</div>";
+  h+='<div class="as-label"><span>Toppings</span><span>'+(it.flavors.length?plural(tops.length,"topping"):"Add a scoop first")+'</span></div><div class="as-chips">'+supplies().filter(function(t){return t.kind==="topping";}).map(function(t){
+    var on=tops.indexOf(t.id)>=0,out=supplyOut(t);
+    return '<button type="button" class="as-chip'+(on?" on":"")+'" aria-pressed="'+on+'" data-astopping="'+esc(t.id)+'" data-asitem="'+id+'"'+dis(!e||(!on&&(out||!it.flavors.length)))+">"+(on?ico("check"):"")+esc(t.name)+(out&&!on?" <small>Sold out</small>":"")+"</button>";
+  }).join("")+"</div>";
+  return h+"</article>";
+}
+
+function assistSide(v){
+  var x=v.s,here=x&&!x.paying?x.screen:null;
+  var html='<div class="section-head"><h2>Kiosk screen</h2></div><div class="group list">'+ASSIST_NAV.map(function(r){
+    var on=here===r[0];
+    return '<button class="cell as-nav'+(on?" here":"")+'" type="button" data-asnav="'+r[0]+'" aria-pressed="'+on+'"'+dis(!v.editable||on)+'><span class="label">'+r[1]+"</span>"+(on?ico("check"):"")+"</button>";
+  }).join("")+"</div>";
+  var now="";
+  if(x&&x.paying)now="The customer is paying on Square's screen.";
+  else if(x&&x.screen==="builder"&&x.step)now="The customer is choosing "+STEP_LABEL[x.step]+(x.editing?" for an item they're changing.":".");
+  else if(x)now="The kiosk is on "+SCREEN_LABEL[x.screen]+".";
+  return html+(now?'<p class="footnote">'+esc(now)+"</p>":"");
+}
+
+function assistName(v,fresh){
+  var wrap=$("asNameWrap"),input=$("asName");
+  if(fresh||!input){
+    wrap.innerHTML='<div class="section-head"><h2>Name for pickup</h2></div><div class="group"><form class="cell" id="asNameForm"><input id="asName" class="field" maxlength="24" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done" aria-label="Name for pickup" placeholder="Customer\'s name"><button class="link" type="submit" id="asNameSave">Save</button></form></div><p class="footnote">Called out when the order is ready.</p>';
+    input=$("asName");
+  }
+  var ok=v.editable;
+  if(document.activeElement!==input)input.value=v.s?v.s.customerName:"";
+  input.disabled=!ok;$("asNameSave").disabled=!ok;
+}
+
+function saveCustomerName(){
+  var input=$("asName");if(!input)return;
+  var name=cleanName(input.value).slice(0,24);
+  input.blur();
+  var x=sessions[assistKiosk];
+  if(x&&name===x.customerName)return;
+  command("setName",{name:name});
+}
+
+function assistItemByID(id){var x=sessions[assistKiosk];return x?x.items.filter(function(i){return i.id===id;})[0]||null:null;}
+
+function askRemoveItem(id){
+  var x=sessions[assistKiosk],it=assistItemByID(id);if(!x||!it)return;
+  var n=0,label="the new item";
+  x.items.forEach(function(i){if(i.inOrder)n++;if(i.id===id&&i.inOrder)label="item "+n;});
+  var name=kioskName(kioskById(assistKiosk)||{id:assistKiosk,tag:""});
+  ask("Remove "+label+"?",(it.inOrder?"It comes out of the order on "+name+".":"The item being built on "+name+" is cleared.")+" The customer sees it go.","Remove",true,"Cancel",function(){command("removeItem",{item:id});});
+}
+
+function askStartOver(){
+  var k=kioskById(assistKiosk),name=k?kioskName(k):"this kiosk";
+  ask("Start over at "+name+"?","This clears the customer's whole order and takes the kiosk back to its welcome screen.","Start over",true,"Cancel",function(){command("startOver",{});});
+}
+
+function assistClick(el){
+  var d=el.dataset;
+  if(el.id==="assistOpen"){startAssist();return true;}
+  if(el.id==="apDone"){hideDialog($("assistPick"));return true;}
+  if(el.id==="asDone"){stopAssist();return true;}
+  if(d.assistk){var ka=kioskById(d.assistk);if(ka)askAssist(ka);return true;}
+  if(d.kassist){var kb=kioskById(d.kassist);if(kb){closeSheet();askAssist(kb);}return true;}
+  if(!assistKiosk)return false;
+  if(d.asplus){command("addScoop",{item:d.asitem,flavor:d.asplus});return true;}
+  if(d.asminus){command("removeScoop",{item:d.asitem,flavor:d.asminus});return true;}
+  if(d.asvessel){if(el.getAttribute("aria-pressed")!=="true")command("setVessel",{item:d.asitem,vessel:d.asvessel});return true;}
+  if(d.astopping){command("setTopping",{item:d.asitem,topping:d.astopping,on:el.getAttribute("aria-pressed")!=="true"});return true;}
+  if(d.asremove){askRemoveItem(d.asremove);return true;}
+  if(d.asnav){command("navigate",{to:d.asnav});return true;}
+  if(el.id==="asAdd"){command("addItem",{});return true;}
+  if(el.id==="asStartOver"){askStartOver();return true;}
+  return false;
+}
 
 function renewSession(){
   fetch("/dashboard/renew",{method:"POST",credentials:"same-origin",cache:"no-store"}).then(function(r){if(r.status===401)location.reload();}).catch(function(){});
