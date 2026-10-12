@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { adminBody, adminScript } from "./admin-page";
+import { adminBody, adminScript, adminStyle } from "./admin-page";
 import { catalogReport, type CatalogReport } from "./catalog";
 import { staffPage } from "./dashboard";
 import { callHub, HttpError, hub, json, readBody, withRetry, type Route, type RouteContext } from "./http";
@@ -419,7 +419,7 @@ export const routes: Route[] = [
     method: "GET",
     path: "/staff/admin",
     async handle({ url }) {
-      return staffPage(url, "Admin", adminBody(), 200, adminScript());
+      return staffPage(url, "Admin", adminBody(), 200, adminScript(), adminStyle());
     },
   },
   {

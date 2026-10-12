@@ -13,9 +13,9 @@ function csp(nonce: string, url: URL): Record<string, string> {
   };
 }
 
-export function staffPage(url: URL, title: string, body: string, status = 200, script = ""): Response {
+export function staffPage(url: URL, title: string, body: string, status = 200, script = "", style = ""): Response {
   const nonce = randomToken(12);
-  return html(shell(title, body, nonce, script), status, csp(nonce, url));
+  return html(shell(title, body, nonce, script, style), status, csp(nonce, url));
 }
 
 function loginPage(url: URL, message: string | null, status = 200, next = "/staff"): Response {

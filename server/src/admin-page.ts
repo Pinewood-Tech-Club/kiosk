@@ -5,3 +5,7 @@ export function adminBody(): string {
 export function adminScript(): string {
   return `"use strict";`;
 }
+
+export function adminStyle(): string {
+  return "";
+}

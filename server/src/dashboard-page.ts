@@ -369,11 +369,11 @@ export function icon(name: string, cls = ""): string {
   return `<svg class="i${cls ? ` ${cls}` : ""}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 }
 
-export function shell(title: string, body: string, nonce: string, script = ""): string {
+export function shell(title: string, body: string, nonce: string, script = "", style = ""): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex"><meta name="color-scheme" content="only light"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="format-detection" content="telephone=no">
 <meta name="theme-color" content="#F2F2F7">
-<title>${escapeHtml(title)}</title><style nonce="${nonce}">${STYLE}</style></head><body>${body}${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
+<title>${escapeHtml(title)}</title><style nonce="${nonce}">${STYLE}${style}</style></head><body>${body}${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
 }
 
 export function loginBody(message: string | null, next = "/staff"): string {
