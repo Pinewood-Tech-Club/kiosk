@@ -391,6 +391,11 @@ describe("kiosk registry", () => {
     alert = (await serverState()).alerts.find((a) => a.id === alertId)!;
     expect(alert.title).toBe("Customer needs help at Adam's iPad");
 
+    const reported = newDevice("k");
+    const reportedAlert = (await post("/v1/events", KIOSK, reported, { events: [help(`${reported}-h`, 1)] })).body.results[0].alertId;
+    await post("/v1/events", KIOSK, reported, { events: [healthEvent(`${reported}-g`, 1, { kioskName: "Window table" })] });
+    expect((await serverState()).alerts.find((a) => a.id === reportedAlert)?.title).toBe("Customer needs help at Window table");
+
     expect((await act(`${staff}-rm`, [{ type: "removeKiosk", kiosk: device }])).body.results[0].status).toBe("ok");
     const state = await serverState();
     expect(kioskIn(state, device)).toBeUndefined();

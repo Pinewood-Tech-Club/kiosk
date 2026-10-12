@@ -27,7 +27,7 @@ A missing or wrong token is `401`. A valid token used on a route its role can't 
 **Staff sessions** *(added)*. Staff can sign in with the staff PIN (`STAFF_PIN`, or the staff token itself) instead of holding `STAFF_TOKEN`:
 
 - `POST /v1/staff/session` (no auth) with `{ "pin": "..." }` returns `{ "token": "st1....", "expiresAt": <ms> }`. The token is a bearer token for the `staff` role, valid 72 hours, signed with a key derived from `STAFF_TOKEN` (rotating `STAFF_TOKEN` signs everyone out). The staff app trades `STAFF_TOKEN` for one and puts it in its web view's cookie store as `booth_staff`. Wrong PIN is `401`; more than 10 attempts a minute from one IP is `429`.
-- The staff pages get the same token as an `HttpOnly; Secure; SameSite=Strict` cookie named `booth_staff` from `POST /dashboard/login` (form fields `pin` and `next`). The cookie is accepted on `/v1/` routes for the `staff` role only; any non-GET request authenticated by cookie must carry an `Origin` header equal to the server's origin. Without `X-Booth-Device`, a cookie client's device is `web-<session id>`.
+- The staff pages get the same token as an `HttpOnly; Secure; SameSite=Strict` cookie named `booth_staff` from `POST /dashboard/login` (form fields `pin` and `next`). The cookie is accepted on `/v1/` routes for the `staff` role only; any non-GET request and any websocket upgrade (`/v1/ws`) authenticated by cookie must carry an `Origin` header equal to the server's origin. Without `X-Booth-Device`, a cookie client's device is `web-<session id>`.
 
 ## Errors
 

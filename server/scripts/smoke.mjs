@@ -278,6 +278,14 @@ await step("staff session and dashboard", async () => {
     const response = await fetch(`${base}/staff/${page}`, { headers: { Cookie: `booth_staff=${session.json?.token}` } });
     check(`staff page ${page} served`, response.status === 200 && (await response.text()).includes("new WebSocket"));
   }
+  const cookieSocket = (origin) => new Promise((resolve) => {
+    const ws = new WebSocket(base.replace(/^http/, "ws") + "/v1/ws", { headers: { Cookie: `booth_staff=${session.json?.token}`, Origin: origin } });
+    ws.once("open", () => { ws.close(); resolve(101); });
+    ws.once("unexpected-response", (_req, res) => resolve(res.statusCode));
+    ws.once("error", () => resolve(0));
+  });
+  check("cookie socket from another origin refused", (await cookieSocket("https://elsewhere.techclub.pw")) === 403);
+  check("cookie socket from the staff pages' origin opens", (await cookieSocket(new URL(base).origin)) === 101);
 });
 
 await step("orders", async () => {

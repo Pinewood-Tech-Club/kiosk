@@ -396,8 +396,6 @@ export class Booth extends DurableObject<Env> {
     }
   }
 
-  // MARK: Assist
-
   private storeSession(ws: WebSocket, device: string, raw: unknown, now: number) {
     const parsed = KioskSession.safeParse(raw);
     if (!parsed.success) {
@@ -668,8 +666,10 @@ export class Booth extends DurableObject<Env> {
     const entry = this.kioskEntry(device) ?? this.newKiosk(device, now);
     const reportedName = health.kioskName !== undefined ? cleanName(health.kioskName) : entry.reportedName;
     const next: KioskEntry = { ...entry, health, healthAt: now, screen: health.screen || entry.screen, reportedName };
-    this.putKiosk({ ...next, name: displayName(next) });
+    next.name = displayName(next);
+    this.putKiosk(next);
     this.commitKiosks();
+    if (next.name !== entry.name) this.retitleAlerts(device, entry.name, next.name, now);
     return { status: "ok" };
   }
 
@@ -770,7 +770,6 @@ export class Booth extends DurableObject<Env> {
     }
   }
 
-  /** Raises offline and health alerts per kiosk once their deadlines pass, then arms the alarm for the next one. */
   async evaluate(now: number): Promise<void> {
     const deadlines: number[] = [];
     const stored = this.getMeta<Conditions>("conditions") ?? {};
@@ -892,7 +891,6 @@ export class Booth extends DurableObject<Env> {
     this.putMeta("conditions", conditions);
   }
 
-  /** Keeps the registry small when test devices come and go: the kiosks heard from least recently and now offline go first. */
   private pruneKiosks(now: number) {
     const all = this.kiosks();
     const excess = all.length - MAX_KIOSKS;
