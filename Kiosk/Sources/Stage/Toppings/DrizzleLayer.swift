@@ -137,8 +137,8 @@ final class DrizzleLayer: ToppingLayer {
         model.name = "drizzle-\(style.name)"
     }
 
-    /// A glossy pool of syrup with a settled drizzle crossing it, for the topping card's icon: about 40 mm across,
-    /// resting on y = 0 and centered on the Y axis. The caller still applies the stage's lighting to it.
+    /// A settled drizzle, optionally over a glossy pool of syrup, tipped toward the viewer so the pattern reads on
+    /// the topping card's icon. The caller still applies the stage's lighting to it.
     static func makeIconPuddle(style: DrizzleStyle = .chocolate, seed: UInt64 = 11, showsPool: Bool = false) -> Entity {
         let pool = IconPool(radius: 0.02, depth: 0.0022, seed: seed)
         let root = Entity()
@@ -147,7 +147,10 @@ final class DrizzleLayer: ToppingLayer {
         let layer = DrizzleLayer(style: style)
         layer.apply(onto: pool, seed: seed, animated: false, now: 0)
         root.addChild(layer.entity)
-        return root
+        root.orientation = simd_quatf(angle: -0.35, axis: [1, 0, 0])
+        let icon = Entity()
+        icon.addChild(root)
+        return icon
     }
 
     func apply(onto surface: ToppingSurface, seed: UInt64, animated: Bool, now: Double) {

@@ -78,6 +78,11 @@ final class ScatterLayer: ToppingLayer {
         let settle: ScatterSettle
         let next: Int
         let start: Double
+        /// One attempt runs per call, so a piece that needs several never stalls a frame.
+        var spots: [SIMD2<Float>] = []
+        var attempt = 0
+        var awkward: ScatterSettle.Outcome?
+        var perched: ScatterSettle.Outcome?
     }
 
     private struct Resurfacing {
@@ -241,7 +246,7 @@ final class ScatterLayer: ToppingLayer {
     /// A piece settled after its planned toss time is tossed `now` instead. False while waiting for the layers beneath.
     @discardableResult
     private func settleNext(now: Double?, force: Bool) -> Bool {
-        guard let job = pending else { return false }
+        guard var job = pending else { return false }
         if !bodiesReady {
             guard let below = restingBeneath(force: force) else { return false }
             bodies = below
@@ -253,56 +258,43 @@ final class ScatterLayer: ToppingLayer {
         let toss = tosses[index]
         let radius = max(surface.radius, 1e-3)
         let apexXZ = SIMD2(surface.apex.x, surface.apex.z)
-        let firstAngle = atan2(toss.candidates[0].y, toss.candidates[0].x)
-        let ring = (0..<12).map { k in
-            let angle = firstAngle + Float(k) * 2.4
-            return SIMD2(cos(angle), sin(angle)) * [0.3, 0.55, 0.8][k % 3]
-        }
-        let spots = (toss.candidates + ring).map { offset -> (spot: SIMD2<Float>, score: Float) in
-            let candidate = apexXZ + offset * radius
-            var score = radius
-            for other in bodies {
-                let gap = simd_distance(candidate, SIMD2(other.position.x, other.position.z))
-                score = min(score, gap - other.shape.bound - piece.shape.bound)
+        if job.spots.isEmpty {
+            let firstAngle = atan2(toss.candidates[0].y, toss.candidates[0].x)
+            let ring = (0..<12).map { k in
+                let angle = firstAngle + Float(k) * 2.4
+                return SIMD2(cos(angle), sin(angle)) * [0.3, 0.55, 0.8][k % 3]
             }
-            score -= 0.1 * simd_length(offset) * radius
-            if (surface.sample(x: candidate.x, z: candidate.y)?.normal.y ?? 0) < Self.steepestAim { score -= radius }
-            return (candidate, score)
-        }.sorted { $0.score > $1.score }
+            job.spots = (toss.candidates + ring).map { offset -> (spot: SIMD2<Float>, score: Float) in
+                let candidate = apexXZ + offset * radius
+                var score = radius
+                for other in bodies {
+                    let gap = simd_distance(candidate, SIMD2(other.position.x, other.position.z))
+                    score = min(score, gap - other.shape.bound - piece.shape.bound)
+                }
+                score -= 0.1 * simd_length(offset) * radius
+                if (surface.sample(x: candidate.x, z: candidate.y)?.normal.y ?? 0) < Self.steepestAim { score -= radius }
+                return (candidate, score)
+            }.sorted { $0.score > $1.score }.prefix(Self.attempts).map(\.spot)
+        }
+        let attempt = job.attempt
+        let spot = job.spots[attempt]
+        let ground = surface.sample(x: spot.x, z: spot.y)?.height ?? surface.apex.y
+        let start = ScatterPose(position: [spot.x, ground + Self.dropHeight + piece.shape.bound, spot.y], rotation: toss.orientation)
+        let result = job.settle.run(piece.shape, from: start, velocity: [toss.push.x, -Self.dropSpeed, toss.push.z],
+                                    spin: attempt == 0 ? toss.spin : .zero, among: bodies)
         var landed: ScatterSettle.Outcome?
-        var awkward: ScatterSettle.Outcome?
-        var perched: ScatterSettle.Outcome?
-        for (attempt, spot) in spots.prefix(Self.attempts).map(\.spot).enumerated() {
-            let ground = surface.sample(x: spot.x, z: spot.y)?.height ?? surface.apex.y
-            let start = ScatterPose(position: [spot.x, ground + Self.dropHeight + piece.shape.bound, spot.y], rotation: toss.orientation)
-            let result = job.settle.run(piece.shape, from: start, velocity: [toss.push.x, -Self.dropSpeed, toss.push.z],
-                                        spin: attempt == 0 ? toss.spin : .zero, among: bodies)
-            if result.fell || Self.restsOnRaised(piece.shape, result.rest, among: bodies) { continue }
-            if result.onPieces {
-                let cream = surface.sample(x: result.rest.position.x, z: result.rest.position.z)?.height ?? surface.apex.y
-                if perched == nil, result.rest.position.y - cream < Self.perchHeight + piece.shape.half.min(),
-                   !Self.standsOnEnd(piece.shape, result.rest, ground: [0, 1, 0]), !Self.onEdge(piece.shape, result.rest, ground: [0, 1, 0]) {
-                    perched = result
-                }
-                continue
-            }
-            let normal = surface.sample(x: result.rest.position.x, z: result.rest.position.z)?.normal ?? [0, 1, 0]
-            if Self.standsOnEnd(piece.shape, result.rest, ground: normal)
-                || Self.standsOnEnd(piece.shape, result.rest, ground: [0, 1, 0], upright: 0.9) {
-                continue
-            }
-            if Self.onEdge(piece.shape, result.rest, ground: normal) || Self.onEdge(piece.shape, result.rest, ground: [0, 1, 0]) {
-                let ground = surface.sample(x: result.rest.position.x, z: result.rest.position.z)?.height ?? surface.apex.y
-                if awkward == nil, result.rest.position.y - ground < 1.1 * piece.shape.half.max(),
-                   !Self.standsOnEnd(piece.shape, result.rest, ground: [0, 1, 0]) {
-                    awkward = result
-                }
-                continue
-            }
-            landed = result
-            break
+        switch judge(result, shape: piece.shape, on: surface) {
+        case .lies: landed = result
+        case .perches: if job.perched == nil { job.perched = result }
+        case .wedges: if job.awkward == nil { job.awkward = result }
+        case .rejected: break
         }
-        if landed == nil { landed = perched ?? awkward }
+        if landed == nil, attempt + 1 < job.spots.count {
+            job.attempt = attempt + 1
+            pending = job
+            return true
+        }
+        if landed == nil { landed = job.perched ?? job.awkward }
         if let landed {
             piece.rest = landed.rest
             piece.track = landed.track
@@ -321,6 +313,29 @@ final class ScatterLayer: ToppingLayer {
         pieces[index] = piece
         pending = index + 1 < pieces.count ? Pending(surface: surface, settle: job.settle, next: index + 1, start: job.start) : nil
         return true
+    }
+
+    private enum Judgement { case lies, perches, wedges, rejected }
+
+    /// Lying on the ice cream is best; resting on one lying piece, or wedged on edge low down, will do if nothing
+    /// better turns up; standing on end, falling off, or leaning on a piece that's already up on others never will.
+    private func judge(_ result: ScatterSettle.Outcome, shape: ScatterShape, on surface: ToppingSurface) -> Judgement {
+        let rest = result.rest
+        let up: SIMD3<Float> = [0, 1, 0]
+        guard !result.fell, !Self.restsOnRaised(shape, rest, among: bodies) else { return .rejected }
+        guard let ground = surface.sample(x: rest.position.x, z: rest.position.z) else { return .rejected }
+        if result.onPieces {
+            let low = rest.position.y - ground.height < Self.perchHeight + shape.half.min()
+            return low && !Self.standsOnEnd(shape, rest, ground: up) && !Self.onEdge(shape, rest, ground: up) ? .perches : .rejected
+        }
+        if Self.standsOnEnd(shape, rest, ground: ground.normal) || Self.standsOnEnd(shape, rest, ground: up, upright: 0.9) {
+            return .rejected
+        }
+        if Self.onEdge(shape, rest, ground: ground.normal) || Self.onEdge(shape, rest, ground: up) {
+            let low = rest.position.y - ground.height < 1.1 * shape.half.max()
+            return low && !Self.standsOnEnd(shape, rest, ground: up) ? .wedges : .rejected
+        }
+        return .lies
     }
 
     func resurface(to surface: ToppingSurface, duration: Double, now: Double) {
