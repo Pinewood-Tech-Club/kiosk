@@ -275,10 +275,12 @@ final class AppModel {
         withAnimation(.easeInOut(duration: 0.5)) { screen = .roleSetup }
     }
 
-    var orderingOpen: Bool { booth.kioskOpen && !booth.outOfVessels }
+    var orderingOpen: Bool { booth.kioskOpen && !booth.outOfVessels && !booth.outOfFlavors }
 
     var closedReason: String {
-        booth.kioskOpen ? "We're out of cups and cones for now. Please see a staff member." : "Ordering is paused. Please see a staff member."
+        if !booth.kioskOpen { return "Ordering is paused. Please see a staff member." }
+        if booth.outOfFlavors { return "We're out of ice cream for now. Please see a staff member." }
+        return "We're out of cups and cones for now. Please see a staff member."
     }
 
     func vesselsChanged() {

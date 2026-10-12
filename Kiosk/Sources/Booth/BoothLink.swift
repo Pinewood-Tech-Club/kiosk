@@ -97,6 +97,7 @@ final class BoothLink {
     func isSoldOut(_ vessel: Vessel) -> Bool { soldOutVessels.contains(vessel) }
     func isSoldOut(_ topping: Topping) -> Bool { soldOutToppings.contains(topping) }
     var outOfVessels: Bool { Vessel.allCases.allSatisfy(soldOutVessels.contains) }
+    var outOfFlavors: Bool { Flavor.allCases.allSatisfy(soldOut.contains) }
 
     func start(square: SquareService, app: AppModel) {
         guard !started else { return }
