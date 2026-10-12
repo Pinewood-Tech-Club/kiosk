@@ -140,7 +140,7 @@ function cart(overrides: Record<string, unknown> = {}) {
     orderNumber: 12,
     customerName: "Alex",
     sourceName: "Tech Club Ice Cream Kiosk",
-    quotedCents: 1100,
+    quotedCents: 1300,
     items: [
       { vessel: "cone", flavors: ["vanilla", "chocolate"], toppings: ["whip"] },
       { vessel: "cup", flavors: ["cookies"] },
@@ -161,14 +161,28 @@ afterEach(() => {
 describe("pricing", () => {
   const item = (vessel: "cup" | "cone", flavors: string[], toppings: string[] = []): CartItem => ({ vessel, flavors, toppings });
 
-  it("prices scoops by their position in the whole order, like the app", () => {
-    expect([1, 2, 3, 4, 5].map(scoopsTotal)).toEqual([400, 700, 900, 1100, 1300]);
+  it("prices each cup or cone on its own, like the app", () => {
+    expect([1, 2, 3].map(scoopsTotal)).toEqual([400, 700, 900]);
     expect(quote([item("cup", ["vanilla"])]).totalCents).toBe(400);
+    expect(quote([item("cup", ["vanilla", "chocolate"])]).totalCents).toBe(700);
+    expect(quote([item("cup", ["vanilla", "chocolate", "cookies"])]).totalCents).toBe(900);
     expect(quote([item("cone", ["vanilla", "chocolate"])]).totalCents).toBe(850);
+  });
+
+  it("gives no discount across items", () => {
+    const three = ["vanilla", "chocolate", "cookies"];
+    const twoCups = quote([item("cup", three), item("cup", three)]);
+    expect(twoCups.lines.map((l) => l.scoopShareCents)).toEqual([900, 900]);
+    expect(twoCups.totalCents).toBe(1800);
+    expect(twoCups.scoopCount).toBe(6);
+    expect(quote([item("cup", ["vanilla"]), item("cone", ["vanilla"])]).totalCents).toBe(950);
+  });
+
+  it("prices a mixed cup and cone with toppings", () => {
     const q = quote([item("cone", ["vanilla", "chocolate"], ["whip"]), item("cup", ["cookies", "cookies", "vanilla"], ["gummies", "mms"])]);
-    expect(q.lines.map((l) => l.scoopShareCents)).toEqual([700, 600]);
-    expect(q.lines.map((l) => l.totalCents)).toEqual([900, 700]);
-    expect(q.totalCents).toBe(1600);
+    expect(q.lines.map((l) => l.scoopShareCents)).toEqual([700, 900]);
+    expect(q.lines.map((l) => l.totalCents)).toEqual([900, 1000]);
+    expect(q.totalCents).toBe(1900);
     expect(q.scoopCount).toBe(5);
   });
 
@@ -181,14 +195,14 @@ describe("pricing", () => {
       { catalog_object_id: "V2", quantity: "1", note: "#1 Waffle Cone: Chocolate" },
       { catalog_object_id: "VC", quantity: "1", note: "#1" },
       { catalog_object_id: "VT", quantity: "1", note: "#1 Waffle Cone: Sprinkles" },
-      { catalog_object_id: "V3", quantity: "1", note: "#2 Cup: Cookies & Cream" },
+      { catalog_object_id: "V1", quantity: "1", note: "#2 Cup: Cookies & Cream" },
     ]);
     expect(chargedLines(q).map((l) => [l.title, l.detail, l.cents])).toEqual([
       ["1 Scoop", "#1 Waffle Cone: Vanilla", 400],
       ["2nd Scoop", "#1 Waffle Cone: Chocolate", 300],
       ["Waffle Cone", "#1", 150],
       ["Topping", "#1 Waffle Cone: Sprinkles", 50],
-      ["3rd+ Scoop", "#2 Cup: Cookies & Cream", 200],
+      ["1 Scoop", "#2 Cup: Cookies & Cream", 400],
     ]);
     const adHoc = adHocLineItems(q);
     const adHocTotal = adHoc.reduce((sum, line: any) => sum + line.base_price_money.amount + line.modifiers.reduce((s: number, m: any) => s + m.base_price_money.amount, 0), 0);
@@ -337,16 +351,16 @@ describe("checkout", () => {
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({
       id: body.id, status: "created", squareOrderId: `SQ-${body.id}`, locationId: "LOC1", referenceId: "kiosk-0012",
-      totalCents: 1100, subtotalCents: 1100, expectedSubtotalCents: 1100, priceMatches: true, usedCatalog: true, receiptToken: body.receiptToken,
+      totalCents: 1300, subtotalCents: 1300, expectedSubtotalCents: 1300, priceMatches: true, usedCatalog: true, receiptToken: body.receiptToken,
     });
-    expect(first.body.lines.map((l: any) => l.title)).toEqual(["1 Scoop", "2nd Scoop", "Waffle Cone", "Topping", "3rd+ Scoop"]);
+    expect(first.body.lines.map((l: any) => l.title)).toEqual(["1 Scoop", "2nd Scoop", "Waffle Cone", "Topping", "1 Scoop"]);
     const created = callsTo("/v2/orders")[0].body;
     expect(created.idempotency_key).toBe(body.id);
     expect(created.order).toMatchObject({ location_id: "LOC1", ticket_name: "Alex", reference_id: "kiosk-0012", metadata: { checkout_id: body.id } });
     expect(callsTo("/v2/orders")[0].authorization).toBe("Bearer EAAA-access-1");
 
     const again = await call("/v1/checkout", { token: KIOSK, json: body });
-    expect(again.body).toMatchObject({ status: "duplicate", squareOrderId: first.body.squareOrderId, totalCents: 1100 });
+    expect(again.body).toMatchObject({ status: "duplicate", squareOrderId: first.body.squareOrderId, totalCents: 1300 });
     expect(callsTo("/v2/orders")).toHaveLength(1);
 
     const changed = await call("/v1/checkout", { token: KIOSK, json: { ...body, items: [{ vessel: "cup", flavors: ["vanilla"] }] } });
@@ -379,7 +393,7 @@ describe("checkout", () => {
     mockSquare({ "/v2/catalog/search-catalog-items": () => ({ body: { items: catalogItems(["V1", "V2", "V3", "VC"]) } }) });
     await connectSquare();
     const result = await call("/v1/checkout", { token: KIOSK, json: cart() });
-    expect(result.body).toMatchObject({ usedCatalog: false, totalCents: 1100, priceMatches: true });
+    expect(result.body).toMatchObject({ usedCatalog: false, totalCents: 1300, priceMatches: true });
     expect(result.body.catalogError).toMatch(/Topping/);
     expect(callsTo("/v2/orders")[0].body.order.line_items[0].name).toBe("Ice cream, 2 scoops");
   });
@@ -532,11 +546,11 @@ describe("receipts", () => {
     const tagged = [
       { title: "1 Scoop", detail: "#1 Cone: Vanilla", cents: 400 },
       { title: "Waffle Cone", detail: "#1", cents: 150 },
-      { title: "2nd Scoop", detail: "#2 Cup: Chocolate", cents: 300 },
+      { title: "1 Scoop", detail: "#2 Cup: Chocolate", cents: 400 },
     ];
-    expect(itemPrices(items, tagged, 850)).toEqual([550, 300]);
+    expect(itemPrices(items, tagged, 950)).toEqual([550, 400]);
     expect(itemPrices(items, tagged, 900)).toEqual(quote(items as CartItem[]).lines.map((l) => l.totalCents));
-    expect(itemPrices(items, [{ title: "Scoop", detail: "Vanilla", cents: 850 }], 850)).toEqual(quote(items as CartItem[]).lines.map((l) => l.totalCents));
+    expect(itemPrices(items, [{ title: "Scoop", detail: "Vanilla", cents: 950 }], 950)).toEqual(quote(items as CartItem[]).lines.map((l) => l.totalCents));
   });
 });
 

@@ -402,7 +402,7 @@ Creates the Square order for a cart, priced by the server, and returns what the 
   "lines": [{ "title": "1 Scoop", "detail": "#1 Waffle Cone: Vanilla", "quantity": 1, "baseCents": 400, "cents": 400 }] }
 ```
 
-Pricing is the app's: scoops by position in the whole order ($4, $3, then $2 each), $1.50 per waffle cone, $0.50 per topping. Line items reference the catalog category `SQUARE_CATEGORY_NAME` (*1 Scoop*, *2nd Scoop*, *3rd+ Scoop*, *Waffle Cone*, *Topping*, cached 10 minutes, a stale copy up to a day old is used if Square fails); if it's missing or priced differently the order uses ad-hoc line items, exactly as the app does, and `catalogError` says why. Taxes are auto-applied by Square.
+Pricing is the app's: each cup or cone priced on its own, scoops by position within the item ($4, $3, then $2; no discount across items), $1.50 per waffle cone, $0.50 per topping. Line items reference the catalog category `SQUARE_CATEGORY_NAME` (*1 Scoop*, *2nd Scoop*, *3rd+ Scoop*, *Waffle Cone*, *Topping*, cached 10 minutes, a stale copy up to a day old is used if Square fails); if it's missing or priced differently the order uses ad-hoc line items, exactly as the app does, and `catalogError` says why. Taxes are auto-applied by Square.
 
 Idempotent by `id`: a retry returns the stored result with `status: "duplicate"` and no second Square call; the same `id` with a different cart is `409 conflict`. The Square idempotency key is the checkout id, so concurrent retries also get one Square order. The kiosk's own fallback uses `<id>-device`, so a slow backend answer and a device-created order never collide (an abandoned unpaid Square order is harmless).
 

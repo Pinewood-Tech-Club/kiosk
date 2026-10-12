@@ -148,9 +148,8 @@ final class AppModel {
         }
     }
 
-    /// What one more scoop adds to the order: scoops are billed by their position in the whole order.
     var nextScoopCents: Int {
-        Pricing.scoopCents(atPosition: liveQuote.scoopCount + 1)
+        Pricing.scoopCents(atPosition: current.scoopCount + 1)
     }
 
     func count(of flavor: Flavor) -> Int {

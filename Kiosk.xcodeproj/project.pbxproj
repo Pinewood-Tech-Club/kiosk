@@ -46,6 +46,7 @@
 		7AE53793993BF83A0CC29EAC /* Receipt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DFD4680D9AC7197C5C0B25 /* Receipt.swift */; };
 		7BA5F30548207E9109087F13 /* DrizzleLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8B17032539D12086EC034E /* DrizzleLayer.swift */; };
 		7F40A9A487AC2F434B50982C /* GiftCardCheckoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F672994A6FAD8246F61015 /* GiftCardCheckoutTests.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* PricingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5061728394A5B6C /* PricingTests.swift */; };
 		80F62615D532B17AB4C91758 /* loop.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = CF19FBBFF9063473EF2C011F /* loop.mp4 */; };
 		8446E36717CEF4B196007F30 /* StageConsistency.swift in Sources */ = {isa = PBXBuildFile; fileRef = C47A1B344994FAF846FD449E /* StageConsistency.swift */; };
 		880C83B3A8CE577FE59144C5 /* BoothAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0709C534BE54B5155CA2586D /* BoothAPI.swift */; };
@@ -120,6 +121,7 @@
 		032C0963C55D1F2DDA3E4886 /* SquareCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareCatalog.swift; sourceTree = "<group>"; };
 		0709C534BE54B5155CA2586D /* BoothAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothAPI.swift; sourceTree = "<group>"; };
 		07F672994A6FAD8246F61015 /* GiftCardCheckoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiftCardCheckoutTests.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5061728394A5B6C /* PricingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingTests.swift; sourceTree = "<group>"; };
 		0B1947CA65BE6B0AE411C69D /* KioskUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KioskUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		1D0BD8A918E962602B31E95B /* TrayTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrayTiles.swift; sourceTree = "<group>"; };
@@ -348,6 +350,7 @@
 			isa = PBXGroup;
 			children = (
 				07F672994A6FAD8246F61015 /* GiftCardCheckoutTests.swift */,
+				B1C2D3E4F5061728394A5B6C /* PricingTests.swift */,
 			);
 			path = KioskTests;
 			sourceTree = "<group>";
@@ -712,6 +715,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7F40A9A487AC2F434B50982C /* GiftCardCheckoutTests.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* PricingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -63,7 +63,7 @@ export const vesselTitle = (id: string) => VESSEL_TITLES[id] ?? humanize(id);
 export const flavorTitle = (id: string) => FLAVOR_TITLES[id] ?? humanize(id);
 export const toppingTitle = (id: string) => TOPPING_TITLES[id] ?? humanize(id);
 
-/** Scoops are billed by their position in the whole order: the 1st is $4, the 2nd $3, every later one $2. */
+/** Each cup or cone is priced on its own: its 1st scoop is $4, the 2nd $3, the 3rd $2. */
 export function scoopCents(position: number): number {
   if (position <= 0) return 0;
   if (position === 1) return 400;
@@ -78,15 +78,15 @@ export function scoopsTotal(count: number): number {
 }
 
 export function quote(items: CartItem[]): Quote {
-  let position = 0;
+  let scoopCount = 0;
   const lines = items.map((item) => {
-    let scoopShareCents = 0;
-    for (const _ of item.flavors) scoopShareCents += scoopCents(++position);
+    const scoopShareCents = scoopsTotal(item.flavors.length);
+    scoopCount += item.flavors.length;
     const vesselCents = item.vessel === "cone" ? WAFFLE_CONE_CENTS : 0;
     const toppingCents = item.toppings.length * TOPPING_CENTS;
     return { item, scoopShareCents, vesselCents, toppingCents, totalCents: scoopShareCents + vesselCents + toppingCents };
   });
-  return { lines, scoopCount: position, totalCents: lines.reduce((sum, l) => sum + l.totalCents, 0) };
+  return { lines, scoopCount, totalCents: lines.reduce((sum, l) => sum + l.totalCents, 0) };
 }
 
 export function catalogScoopEntry(catalog: Catalog, position: number): CatalogEntry {
@@ -111,14 +111,13 @@ type SquareLineItem = Record<string, unknown>;
 
 const money = (cents: number) => ({ amount: cents, currency: "USD" });
 
-/** One line per scoop priced by its position, one per waffle cone and one per topping, as the app builds them. */
+/** One line per scoop priced by its position in its item, one per waffle cone and one per topping, as the app builds them. */
 export function catalogLineItems(q: Quote, catalog: Catalog): SquareLineItem[] {
   const lines: SquareLineItem[] = [];
-  let position = 0;
   q.lines.forEach((line, index) => {
     const label = `#${index + 1} ${vesselTitle(line.item.vessel)}`;
-    for (const flavor of line.item.flavors) {
-      position++;
+    for (const [scoop, flavor] of line.item.flavors.entries()) {
+      const position = scoop + 1;
       lines.push({ catalog_object_id: catalogScoopEntry(catalog, position).variationId, quantity: "1", note: `${label}: ${flavorTitle(flavor)}` });
     }
     if (line.item.vessel === "cone") {
@@ -151,12 +150,11 @@ export function adHocLineItems(q: Quote): SquareLineItem[] {
 
 export function chargedLines(q: Quote): ReceiptLine[] {
   const lines: ReceiptLine[] = [];
-  let position = 0;
   const scoopName = (p: number) => (p === 1 ? "1 Scoop" : p === 2 ? "2nd Scoop" : "3rd+ Scoop");
   q.lines.forEach((line, index) => {
     const label = `#${index + 1} ${vesselTitle(line.item.vessel)}`;
-    for (const flavor of line.item.flavors) {
-      position++;
+    for (const [scoop, flavor] of line.item.flavors.entries()) {
+      const position = scoop + 1;
       const cents = scoopCents(position);
       lines.push({ title: scoopName(position), detail: `${label}: ${flavorTitle(flavor)}`, quantity: 1, baseCents: cents, cents });
     }
