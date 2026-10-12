@@ -13,12 +13,12 @@ struct PhotoColumns: UIViewRepresentable {
 }
 
 final class PhotoColumnsView: UIView {
-    static let columnCenters: [CGFloat] = [138, Layout.screen.width - 138]
-    static let maxPhotoSize = CGSize(width: 200, height: 276)
-    static let photoArea: CGFloat = 41_000
-    static let border: CGFloat = 12
+    static let columnCenters: [CGFloat] = [118, Layout.screen.width - 118]
+    static let maxPhotoSize = CGSize(width: 250, height: 340)
+    static let photoArea: CGFloat = 60_000
+    static let border: CGFloat = 6
     static let gap: CGFloat = 34
-    static let speed: CGFloat = 18
+    static let speed: CGFloat = 26
     /// How far above the screen each column's prints begin, so rotated corners never show a gap at the top edge.
     static let lead: CGFloat = 360
     private static let epoch = CACurrentMediaTime()
