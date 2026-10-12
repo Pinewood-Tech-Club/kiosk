@@ -64,6 +64,7 @@
 		E0D3AAA6F43169037A5820EA /* SquareAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BFFA3E6328B0932FF06672 /* SquareAPI.swift */; };
 		E4F831145DF772EE0B60DCBF /* BoothConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C430771D6BEE6DF3E2F669E /* BoothConnection.swift */; };
 		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
+		F32A1F960D465605BA61261A /* BoothRoleUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = 90EDD9F598341794544137E8 /* BoothRoleUITests.m */; };
 		F33FD48A4B7F07D6B639671D /* StageVessels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B353824019534A970B3D1DE6 /* StageVessels.swift */; };
 		F346DF14280B5329EFF72A73 /* Animation.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB286FAB60CDB38CF35280B /* Animation.swift */; };
 		F624DAFD3093814DE01B3C39 /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */; };
@@ -119,6 +120,7 @@
 		80DA186C645E6612A99CD769 /* StageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageView.swift; sourceTree = "<group>"; };
 		8B362FE7742C73DA7798FF13 /* SquareCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareCredentials.swift; sourceTree = "<group>"; };
 		8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentProblem.swift; sourceTree = "<group>"; };
+		90EDD9F598341794544137E8 /* BoothRoleUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BoothRoleUITests.m; sourceTree = "<group>"; };
 		94D96DB54BCDC2006C377D8F /* SquareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareService.swift; sourceTree = "<group>"; };
 		955D9B0FEA00CB8CCA27E91D /* Stage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage.swift; sourceTree = "<group>"; };
 		96A26E074420B8AC97F15E75 /* FrameStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStats.swift; sourceTree = "<group>"; };
@@ -185,6 +187,7 @@
 		2B5940CF87051748A5C5B710 /* KioskUITests */ = {
 			isa = PBXGroup;
 			children = (
+				90EDD9F598341794544137E8 /* BoothRoleUITests.m */,
 				D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */,
 				F0CE12E28F22640FFC1536E0 /* StaffUITests.m */,
 			);
@@ -498,6 +501,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F32A1F960D465605BA61261A /* BoothRoleUITests.m in Sources */,
 				DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */,
 				889FBA9E995438D871E6B1AB /* StaffUITests.m in Sources */,
 			);

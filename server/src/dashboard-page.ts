@@ -1044,7 +1044,7 @@ function closeSheet(){
 
 function healthRows(k){
   var h=k.health;
-  var rows=[["Last heard",null,k.online?"":"bad",agoSpan(k.lastSeenAt)],["Screen",k.screen?titleCase(k.screen):"Unknown",""]];
+  var rows=[k.online?["Connection","Online",""]:["Last heard",null,"bad",agoSpan(k.lastSeenAt)],["Screen",k.screen?titleCase(k.screen):"Unknown",""]];
   if(h){
     rows.push(["Payments",h.simulatePayment?"Simulated":h.environment,h.simulatePayment?"warn":""]);
     rows.push(["Square",h.authorized?"Authorized":(h.authorizationState||"Not authorized"),h.authorized?"":"bad"]);
@@ -1111,7 +1111,7 @@ function askRemove(k){
 }
 
 function askExit(){
-  ask("Exit staff mode?","This iPad goes back to the role picker, where it can start as a kiosk or open a staff page again.","Exit staff mode",false,"Cancel",function(){
+  ask("Exit staff mode?","This iPad goes back to the role picker, where it can start as a kiosk or open a staff page again.","Exit",false,"Cancel",function(){
     var h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.boothApp;
     if(h)h.postMessage({type:"exitStaffMode"});
     else showToast("This version of the app can't switch roles from here. Relaunch it to pick a role.");
