@@ -1,4 +1,5 @@
 import { escapeHtml } from "./http";
+import { TOPPING_TITLES } from "./pricing";
 import { NOTO_SERIF_SEMIBOLD_WOFF2 } from "./staff-font";
 import { STAFF_ROLES, type StaffRole, type StaffSection } from "./staff-roles";
 
@@ -77,7 +78,7 @@ color:#fff;display:flex;align-items:center;gap:20px;box-shadow:0 10px 30px -8px 
 .then{display:flex;align-items:center;gap:8px;color:var(--label-2);font-weight:500}
 .then svg{color:var(--tint);stroke-width:3}
 .tag{display:flex;align-items:center;gap:8px;font-weight:650;white-space:nowrap}
-.tag.tint{color:var(--tint-ink)}
+.tag.tint{color:var(--tint)}
 .tag.dim{color:var(--label-3)}
 .age{color:var(--label-3);font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pending{display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:600;color:var(--label-2);white-space:nowrap}
@@ -176,11 +177,13 @@ details.finished[open] summary h2 svg{transform:rotate(90deg)}
 .acell .link{font-size:18px}
 .more{min-height:56px;font-size:17px;color:var(--label-2)}
 .cols{display:grid;gap:32px;align-items:start}
-.cols-3{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr)}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--sep)}
+.cols-3{grid-template-columns:minmax(0,1.2fr) minmax(0,1.3fr) minmax(0,1fr)}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--sep)}
+.tile.wide{grid-column:1/-1}
+.tile.wide .v{font-size:64px}
 .tile{background:var(--cell);padding:20px 24px 22px;min-width:0}
-.tile .k{font-size:17px;color:var(--label-2);font-weight:500}
-.tile .v{font-size:52px;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin-top:6px;font-variant-numeric:tabular-nums}
+.tile .k{font-size:17px;color:var(--label-2);font-weight:500;white-space:nowrap}
+.tile .v{font-size:44px;white-space:nowrap;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin-top:6px;font-variant-numeric:tabular-nums}
 .tile .s{font-size:15px;color:var(--label-2);margin-top:4px}
 .bar{display:grid;grid-template-columns:minmax(0,9rem) minmax(0,1fr) 3rem;gap:14px;align-items:center;min-height:52px;padding:10px 24px;font-size:18px}
 .bar .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -205,6 +208,9 @@ details.finished[open] summary h2 svg{transform:rotate(90deg)}
 #boardReady.many>*+*::before{display:none}
 #boardMaking .name{font-size:48px;color:rgba(0,0,0,.72)}
 #boardMaking .num{font-size:22px}
+.board .num{color:var(--label-2)}
+.board .section-head h2{font-size:34px}
+.board .section-head>span{font-size:20px}
 .board .empty{font-size:24px;padding:30px 36px}
 .roles .role{display:flex;align-items:center;gap:18px;min-height:96px;padding:18px 24px 18px 20px}
 .list>.role+.role::before{left:90px}
@@ -327,10 +333,10 @@ const SECTIONS: Record<StaffSection, (display: boolean) => string> = {
   kiosk: () => `<div class="group list health" id="health"></div>`,
   stats: () => `<div class="section-head"><h2>Today</h2><span id="updated"></span></div>
 <div class="group tiles">
+<div class="tile wide"><div class="k">Revenue</div><div class="v" id="tRevenue">$0</div><div class="s" id="tAvg"></div></div>
 <div class="tile"><div class="k">Orders</div><div class="v" id="tOrders">0</div><div class="s" id="tOrdersSub"></div></div>
-<div class="tile"><div class="k">Revenue</div><div class="v" id="tRevenue">$0</div><div class="s" id="tAvg"></div></div>
 <div class="tile"><div class="k">Scoops</div><div class="v" id="tScoops">0</div><div class="s" id="tVessels"></div></div>
-<div class="tile"><div class="k">Last 15 minutes</div><div class="v" id="tRecent">0</div><div class="s" id="tRecentSub"></div></div>
+<div class="tile"><div class="k">Last 15 min</div><div class="v" id="tRecent">0</div><div class="s" id="tRecentSub"></div></div>
 </div>
 <div class="section-head"><h2>Scoops by flavor</h2></div><div class="group list" id="flavorBars"></div>
 <div class="section-head"><h2>Toppings</h2></div><div class="group list" id="toppingBars"></div>
@@ -349,7 +355,7 @@ export function dashboardBody(roleId: string, role: StaffRole): string {
 ${nav(role.title, bar)}
 <div class="float"><div id="banner" class="banner" hidden role="status"></div>${role.alerts === "none" ? "" : `<div id="urgent" aria-live="assertive"></div>`}</div>
 ${role.alerts === "none" ? "" : `<section id="alerts" aria-live="polite"></section>`}
-${main}</div>
+${main}${role.alerts === "front" ? `<section id="updates" aria-live="polite"></section>` : ""}</div>
 <div id="toast" class="toast" hidden role="status"></div>
 ${display ? "" : `<dialog id="confirm" aria-labelledby="confirmTitle" aria-describedby="confirmText"><h3 id="confirmTitle"></h3><p id="confirmText"></p><div class="dialog-actions"><button class="cancel" id="confirmNo" type="button">Cancel</button><button class="confirm" id="confirmYes" type="button">Confirm</button></div></dialog>`}`;
 }
@@ -357,6 +363,7 @@ ${display ? "" : `<dialog id="confirm" aria-labelledby="confirmTitle" aria-descr
 const SCRIPT = String.raw`
 "use strict";
 var ICONS = __ICONS__;
+var TOPPINGS = __TOPPINGS__;
 var BASE_TITLE = document.title;
 var IN_APP = /BoothStaffApp\//.test(navigator.userAgent);
 var WRAP = document.getElementById("wrap");
@@ -407,6 +414,7 @@ function flavorName(id){
   var f=state&&state.flavors.filter(function(x){return x.id===id;})[0];
   return f?f.name:titleCase(id);
 }
+function toppingName(id){return Object.prototype.hasOwnProperty.call(TOPPINGS,id)?TOPPINGS[id]:titleCase(id);}
 function agoSpan(ms){return '<span data-ago="'+(ms==null?"":ms)+'">'+ago(ms)+"</span>";}
 
 function keyOf(a){
@@ -758,7 +766,7 @@ function renderStats(){
   $("tRecent").textContent=r.orders;
   $("tRecentSub").textContent=money(r.totalCents)+" taken";
   bars($("flavorBars"),sortedCounts(s.flavors),flavorName);
-  bars($("toppingBars"),sortedCounts(s.toppingCounts),titleCase);
+  bars($("toppingBars"),sortedCounts(s.toppingCounts),toppingName);
   bars($("hourBars"),s.byHour.map(function(h){return [h.hour,h.orders];}),clock);
   $("updated").textContent="Since midnight, updated "+clock(s.generatedAt);
 }
@@ -799,7 +807,7 @@ function alertCell(a){
 function alertList(title,list,ackLabel,max){
   if(!list.length)return "";
   var ids=list.map(function(a){return a.id;}).join(",");
-  var right=!READONLY&&list.length>1?'<button class="link" type="button" data-ackids="'+esc(ids)+'">'+ackLabel+"</button>":"<span>"+list.length+"</span>";
+  var right=!READONLY&&list.length>1?'<button class="link" type="button" data-ackids="'+esc(ids)+'">'+ackLabel+"</button>":list.length>1?"<span>"+list.length+"</span>":"";
   return '<div class="section-head"><h2>'+title+"</h2>"+right+'</div><div class="group list">'+list.slice(0,max).map(alertCell).join("")+(list.length>max?'<div class="cell more">And '+(list.length-max)+" more</div>":"")+"</div>";
 }
 
@@ -811,7 +819,8 @@ function renderAlerts(){
   var bars="",rest="";
   if(ALERTS==="front"){
     bars=urgent.slice(0,2).map(alertBar).join("");
-    rest=alertList(urgent.length>2?"More alerts":"Alerts",urgent.slice(2).concat(warn),"Acknowledge all",5)+alertList("Updates",info,"Clear all",3);
+    rest=alertList(urgent.length>2?"More alerts":"Alerts",urgent.slice(2).concat(warn),"Acknowledge all",5);
+    $("updates").innerHTML=alertList("Updates",info,"Clear all",3);
   } else if(ALERTS==="display"){
     bars=urgent.slice(0,3).map(alertBar).join("");
     rest=alertList("Alerts",urgent.slice(3).concat(warn),"",6);
@@ -836,14 +845,14 @@ function flavorText(ids){
 function toppingItem(it){
   var t=it.toppings||[];
   return '<div class="item"><div class="base">'+ico(vesselIcon(it.vessel))+esc(vesselName(it.vessel)+", "+flavorText(it.flavors))+"</div>"+
-    (t.length?'<ul class="tops">'+t.map(function(x){return '<li><span class="plus">'+ico("plus")+"</span>"+esc(titleCase(x))+"</li>";}).join("")+"</ul>":'<div class="none">No toppings</div>')+"</div>";
+    (t.length?'<ul class="tops">'+t.map(function(x){return '<li><span class="plus">'+ico("plus")+"</span>"+esc(toppingName(x))+"</li>";}).join("")+"</ul>":'<div class="none">No toppings</div>')+"</div>";
 }
 
 function scoopItem(it){
   var c=flavorCounts(it.flavors),t=it.toppings||[];
   return '<div class="item"><div class="base">'+ico(vesselIcon(it.vessel))+esc(vesselName(it.vessel))+'</div><ul class="scoops">'+
     (c.length?c.map(function(x){return "<li>"+esc(x.name)+(x.n>1?'<span class="times">×'+x.n+"</span>":"")+"</li>";}).join(""):'<li class="none">No flavor</li>')+"</ul>"+
-    (t.length?'<div class="then">'+ico("plus")+esc(t.map(titleCase).join(", "))+"</div>":"")+"</div>";
+    (t.length?'<div class="then">'+ico("plus")+esc(t.map(toppingName).join(", "))+"</div>":"")+"</div>";
 }
 
 function whoHtml(o){
@@ -979,7 +988,7 @@ function renderFeed(){
   $("feed").innerHTML=list.slice(0,40).map(function(o){
     var st=orderStatus(o);
     var items=o.items.map(function(it){
-      var t=it.toppings&&it.toppings.length?" with "+joinAnd(it.toppings.map(titleCase)):"";
+      var t=it.toppings&&it.toppings.length?" with "+joinAnd(it.toppings.map(toppingName)):"";
       return vesselName(it.vessel)+", "+flavorText(it.flavors)+t;
     }).join("; ");
     return '<div class="frow'+(o.simulated?" sim":"")+'">'+whoHtml(o)+'<div class="fside"><span class="fstatus s-'+st+'">'+(o.simulated?"Test, ":"")+STATUS_LABEL[st]+"</span>"+pendingTag("order:"+o.id)+'<span class="total">'+money(o.totalCents)+", "+clock(o.paidAt)+'</span></div><div class="fitems">'+esc(items)+"</div></div>";
@@ -1079,5 +1088,5 @@ renewSession();
 `;
 
 export function dashboardScript(): string {
-  return SCRIPT.replace("__ICONS__", () => JSON.stringify(ICONS));
+  return SCRIPT.replace("__ICONS__", () => JSON.stringify(ICONS)).replace("__TOPPINGS__", () => JSON.stringify(TOPPING_TITLES));
 }
