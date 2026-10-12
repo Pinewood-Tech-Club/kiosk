@@ -90,6 +90,14 @@ xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk -destination 'platform=iO
 
 `StaffUITests` launches the staff role against an unreachable booth and checks the native *Can't reach the booth* screen. The staff pages themselves are web pages, tested in `server/test` and in a browser (see [Staff pages](#staff-pages)).
 
+`BoothRoleUITests` runs against a real booth (staging) and is skipped unless it gets one: exit staff mode, then *Start Kiosk*, and check the kiosk reaches the booth without a relaunch; switch a kiosk's debug tools and open/closed from the API and check the kiosk follows live and remembers both while the booth is unreachable. Each run removes its kiosk from the registry.
+
+```sh
+TEST_RUNNER_BOOTH_TEST_URL=https://kiosk-staging.jamboree.techclub.pw TEST_RUNNER_BOOTH_TEST_STAFF_TOKEN=$STAGING_STAFF_TOKEN \
+  TEST_RUNNER_BOOTH_TEST_KIOSK_TOKEN=$STAGING_BOOTH_TOKEN xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -only-testing:KioskUITests/BoothRoleUITests
+```
+
 ## Staff pages
 
 All staff tooling is the web dashboard served by the backend. Two people work the booth, each with an iPad, and laptops show read-only status displays. Each role has its own page at `/staff/<role>`; `/staff` (and the old `/dashboard`) is a picker. Pages are listed in `server/src/staff-roles.ts`: a role is a title, whether it is an iPad or a read-only display, how prominent alerts are, and its columns of sections, so adding one is a single entry there.
