@@ -330,10 +330,10 @@ final class ScatterLayer: ToppingLayer {
             let low = rest.position.y - ground.height < Self.perchHeight + shape.half.min()
             return low && !Self.standsOnEnd(shape, rest, ground: up) && !Self.onEdge(shape, rest, ground: up) ? .perches : .rejected
         }
-        if Self.standsOnEnd(shape, rest, ground: ground.normal) || Self.standsOnEnd(shape, rest, ground: up, upright: 0.9) {
+        if Self.standsOnEnd(shape, rest, ground: ground.normal) || Self.standsOnEnd(shape, rest, ground: up, upright: 0.8) {
             return .rejected
         }
-        if Self.onEdge(shape, rest, ground: ground.normal) || Self.onEdge(shape, rest, ground: up) {
+        if Self.onEdge(shape, rest, ground: ground.normal) || Self.onEdge(shape, rest, ground: up, flat: 0.6) {
             let low = rest.position.y - ground.height < 1.1 * shape.half.max()
             return low && !Self.standsOnEnd(shape, rest, ground: up) ? .wedges : .rejected
         }
@@ -641,13 +641,13 @@ final class ScatterLayer: ToppingLayer {
     }
 
     /// A disc (an M&M) standing on its rim, or a gummy bear on its side, wedged rather than lying.
-    private static func onEdge(_ shape: ScatterShape, _ pose: ScatterPose, ground: SIMD3<Float>) -> Bool {
+    private static func onEdge(_ shape: ScatterShape, _ pose: ScatterPose, ground: SIMD3<Float>, flat: Float = 0.5) -> Bool {
         let half = shape.half
         let thin = half.x < half.y ? (half.x < half.z ? 0 : 2) : (half.y < half.z ? 1 : 2)
         guard half[thin] < 0.7 * ((0..<3).filter { $0 != thin }.map { half[$0] }.min() ?? 0) else { return false }
         var axis = SIMD3<Float>.zero
         axis[thin] = 1
-        return abs(simd_dot(pose.rotation.act(axis), ground)) < 0.5
+        return abs(simd_dot(pose.rotation.act(axis), ground)) < flat
     }
 
     /// Real-time velocity at the start of a recorded track, so a toss flows into the fall.
