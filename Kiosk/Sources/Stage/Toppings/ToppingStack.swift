@@ -187,6 +187,7 @@ final class ToppingStack {
         for entry in placed where !wanted.contains(entry.topping) {
             let tap = animated ? launch?(entry.topping) : nil
             entry.layer.launchPoint = tap?.point
+            entry.layer.cardIcon = tap?.icon
             (entry.layer as? ScatterLayer)?.ceiling = tap?.ceiling
             (entry.layer as? WhipLayer)?.underToppings = animated && staying.contains { $0.topping.stackRank > entry.topping.stackRank }
             entry.layer.remove(now: now)

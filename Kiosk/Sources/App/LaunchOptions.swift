@@ -1,5 +1,6 @@
 import Foundation
 import QuartzCore
+import RealityKit
 import simd
 import SwiftUI
 
@@ -98,6 +99,11 @@ struct ScriptRunner {
 
     private func log(_ message: String) {
         app.square.record("Script: \(message)")
+    }
+
+    private func toppingEntityCount() -> Int {
+        func count(_ entity: Entity) -> Int { 1 + entity.children.reduce(0) { $0 + count($1) } }
+        return app.stage.toppingStacks.reduce(0) { $0 + count($1.root) } + app.stage.detachedToppings.count
     }
 
     private func drag(_ total: CGSize, duration: Double) async {
@@ -327,6 +333,23 @@ struct ScriptRunner {
             log("whip off")
             await toggle(.whip)
             await wait(3.0)
+            let before = toppingEntityCount()
+            log("whip off mid-spray")
+            await toggle(.whip)
+            await wait(0.5)
+            await toggle(.whip)
+            await wait(2.0)
+            log("whip back mid-removal")
+            await toggle(.whip)
+            await wait(2.0)
+            await toggle(.whip)
+            await wait(0.25)
+            await toggle(.whip)
+            await wait(2.0)
+            await toggle(.whip)
+            await wait(2.5)
+            let after = toppingEntityCount()
+            log("whip re-taps: topping entities \(before) before, \(after) after, \(before == after ? "clean" : "LEAK")")
             if app.current.toppings.contains(.chocolate) {
                 log("syrup off")
                 await toggle(.chocolate)

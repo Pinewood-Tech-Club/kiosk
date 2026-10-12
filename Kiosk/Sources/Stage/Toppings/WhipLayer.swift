@@ -6,6 +6,7 @@ import UIKit
 @MainActor
 final class WhipLayer: ToppingLayer {
     static let growDuration: Double = 1.5
+    /// How long the layers that sat on the cream take to settle onto the surface beneath once it's pulled away.
     static let removeDuration: Double = 0.5
     /// Swelling up under toppings already on the item, rather than sprayed over them.
     static let liftDuration: Double = 1.2
@@ -13,18 +14,23 @@ final class WhipLayer: ToppingLayer {
     private static let liftSink: Float = 0.0015
     /// Share of `growDuration` spent spraying; the rest lets the freshest foam finish puffing up.
     private static let sprayShare: Float = 0.86
+    private static let crouchDuration: Double = 0.12
+    private static let flightDuration: Double = 0.55
+    private static let popDuration: Double = 0.3
 
     let entity = Entity()
     private(set) var isFinished = false
     var launchPoint: (() -> SIMD3<Float>)?
-    /// Set before `apply` or `remove` when other toppings sit on the cream: instead of spraying a rosette over them or
-    /// slumping away, the finished rosette swells up from beneath them (or sinks back), its height everywhere an eased
-    /// share of the finished cream's, so the layers above can follow it exactly with the same easing.
+    var cardIcon: ToppingCardIcon?
+    /// Set before `apply` or `remove` when other toppings sit on the cream: instead of spraying a rosette over them,
+    /// the finished rosette swells up from beneath them, its height everywhere an eased share of the finished cream's, so
+    /// the layers above can follow it exactly with the same easing; and instead of lifting off, it's whisked out
+    /// sideways from under them while they settle.
     var underToppings = false
     var growDuration: Double { liftsIn ? Self.liftDuration : Self.growDuration }
     var removeDuration: Double { Self.removeDuration }
     private var liftsIn = false
-    private var sinksOut = false
+    private var leave: WhipLeave?
 
     private let model = ModelEntity()
     private var style = WhipStyle(seed: 0)
@@ -37,8 +43,8 @@ final class WhipLayer: ToppingLayer {
 
     private var sweep = WhipSweep()
     private var sweepMix: Float = -1
-    private var shown = WhipState(mix: -1, reveal: -1, settle: -1, deflate: -1)
-    private var current = WhipState(mix: 1, reveal: 1, settle: 1, deflate: 0)
+    private var shown = WhipState(mix: -1, reveal: -1, settle: -1)
+    private var current = WhipState(mix: 1, reveal: 1, settle: 1)
     private var buffers: WhipMesh?
     private var rings: [WhipRing] = []
     private var points: [SIMD3<Float>] = []
@@ -77,22 +83,24 @@ final class WhipLayer: ToppingLayer {
         groundTo = grid
         blendDuration = 0
         liftsIn = animated && underToppings
-        sinksOut = false
         growStart = animated ? now : nil
         removeStart = nil
+        leave = nil
         isFinished = false
+        entity.transform = .identity
         entity.isEnabled = true
         entity.setOpacity(1)
         sweepMix = -1
-        shown = WhipState(mix: -1, reveal: -1, settle: -1, deflate: -1)
+        shown = WhipState(mix: -1, reveal: -1, settle: -1)
         let resources = WhipMesh(ridges: style.ridges, seed: seed)
         buffers = resources
         model.model = ModelComponent(mesh: resources.resource, materials: [resources.material])
+        if animated { cardIcon?.react() }
         update(now: now)
     }
 
     func resurface(to surface: ToppingSurface, duration: Double, now: Double) {
-        guard groundTo != nil else { return }
+        guard groundTo != nil, removeStart == nil else { return }
         refreshState(now: now)
         groundFrom = WhipHeightGrid(currentGround.surface)
         groundTo = WhipHeightGrid(surface)
@@ -109,30 +117,101 @@ final class WhipLayer: ToppingLayer {
             isFinished = true
             return
         }
-        sinksOut = underToppings
-        removeStart = now
-    }
-
-    func update(now: Double) {
-        guard !isFinished, groundTo != nil else { return }
         refreshState(now: now)
-        if current.deflate >= 1 {
+        showCurrent()
+        guard model.isEnabled else {
             isFinished = true
             entity.isEnabled = false
             return
         }
+        removeStart = now
+        let ground = currentGround
+        let axis = sweep.axis
+        leave = WhipLeave(pivot: [axis.x, ground.height(axis.x, axis.y), axis.y], size: sweep.outer,
+                          slides: underToppings && launchPoint != nil, spin: style.direction)
+    }
+
+    func update(now: Double) {
+        guard !isFinished, groundTo != nil else { return }
+        if let removeStart, let leave {
+            fly(leave, t: now - removeStart)
+            return
+        }
+        refreshState(now: now)
+        showCurrent()
+    }
+
+    private func showCurrent() {
         guard current != shown else { return }
         if current.mix != sweepMix {
             sweep = WhipSweep(style: style, ground: currentGround)
             sweepMix = current.mix
         }
         rebuild()
-        entity.setOpacity(1 - max(Self.smoothstep(0.55, 1, current.deflate), current.fade))
         shown = current
     }
 
+    /// Leaves as one piece, its shape frozen as it was when taken off: a crouch onto the item, then a springy hop off it
+    /// (or, under other toppings, a sideways yank out from beneath them) and a flight back into the card, leaning into
+    /// the turn and shrinking as it goes. With no card to go back to it hops up and shrinks away in place.
+    private func fly(_ leave: WhipLeave, t: Double) {
+        let launch = launchPoint?()
+        let total = Self.crouchDuration + (launch == nil ? Self.popDuration : Self.flightDuration)
+        guard t < total else {
+            if launch != nil { cardIcon?.react() }
+            isFinished = true
+            entity.isEnabled = false
+            return
+        }
+        let up = SIMD3<Float>(0, 1, 0)
+        let size = leave.size
+        let crouch = Ease.clamp01(Float(t / Self.crouchDuration))
+        let airborne = Float(max(t - Self.crouchDuration, 0))
+        let stretch = Self.stretch(crouch: crouch, airborne: airborne)
+        var position = leave.pivot
+        var heading = SIMD3<Float>.zero
+        var shrink: Float = 1
+        var opacity: Float = 1
+        if let launch {
+            let u = Ease.clamp01(airborne / Float(Self.flightDuration))
+            let e = lerp(u, Ease.inOutSine(u), 0.35)
+            let path = leave.path(to: launch)
+            position = path.point(e)
+            heading = path.heading(e)
+            if leave.slides {
+                position -= path.out * (0.18 * size * Ease.outQuad(crouch) * (1 - Ease.clamp01(u * 6)))
+            }
+            shrink = 1 - 0.65 * Ease.inCubic(u)
+        } else {
+            let u = Ease.clamp01(airborne / Float(Self.popDuration))
+            position += up * (0.7 * size * Ease.outQuad(u))
+            shrink = 1 - Ease.inCubic(u)
+            opacity = 1 - Self.smoothstep(0.5, 1, u)
+        }
+        var rotation = simd_quatf(angle: leave.spin * 0.9 * Ease.inOutSine(Ease.clamp01(airborne / Float(Self.flightDuration))),
+                                  axis: up)
+        let level = SIMD3(heading.x, 0, heading.z)
+        let speed = simd_length(heading)
+        if speed > 1e-6, simd_length(level) > 1e-6 {
+            let tilt = 0.5 * (simd_length(level) / speed) * Ease.clamp01(airborne / 0.08)
+            rotation = simd_quatf(angle: tilt, axis: simd_normalize(simd_cross(up, level))) * rotation
+        }
+        let scale = SIMD3(repeating: shrink) * SIMD3(1 / stretch.squareRoot(), stretch, 1 / stretch.squareRoot())
+        entity.transform = Transform(scale: scale, rotation: rotation, translation: position - rotation.act(scale * leave.pivot))
+        entity.setOpacity(opacity)
+    }
+
+    /// Height over rest height: the crouch's squash, then a damped spring released upward from it.
+    private static func stretch(crouch: Float, airborne: Float) -> Float {
+        let squat: Float = 0.16
+        guard airborne > 0 else { return 1 - squat * Ease.outQuad(crouch) }
+        let omega: Float = 2 * .pi / 0.34
+        let decay = exp(-6 * airborne)
+        return 1 + decay * (-squat * cos(omega * airborne) + 0.3 * sin(omega * airborne))
+    }
+
     func surfaceAbove(_ below: ToppingSurface) -> ToppingSurface {
-        guard groundTo != nil, !isFinished, !sweep.center.isEmpty else { return below }
+        guard groundTo != nil, !isFinished, removeStart == nil, !sweep.center.isEmpty else { return below }
         return WhipSurface(below: below, tubes: tubes(), axis: sweep.axis, extent: sweep.outer)
     }
 
@@ -141,7 +220,7 @@ final class WhipLayer: ToppingLayer {
         let ground = WhipGround(from: groundTo, to: groundTo, mix: 1)
         let saved = (current, sweep)
         defer { (current, sweep) = saved }
-        current = WhipState(mix: 1, reveal: 1, settle: 1, deflate: 0)
+        current = WhipState(mix: 1, reveal: 1, settle: 1)
         sweep = WhipSweep(style: style, ground: ground)
         return WhipSurface(below: below, tubes: tubes(), axis: sweep.axis, extent: sweep.outer)
     }
@@ -151,7 +230,7 @@ final class WhipLayer: ToppingLayer {
     }
 
     private func refreshState(now: Double) {
-        var state = WhipState(mix: 1, reveal: 1, settle: 1, deflate: 0)
+        var state = WhipState(mix: 1, reveal: 1, settle: 1)
         if blendDuration > 0 {
             let t = Float((now - blendStart) / blendDuration)
             state.mix = t >= 1 ? 1 : Ease.inOutCubic(Ease.clamp01(t))
@@ -165,16 +244,6 @@ final class WhipLayer: ToppingLayer {
                 state.settle = t >= 1 ? 1 : Self.smoothstep(Self.sprayShare, 1, t)
             }
             if t >= 1 { self.growStart = nil }
-        }
-        if let removeStart {
-            let t = Ease.clamp01(Float((now - removeStart) / Self.removeDuration))
-            if sinksOut {
-                state.rise = min(state.rise, 1 - Ease.inOutSine(t))
-                state.fade = Self.smoothstep(0.6, 1, t)
-                if t >= 1 { state.deflate = 1 }
-            } else {
-                state.deflate = t
-            }
         }
         current = state
     }
@@ -198,25 +267,25 @@ final class WhipLayer: ToppingLayer {
     /// The creases leave the cream's cross-section a little inside its nominal radius.
     private static let meanScale: Float = 0.95
 
-    /// Fine centerline samples as currently shown (revealed, deflated), with the head's rounded end.
+    /// Fine centerline samples as currently shown, with the head's rounded end.
     private func tubes() -> [WhipTube] {
         let length = sweep.length(atVolume: current.reveal)
         guard length > 0 else { return [] }
-        let ground = currentGround
         var out: [WhipTube] = []
         out.reserveCapacity(sweep.center.count + 4)
         for i in sweep.center.indices where sweep.arc[i] <= length {
-            out.append(deflated(sweep.center[i], radius: sweep.radius[i] * swell(sweep.arc[i], length: length) * Self.meanScale,
-                                ground: ground))
+            out.append(WhipTube(center: sweep.center[i], radius: sweep.radius[i] * swell(sweep.arc[i], length: length) * Self.meanScale,
+                                squash: WhipMesh.squash))
         }
         let head = sweep.sample(at: length)
         let headRadius = head.radius * swell(length, length: length) * Self.meanScale
-        out.append(deflated(head.center, radius: headRadius, ground: ground))
+        out.append(WhipTube(center: head.center, radius: headRadius, squash: WhipMesh.squash))
         if headRadius > 1e-5 {
             let tip = head.center + head.tangent * headRadius * WhipMesh.capReach
-            out.append(deflated(tip, radius: headRadius * 0.55, ground: ground))
+            out.append(WhipTube(center: tip, radius: headRadius * 0.55, squash: WhipMesh.squash))
         }
         guard current.rise < 1 else { return out }
+        let ground = currentGround
         return out.map { tube in
             var tube = tube
             let floor = ground.height(tube.center.x, tube.center.z) - Self.liftSink
@@ -224,18 +293,6 @@ final class WhipLayer: ToppingLayer {
             tube.squash *= current.rise
             return tube
         }
-    }
-
-    private func deflated(_ center: SIMD3<Float>, radius: Float, ground: WhipGround) -> WhipTube {
-        let d = current.deflate
-        guard d > 0 else { return WhipTube(center: center, radius: radius, squash: WhipMesh.squash) }
-        let floor = ground.height(center.x, center.z)
-        var c = center
-        c.y = floor + (c.y - floor) * (1 - 0.8 * d)
-        let axis = sweep.axis
-        c.x = axis.x + (c.x - axis.x) * (1 + 0.12 * d)
-        c.z = axis.y + (c.z - axis.y) * (1 + 0.12 * d)
-        return WhipTube(center: c, radius: radius * (1 - 0.4 * d), squash: WhipMesh.squash * (1 - 0.55 * d))
     }
 
     private func rebuild() {
@@ -251,7 +308,7 @@ final class WhipLayer: ToppingLayer {
         let count = profile.count
         let stride = count + 1
         let grain = buffers.grain
-        let squash = WhipMesh.squash * (1 - 0.55 * current.deflate)
+        let squash = WhipMesh.squash
         let ridges = style.ridges
         let noise = style.noise
         let a0 = max(sweep.tube, 1e-5)
@@ -298,7 +355,7 @@ final class WhipLayer: ToppingLayer {
                 points.append(ring.center + offset)
                 let under = Self.smoothstep(-0.1, 0.85, -u.y)
                 let inner = Self.smoothstep(0.2, 1, -simd_dot(u, outward)) * Self.smoothstep(0.3, -0.2, u.y)
-                shade.append(min(0.6 * under + 0.3 * inner + 0.75 * crease, 1) * ring.occlusion)
+                shade.append(min(0.6 * under + 0.3 * inner + 0.75 * crease, 1))
             }
         }
         if current.rise < 1 {
@@ -313,7 +370,6 @@ final class WhipLayer: ToppingLayer {
 
     private func makeRings(length: Float) {
         rings.removeAll(keepingCapacity: true)
-        let ground = currentGround
         let step = sweep.length / Float(WhipMesh.bodyRings)
         let start = sweep.sample(at: 0)
         let startSwell = swell(0, length: length)
@@ -322,30 +378,28 @@ final class WhipLayer: ToppingLayer {
             var tail = start
             tail.center -= start.tangent * start.radius * startSwell * WhipMesh.capReach * 0.8 * cos(angle)
             tail.radius *= sin(angle)
-            rings.append(ring(tail, scale: startSwell, ground: ground))
+            rings.append(ring(tail, scale: startSwell))
         }
         var arc: Float = 0
         while arc < length - 0.2 * step {
-            rings.append(ring(sweep.sample(at: arc), scale: swell(arc, length: length), ground: ground))
+            rings.append(ring(sweep.sample(at: arc), scale: swell(arc, length: length)))
             arc += step
         }
         let head = sweep.sample(at: length)
         let headSwell = swell(length, length: length)
-        rings.append(ring(head, scale: headSwell, ground: ground))
+        rings.append(ring(head, scale: headSwell))
         for k in 1...WhipMesh.capRings {
             let angle = Float.pi / 2 * Float(k) / Float(WhipMesh.capRings)
             var cap = head
             cap.center += head.tangent * head.radius * headSwell * WhipMesh.capReach * sin(angle)
             cap.radius *= cos(angle)
-            rings.append(ring(cap, scale: headSwell, ground: ground))
+            rings.append(ring(cap, scale: headSwell))
         }
     }
 
-    private func ring(_ sample: WhipSweep.Sample, scale: Float, ground: WhipGround) -> WhipRing {
-        let tube = deflated(sample.center, radius: sample.radius * scale, ground: ground)
-        return WhipRing(center: tube.center, tangent: sample.tangent, normal: sample.normal, binormal: sample.binormal,
-                        radius: tube.radius, arc: sample.arc, twist: sample.twist, foot: sample.foot * (1 - current.deflate),
-                        occlusion: 1 - current.deflate)
+    private func ring(_ sample: WhipSweep.Sample, scale: Float) -> WhipRing {
+        WhipRing(center: sample.center, tangent: sample.tangent, normal: sample.normal, binormal: sample.binormal,
+                 radius: sample.radius * scale, arc: sample.arc, twist: sample.twist, foot: sample.foot)
     }
 }
 
@@ -353,10 +407,39 @@ private struct WhipState: Equatable {
     var mix: Float
     var reveal: Float
     var settle: Float
-    var deflate: Float
-    /// Share of the finished cream's height above the surface beneath, while it swells up under toppings or sinks away.
+    /// Share of the finished cream's height above the surface beneath, while it swells up under toppings.
     var rise: Float = 1
-    var fade: Float = 0
+}
+
+/// The rosette on its way off the item: `pivot` is the middle of its base, `size` its outer radius.
+private struct WhipLeave {
+    let pivot: SIMD3<Float>
+    let size: Float
+    let slides: Bool
+    let spin: Float
+
+    struct Path {
+        let p0, p1, p2, p3: SIMD3<Float>
+        let out: SIMD3<Float>
+
+        func point(_ t: Float) -> SIMD3<Float> { cubicBezier(p0, p1, p2, p3, t) }
+
+        func heading(_ t: Float) -> SIMD3<Float> {
+            let u = 1 - t
+            return 3 * u * u * (p1 - p0) + 6 * u * t * (p2 - p1) + 3 * t * t * (p3 - p2)
+        }
+    }
+
+    func path(to launch: SIMD3<Float>) -> Path {
+        let up = SIMD3<Float>(0, 1, 0)
+        var level = launch - pivot
+        level.y = 0
+        let out = simd_length(level) > 1e-5 ? simd_normalize(level) : SIMD3<Float>(1, 0, 0)
+        let p1 = slides ? pivot + out * (2.4 * size) + up * (0.2 * size) : pivot + up * (2.6 * size) + out * (0.4 * size)
+        var p2 = simd_mix(pivot, launch, SIMD3(repeating: 0.85))
+        p2.y = max(launch.y, pivot.y + (slides ? 0.6 : 1.6) * size)
+        return Path(p0: pivot, p1: p1, p2: p2, p3: launch, out: out)
+    }
 }
 
 struct WhipTube {
@@ -374,7 +457,6 @@ struct WhipRing {
     var arc: Float
     var twist: Float
     var foot: Float
-    var occlusion: Float
 }
 
 /// Smooth 1D value noise in [-1, 1] with a period of 256.
