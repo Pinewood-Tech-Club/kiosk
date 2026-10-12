@@ -16,7 +16,7 @@ export const STAFF_ROLES = {
     icon: "cone",
     kind: "ipad",
     alerts: "quiet",
-    columns: [["make"], ["open", "supplies"]],
+    columns: [["make"], ["open"], ["supplies"]],
   },
   toppings: {
     title: "Toppings",
@@ -24,7 +24,7 @@ export const STAFF_ROLES = {
     icon: "sparkles",
     kind: "ipad",
     alerts: "front",
-    columns: [["handoff"], ["open", "kiosk", "supplies"]],
+    columns: [["handoff"], ["open", "kiosk"], ["supplies"]],
   },
   organizer: {
     title: "Organizer display",

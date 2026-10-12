@@ -9,7 +9,7 @@ function csp(nonce: string, url: URL): Record<string, string> {
   const socket = `${url.protocol === "http:" ? "ws" : "wss"}://${url.host}`;
   return {
     "Referrer-Policy": "same-origin",
-    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self' ${socket}; media-src blob:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; font-src data:; connect-src 'self' ${socket}; media-src blob:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
   };
 }
 
