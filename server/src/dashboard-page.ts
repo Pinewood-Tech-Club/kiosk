@@ -64,9 +64,9 @@ color:#fff;display:flex;align-items:center;gap:20px;box-shadow:0 10px 30px -8px 
 .list>*+*::before{content:"";position:absolute;top:0;left:24px;right:0;height:1px;background:var(--sep)}
 .list>.row+.row::before{left:36px}
 .empty{padding:26px 32px;font-size:19px;color:var(--label-2);display:flex;align-items:center;gap:10px}
-.who{display:flex;align-items:baseline;gap:12px;min-width:0}
+.who{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:12px;min-width:0}
 .who .num{font-size:20px;font-weight:600;color:var(--label-3);font-variant-numeric:tabular-nums;white-space:nowrap}
-.who .name{font-family:var(--serif);font-weight:600;letter-spacing:-.01em;line-height:1.05;overflow-wrap:anywhere}
+.who .name{font-family:var(--serif);font-weight:600;letter-spacing:-.01em;line-height:1.05;overflow-wrap:break-word;min-width:0}
 .base{display:flex;align-items:center;gap:10px;color:var(--label-2);font-weight:500}
 .tops,.scoops{list-style:none}
 .tops li{display:flex;align-items:center;font-weight:650;letter-spacing:-.02em}
@@ -253,7 +253,7 @@ body.app .web-only{display:none!important}
 .page,.page.wide{padding:0 16px 56px}
 .nav h1{font-size:40px}
 .alert{flex-wrap:wrap;gap:14px;padding:16px 16px 16px 18px;border-radius:26px}.alert .glyph{width:44px;height:44px;font-size:22px}.alert .title{font-size:23px}.alert .meta{font-size:16px}.alert button{width:100%;height:54px}
-.hero{padding:22px 22px 24px}.hero .name{font-size:44px}.hero .tops li,.hero .scoops li{font-size:32px}.hero .tops .plus{width:36px;height:36px;font-size:20px}
+.hero{padding:22px 22px 24px}.hero .top{flex-direction:column;gap:6px}.hero .state{align-items:flex-start;padding-top:0}.hero .name{font-size:44px}.hero .tops li,.hero .scoops li{font-size:32px}.hero .tops .plus{width:36px;height:36px;font-size:20px}
 .hero .foot{flex-direction:column;align-items:stretch}.hero .acts{margin:8px 0 0}.primary{justify-content:center;width:100%}
 .row{grid-template-columns:minmax(0,1fr) auto;padding:18px 20px;row-gap:10px}.row .items{grid-column:1/-1;grid-row:2}.row .name{font-size:32px}.row .side{grid-column:2;grid-row:1}
 .list>.row+.row::before{left:20px}
