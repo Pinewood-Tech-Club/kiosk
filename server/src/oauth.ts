@@ -192,6 +192,15 @@ export async function resolveCredentials(env: Env, now = Date.now()): Promise<Sq
   };
 }
 
+export async function giftCardsUsable(env: Env, now = Date.now()): Promise<boolean> {
+  const row = await env.DB.prepare("SELECT scopes, location_id, expires_at FROM square_tokens WHERE environment = ?")
+    .bind(squareEnvironment(env))
+    .first<{ scopes: string; location_id: string | null; expires_at: number | null }>()
+    .catch(() => null);
+  if (row?.location_id && (row.expires_at === null || row.expires_at > now + 60_000)) return row.scopes.split(/[\s,]+/).includes("GIFTCARDS_READ");
+  return !!env.SQUARE_ACCESS_TOKEN?.trim();
+}
+
 export function refreshDue(token: { refreshed_at: number; expires_at: number | null }, now: number): boolean {
   if (now - token.refreshed_at >= REFRESH_AFTER_MS) return true;
   return token.expires_at !== null && token.expires_at - now <= REFRESH_BEFORE_EXPIRY_MS;

@@ -161,7 +161,7 @@ describe("dashboard page", () => {
     expect(foreign.status).toBe(403);
   });
 
-  it("lets the session cookie read state, open the live socket and send actions only from the same origin", async () => {
+  it("lets the session cookie read state, and open the live socket and send actions only from the same origin", async () => {
     const cookie = await signIn();
     expect((await call("/v1/state", { headers: { Cookie: cookie } })).status).toBe(200);
     expect((await call("/v1/state")).status).toBe(401);
@@ -170,7 +170,9 @@ describe("dashboard page", () => {
     expect((await post({})).status).toBe(403);
     expect((await post({ Origin: "https://evil.test" })).status).toBe(403);
     expect((await post({ Origin: BASE })).status).toBe(200);
-    const ws = await call("/v1/ws", { headers: { Cookie: cookie, Upgrade: "websocket" } });
+    expect((await call("/v1/ws", { headers: { Cookie: cookie, Upgrade: "websocket" } })).status).toBe(403);
+    expect((await call("/v1/ws", { headers: { Cookie: cookie, Upgrade: "websocket", Origin: "https://staging.techclub.pw" } })).status).toBe(403);
+    const ws = await call("/v1/ws", { headers: { Cookie: cookie, Upgrade: "websocket", Origin: BASE } });
     expect(ws.status).toBe(101);
     ws.webSocket?.accept();
     ws.webSocket?.close();

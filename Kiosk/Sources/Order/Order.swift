@@ -108,8 +108,8 @@ enum Pricing {
     static let waffleConeCents = 150
     static let toppingCents = 50
 
-    /// Scoops are billed by their position in the whole order (one Square catalog line per scoop):
-    /// the order's 1st scoop is $4, the 2nd $3, every later one $2.
+    /// Each cup or cone is priced on its own (one Square catalog line per scoop): its 1st scoop is $4,
+    /// the 2nd $3, the 3rd $2.
     static func scoopCents(atPosition position: Int) -> Int {
         switch position {
         case ...0: 0
@@ -125,23 +125,19 @@ enum Pricing {
     }
 
     static func quote(_ items: [IceCreamItem]) -> OrderQuote {
-        var position = 0
         let lines = items.map { item in
-            let scoops = item.flavors.indices.reduce(0) { total, _ in
-                position += 1
-                return total + scoopCents(atPosition: position)
-            }
-            return OrderQuote.Line(item: item, scoopShareCents: scoops, vesselCents: item.vessel.priceCents,
-                                   toppingCents: item.toppings.count * Pricing.toppingCents)
+            OrderQuote.Line(item: item, scoopShareCents: scoopsTotal(item.flavors.count), vesselCents: item.vessel.priceCents,
+                            toppingCents: item.toppings.count * Pricing.toppingCents)
         }
-        return OrderQuote(lines: lines, scoopCount: position, scoopsTotalCents: scoopsTotal(position))
+        return OrderQuote(lines: lines, scoopCount: items.reduce(0) { $0 + $1.flavors.count },
+                          scoopsTotalCents: lines.reduce(0) { $0 + $1.scoopShareCents })
     }
 }
 
 struct OrderQuote: Sendable {
     struct Line: Identifiable, Sendable {
         let item: IceCreamItem
-        /// What this item's scoops cost given their positions in the order.
+        /// What this item's scoops cost.
         let scoopShareCents: Int
         let vesselCents: Int
         let toppingCents: Int

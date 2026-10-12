@@ -391,6 +391,11 @@ describe("kiosk registry", () => {
     alert = (await serverState()).alerts.find((a) => a.id === alertId)!;
     expect(alert.title).toBe("Customer needs help at Adam's iPad");
 
+    const reported = newDevice("k");
+    const reportedAlert = (await post("/v1/events", KIOSK, reported, { events: [help(`${reported}-h`, 1)] })).body.results[0].alertId;
+    await post("/v1/events", KIOSK, reported, { events: [healthEvent(`${reported}-g`, 1, { kioskName: "Window table" })] });
+    expect((await serverState()).alerts.find((a) => a.id === reportedAlert)?.title).toBe("Customer needs help at Window table");
+
     expect((await act(`${staff}-rm`, [{ type: "removeKiosk", kiosk: device }])).body.results[0].status).toBe("ok");
     const state = await serverState();
     expect(kioskIn(state, device)).toBeUndefined();
@@ -475,6 +480,19 @@ describe("supplies", () => {
     expect(state.alerts.find((a) => a.key === "soldout:vessel:cup" && !a.resolvedAt)?.severity).toBe("info");
     await post("/v1/actions", STAFF, device, { actions: [setSupply(`cup-back-${device}`, "vessel", "cup", false), setSupply(`cone-back-${device}`, "vessel", "cone", false)] });
     expect((await serverState()).alerts.find((a) => a.key === "soldout:vessel:cone" && !a.resolvedAt)).toMatchObject({ title: "Waffle cones are back", severity: "info" });
+  });
+
+  it("warns when every flavor is sold out", async () => {
+    const device = newDevice("web");
+    const flavors = ["vanilla", "chocolate", "cookies"];
+    await post("/v1/actions", STAFF, device, { actions: flavors.map((f) => setSupply(`out-${f}-${device}`, "flavor", f, true)) });
+    const state = await serverState();
+    const last = state.alerts.find((a) => a.key === "soldout:cookies" && !a.resolvedAt)!;
+    expect(last).toMatchObject({ severity: "warning", title: "Cookies & Cream is sold out" });
+    expect(last.detail).toMatch(/^Every flavor is sold out, so the kiosks show Closed/);
+    expect(state.alerts.find((a) => a.key === "soldout:vanilla" && !a.resolvedAt)?.severity).toBe("info");
+    await post("/v1/actions", STAFF, device, { actions: flavors.map((f) => setSupply(`back-${f}-${device}`, "flavor", f, false)) });
+    expect((await serverState()).supplies.filter((s) => s.kind === "flavor").every((s) => !s.soldOut)).toBe(true);
   });
 
   it("keeps the legacy flavor action and the flavors list in step with supplies", async () => {
@@ -959,6 +977,11 @@ describe("logs and orders", () => {
     const listed = await exports.default.fetch(`${BASE}/v1/orders`, { headers: headers(STAFF, "s") });
     const body = (await listed.json()) as { orders: { id: string }[] };
     expect(body.orders.filter((o) => ["o1", "o2", "o3"].includes(o.id)).map((o) => o.id).sort()).toEqual(["o1", "o2"]);
+
+    await post("/v1/orders", KIOSK, `${device}-other`, { orders: [order("o4", "PAY-4")] });
+    const mine = await exports.default.fetch(`${BASE}/v1/orders?device=${device}`, { headers: headers(STAFF, "s") });
+    const devices = ((await mine.json()) as { orders: { id: string; device: string }[] }).orders;
+    expect(devices.map((o) => o.id).sort()).toEqual(["o1", "o2"]);
   });
 
   it("drops logs past the retention window", async () => {

@@ -19,12 +19,16 @@ interface CheckoutRow {
 }
 
 interface GiftCardPaymentRow {
-  payment_id: string;
+  payment_id: string | null;
   checkout_id: string;
+  idempotency_key: string;
   gan_last4: string;
   approved_cents: number;
-  status: "approved" | "completed" | "canceled";
+  status: "pending" | "approved" | "completed" | "canceled";
+  card_id: string | null;
 }
+
+const PAYMENT_COLUMNS = "payment_id, checkout_id, idempotency_key, gan_last4, approved_cents, status, card_id";
 
 interface SquareGiftCard {
   id: string;
@@ -114,14 +118,14 @@ async function loadCheckout(env: Env, device: string, checkoutId: string): Promi
 
 async function paymentsFor(env: Env, checkoutId: string): Promise<GiftCardPaymentRow[]> {
   const { results } = await withRetry("D1", () =>
-    env.DB.prepare("SELECT payment_id, checkout_id, gan_last4, approved_cents, status FROM giftcard_payments WHERE checkout_id = ? ORDER BY created_at")
+    env.DB.prepare(`SELECT ${PAYMENT_COLUMNS} FROM giftcard_payments WHERE checkout_id = ? ORDER BY created_at`)
       .bind(checkoutId)
       .all<GiftCardPaymentRow>(),
   );
   return results;
 }
 
-const approvedCents = (rows: GiftCardPaymentRow[]) => rows.filter((r) => r.status !== "canceled").reduce((sum, r) => sum + r.approved_cents, 0);
+const approvedCents = (rows: GiftCardPaymentRow[]) => rows.filter((r) => r.status === "approved" || r.status === "completed").reduce((sum, r) => sum + r.approved_cents, 0);
 
 async function lookup(env: Env, device: string, body: { gan: string }): Promise<Response> {
   const credentials = await credentialsFor(env);
@@ -133,12 +137,11 @@ async function charge(env: Env, device: string, body: { checkoutId: string; gan:
   const checkout = await loadCheckout(env, device, body.checkoutId);
 
   const replayed = await withRetry("D1", () =>
-    env.DB.prepare("SELECT payment_id, checkout_id, gan_last4, approved_cents, status FROM giftcard_payments WHERE idempotency_key = ?")
-      .bind(body.idempotencyKey)
-      .first<GiftCardPaymentRow>(),
+    env.DB.prepare(`SELECT ${PAYMENT_COLUMNS} FROM giftcard_payments WHERE idempotency_key = ?`).bind(body.idempotencyKey).first<GiftCardPaymentRow>(),
   );
-  if (replayed) {
-    if (replayed.checkout_id !== checkout.id) throw new HttpError(409, "conflict", "This idempotency key was used for a different checkout");
+  if (replayed && replayed.checkout_id !== checkout.id) throw new HttpError(409, "conflict", "This idempotency key was used for a different checkout");
+  if (replayed && replayed.status !== "pending") {
+    if (!replayed.payment_id) throw new HttpError(409, "conflict", "This idempotency key was already used");
     const total = approvedCents(await paymentsFor(env, checkout.id));
     return json({ paymentId: replayed.payment_id, approvedCents: replayed.approved_cents, remainingCents: checkout.total_cents - total, last4: replayed.gan_last4 });
   }
@@ -148,42 +151,65 @@ async function charge(env: Env, device: string, body: { checkoutId: string; gan:
   if (card.state !== "ACTIVE") throw new HttpError(409, "giftcard_inactive", "This gift card is not active");
   if (card.balanceCents <= 0) throw new HttpError(409, "giftcard_empty", "This gift card has no balance");
 
-  const due = checkout.total_cents - approvedCents(await paymentsFor(env, checkout.id));
-  if (due <= 0) throw new HttpError(409, "already_covered", "Gift cards already cover this checkout");
+  let requested: number;
+  if (replayed) {
+    requested = replayed.approved_cents;
+  } else {
+    requested = checkout.total_cents - approvedCents(await paymentsFor(env, checkout.id));
+    if (requested <= 0) throw new HttpError(409, "already_covered", "Gift cards already cover this checkout");
+    await withRetry("D1", () =>
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO giftcard_payments (payment_id, checkout_id, device, idempotency_key, gan_last4, approved_cents, status, created_at, updated_at, card_id)
+         VALUES (NULL, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      )
+        .bind(checkout.id, device, body.idempotencyKey, card.last4, requested, now, now, card.id)
+        .run(),
+    );
+  }
 
-  let payment: { id?: string; status?: string; amount_money?: { amount?: number } } | undefined;
+  let payment: SquarePayment | undefined;
   try {
-    const response = await squareRequest<{ payment?: typeof payment }>(credentials.environment, "/v2/payments", {
-      bearer: credentials.accessToken,
-      body: {
-        idempotency_key: body.idempotencyKey,
-        source_id: card.id,
-        amount_money: { amount: due, currency: "USD" },
-        order_id: checkout.square_order_id,
-        location_id: checkout.location_id,
-        autocomplete: false,
-        accept_partial_authorization: true,
-        reference_id: checkout.id.slice(0, 40),
-      },
-    });
-    payment = response.payment;
+    payment = await createPayment(credentials, checkout, body.idempotencyKey, card.id, requested);
   } catch (error) {
+    if (error instanceof SquareError && !error.isTransient) {
+      await withRetry("D1", () => env.DB.prepare("DELETE FROM giftcard_payments WHERE idempotency_key = ? AND status = 'pending'").bind(body.idempotencyKey).run());
+    }
     return squareFailure("giftcard-charge-failed", { device, checkoutId: checkout.id, last4: card.last4 }, error);
   }
   const approved = payment?.amount_money?.amount ?? 0;
   if (!payment?.id || approved <= 0) throw new HttpError(502, "square_rejected", "Unexpected gift card payment response", {}, false);
 
   await withRetry("D1", () =>
-    env.DB.prepare(
-      `INSERT OR IGNORE INTO giftcard_payments (payment_id, checkout_id, device, idempotency_key, gan_last4, approved_cents, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'approved', ?, ?)`,
-    )
-      .bind(payment!.id, checkout.id, device, body.idempotencyKey, card.last4, approved, now, now)
+    env.DB.prepare("UPDATE giftcard_payments SET payment_id = ?, approved_cents = ?, status = 'approved', updated_at = ? WHERE idempotency_key = ? AND status = 'pending'")
+      .bind(payment!.id, approved, now, body.idempotencyKey)
       .run(),
   );
   console.log({ event: "giftcard-charge", device, checkoutId: checkout.id, last4: card.last4, approvedCents: approved });
   const total = approvedCents(await paymentsFor(env, checkout.id));
   return json({ paymentId: payment.id, approvedCents: approved, remainingCents: checkout.total_cents - total, last4: card.last4 });
+}
+
+interface SquarePayment {
+  id?: string;
+  status?: string;
+  amount_money?: { amount?: number };
+}
+
+async function createPayment(credentials: SquareCredentials, checkout: CheckoutRow, idempotencyKey: string, cardId: string, cents: number): Promise<SquarePayment | undefined> {
+  const response = await squareRequest<{ payment?: SquarePayment }>(credentials.environment, "/v2/payments", {
+    bearer: credentials.accessToken,
+    body: {
+      idempotency_key: idempotencyKey,
+      source_id: cardId,
+      amount_money: { amount: cents, currency: "USD" },
+      order_id: checkout.square_order_id,
+      location_id: checkout.location_id,
+      autocomplete: false,
+      accept_partial_authorization: true,
+      reference_id: checkout.id.slice(0, 40),
+    },
+  });
+  return response.payment;
 }
 
 interface SquareOrderState {
@@ -234,7 +260,7 @@ async function complete(env: Env, device: string, body: { checkoutId: string; pa
     env.DB.batch([
       env.DB.prepare("UPDATE checkouts SET completed_at = ? WHERE id = ?").bind(now, checkout.id),
       ...rows
-        .filter((r) => r.status === "approved" && body.paymentIds.includes(r.payment_id))
+        .filter((r) => r.status === "approved" && r.payment_id !== null && body.paymentIds.includes(r.payment_id))
         .map((r) => env.DB.prepare("UPDATE giftcard_payments SET status = 'completed', updated_at = ? WHERE payment_id = ?").bind(now, r.payment_id)),
     ]),
   );
@@ -289,19 +315,59 @@ async function cancelAll(env: Env, credentials: SquareCredentials, ids: string[]
 async function cancel(env: Env, device: string, body: { checkoutId: string; paymentIds?: string[] }, now = Date.now()): Promise<Response> {
   const checkout = await loadCheckout(env, device, body.checkoutId);
   const credentials = await credentialsFor(env);
-  const held = (await paymentsFor(env, checkout.id)).filter((r) => r.status === "approved").map((r) => r.payment_id);
+  const rows = await paymentsFor(env, checkout.id);
+  const held = rows.filter((r) => r.status === "approved").map((r) => r.payment_id!);
   const ids = [...new Set([...(body.paymentIds ?? []), ...held])];
-  const { canceled, transient } = await cancelAll(env, credentials, ids, now);
+  const { canceled, transient: cancelTransient } = await cancelAll(env, credentials, ids, now);
+  const pendingTransient = await resolvePending(env, credentials, rows.filter((r) => r.status === "pending"), now);
+  const transient = cancelTransient || pendingTransient;
   if (transient) throw new HttpError(503, "unavailable", "Square is unavailable, retry later");
   console.log({ event: "checkout-cancel", device, checkoutId: checkout.id, canceled: canceled.length });
   return json({ canceled });
 }
 
+async function resolvePending(env: Env, credentials: SquareCredentials, rows: GiftCardPaymentRow[], now: number): Promise<boolean> {
+  let transient = false;
+  for (const row of rows) {
+    const settle = (paymentId: string | null, status: "canceled" | "completed") =>
+      withRetry("D1", () =>
+        env.DB.prepare("UPDATE giftcard_payments SET payment_id = ?, status = ?, updated_at = ? WHERE idempotency_key = ? AND status = 'pending'")
+          .bind(paymentId, status, now, row.idempotency_key)
+          .run(),
+      );
+    const checkout = await env.DB.prepare("SELECT id, square_order_id, total_cents, location_id, completed_at FROM checkouts WHERE id = ?")
+      .bind(row.checkout_id)
+      .first<CheckoutRow>();
+    if (!checkout || !row.card_id) {
+      await settle(null, "canceled");
+      continue;
+    }
+    let payment: SquarePayment | undefined;
+    try {
+      payment = await createPayment(credentials, checkout, row.idempotency_key, row.card_id, row.approved_cents);
+    } catch (error) {
+      if (error instanceof SquareError && error.isTransient) transient = true;
+      else await settle(null, "canceled");
+      continue;
+    }
+    if (!payment?.id) {
+      await settle(null, "canceled");
+      continue;
+    }
+    const outcome = await cancelPayment(credentials, payment.id);
+    if (outcome === "canceled" || outcome === "completed") await settle(payment.id, outcome);
+    else if (outcome === "transient") transient = true;
+    else await settle(payment.id, "canceled");
+  }
+  return transient;
+}
+
 export async function sweepStaleHolds(env: Env, now = Date.now()): Promise<number> {
+  const cutoff = now - HOLD_TTL_MS;
   const { results } = await withRetry("D1", () =>
-    env.DB.prepare("SELECT payment_id FROM giftcard_payments WHERE status = 'approved' AND created_at < ? ORDER BY created_at LIMIT ?")
-      .bind(now - HOLD_TTL_MS, SWEEP_BATCH)
-      .all<{ payment_id: string }>(),
+    env.DB.prepare(`SELECT ${PAYMENT_COLUMNS} FROM giftcard_payments WHERE status IN ('approved', 'pending') AND created_at < ? ORDER BY created_at LIMIT ?`)
+      .bind(cutoff, SWEEP_BATCH)
+      .all<GiftCardPaymentRow>(),
   );
   if (results.length === 0) return 0;
   const credentials = await resolveCredentials(env, now);
@@ -309,7 +375,8 @@ export async function sweepStaleHolds(env: Env, now = Date.now()): Promise<numbe
     console.warn({ event: "giftcard-sweep-skipped", reason: "no credentials", stale: results.length });
     return 0;
   }
-  const { canceled } = await cancelAll(env, credentials, results.map((r) => r.payment_id), now);
+  const { canceled } = await cancelAll(env, credentials, results.filter((r) => r.status === "approved").map((r) => r.payment_id!), now);
+  await resolvePending(env, credentials, results.filter((r) => r.status === "pending"), now);
   console.log({ event: "giftcard-sweep", stale: results.length, canceled: canceled.length });
   return canceled.length;
 }

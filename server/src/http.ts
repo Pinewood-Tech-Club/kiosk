@@ -120,7 +120,8 @@ export async function authenticate(request: Request, env: Env, allowed: Role[]):
     const sessionCookie = cookie(request, STAFF_COOKIE);
     const session = sessionCookie ? await readStaffSession(sessionCookie, env) : null;
     if (!session) throw new HttpError(401, "unauthorized", "Send Authorization: Bearer <token>");
-    if (request.method !== "GET" && request.method !== "HEAD") {
+    const upgrading = request.headers.get("Upgrade")?.toLowerCase() === "websocket";
+    if (upgrading || (request.method !== "GET" && request.method !== "HEAD")) {
       const origin = request.headers.get("Origin");
       if (!origin || origin !== new URL(request.url).origin) throw new HttpError(403, "forbidden", "Cross-origin request refused");
     }

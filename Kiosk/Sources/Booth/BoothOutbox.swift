@@ -67,6 +67,11 @@ actor BoothOutbox {
 
     var pendingOrderCount: Int { orders.count }
 
+    func counts() -> KioskHealth.OutboxCounts {
+        ensureLoaded()
+        return KioskHealth.OutboxCounts(orders: orders.count, events: events.filter { !$0.isHealth }.count)
+    }
+
     func device() -> String {
         ensureLoaded()
         return deviceID
@@ -85,7 +90,24 @@ actor BoothOutbox {
             }
         }
         migrateLegacyOrders()
+        if let epoch = BoothEpoch.known { purge(before: epoch) }
         Task { await flushDue() }
+    }
+
+    func purge(before epoch: Int) {
+        ensureLoaded()
+        let staleOrders = orders.filter { ($0.stored.order.epoch ?? epoch) < epoch }
+        for queued in staleOrders {
+            log?("Booth: dropped pre-reset order " + Self.describe(queued.stored.order))
+            remove(orderID: queued.id, rejected: false)
+        }
+        let staleEvents = events.filter { ($0.stored.event.epoch ?? epoch) < epoch }
+        for event in staleEvents { remove(event: event) }
+        if !staleEvents.isEmpty { log?("Booth: dropped \(staleEvents.count) pre-reset events") }
+    }
+
+    private static func describe(_ order: BoothOrder) -> String {
+        "#\(order.orderNumber) (ref \(order.orderRef ?? "none"), \(order.totalCents.formattedAsUSD), checkout \(order.id))"
     }
 
     func kick(resetBackoff: Bool) {
@@ -101,7 +123,7 @@ actor BoothOutbox {
     func enqueueHelp(reason: String, message: String) {
         ensureLoaded()
         let event = BoothEvent(id: UUID().uuidString, seq: allocateSeq(), type: "help", at: BoothTime.string(Date()),
-                               reason: reason, message: message, health: nil)
+                               reason: reason, message: message, health: nil, epoch: BoothEpoch.known)
         store(event)
         enforceEventBounds()
         Task { await flushDue() }
@@ -110,7 +132,7 @@ actor BoothOutbox {
     func enqueueHealth(_ health: KioskHealth) {
         ensureLoaded()
         let event = BoothEvent(id: UUID().uuidString, seq: allocateSeq(), type: "health", at: BoothTime.string(Date()),
-                               reason: nil, message: nil, health: health)
+                               reason: nil, message: nil, health: health, epoch: BoothEpoch.known)
         let superseded = events.filter(\.isHealth)
         guard store(event) else { return }
         for old in superseded { remove(event: old) }
@@ -120,6 +142,8 @@ actor BoothOutbox {
 
     func enqueueOrder(_ order: BoothOrder) {
         ensureLoaded()
+        var order = order
+        order.epoch = BoothEpoch.known
         store(order)
         Task { await flushDue() }
     }
@@ -344,6 +368,9 @@ actor BoothOutbox {
                         log?("Booth: server rejected order #\(queued.stored.order.orderNumber): \(result.error?.message ?? "no reason"); kept in the outbox rejected folder")
                         remove(orderID: queued.id, rejected: true)
                     } else {
+                        if result.status == "stale" {
+                            log?("Booth: the booth dropped order " + Self.describe(queued.stored.order) + " as pre-reset")
+                        }
                         remove(orderID: queued.id, rejected: false)
                     }
                 }

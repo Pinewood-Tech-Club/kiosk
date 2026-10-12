@@ -3,6 +3,7 @@
 The booth backend is an HTTP API plus one websocket hub. Two kinds of client use it:
 
 - **kiosk**: a customer-facing iPad (the booth plans for up to 3). Each one is told apart by its `X-Booth-Device` id. It reports heartbeats, health, help requests, log lines and paid orders, reads the sold-out map and its own entry in the kiosk registry (open/closed, debug tools), and while connected publishes its live session and applies staff assist commands.
+- **admin**: the admin page (`/staff/admin`) and scripts holding an admin token from the staff PIN. See [Admin](#admin-added).
 - **staff**: the staff web pages (on the booth iPads, inside the app's staff role, and on laptops) and scripts holding `STAFF_TOKEN`. It reads alerts, the kiosk registry, the sold-out map and the order feed, acknowledges alerts, marks flavors, cups and cones and toppings sold out or back, closes and reopens kiosks one at a time or all together, renames kiosks, switches their debug tools, moves orders through their statuses, and assists a customer at a kiosk (sees its live order and sends it commands).
 
 It also owns the Square connection: the OAuth flow, token storage and refresh, and Square order creation for the kiosk.
@@ -27,7 +28,7 @@ A missing or wrong token is `401`. A valid token used on a route its role can't 
 **Staff sessions** *(added)*. Staff can sign in with the staff PIN (`STAFF_PIN`, or the staff token itself) instead of holding `STAFF_TOKEN`:
 
 - `POST /v1/staff/session` (no auth) with `{ "pin": "..." }` returns `{ "token": "st1....", "expiresAt": <ms> }`. The token is a bearer token for the `staff` role, valid 72 hours, signed with a key derived from `STAFF_TOKEN` (rotating `STAFF_TOKEN` signs everyone out). The staff app trades `STAFF_TOKEN` for one and puts it in its web view's cookie store as `booth_staff`. Wrong PIN is `401`; more than 10 attempts a minute from one IP is `429`.
-- The staff pages get the same token as an `HttpOnly; Secure; SameSite=Strict` cookie named `booth_staff` from `POST /dashboard/login` (form fields `pin` and `next`). The cookie is accepted on `/v1/` routes for the `staff` role only; any non-GET request authenticated by cookie must carry an `Origin` header equal to the server's origin. Without `X-Booth-Device`, a cookie client's device is `web-<session id>`.
+- The staff pages get the same token as an `HttpOnly; Secure; SameSite=Strict` cookie named `booth_staff` from `POST /dashboard/login` (form fields `pin` and `next`). The cookie is accepted on `/v1/` routes for the `staff` role only; any non-GET request and any websocket upgrade (`/v1/ws`) authenticated by cookie must carry an `Origin` header equal to the server's origin. Without `X-Booth-Device`, a cookie client's device is `web-<session id>`.
 
 ## Errors
 
@@ -66,6 +67,8 @@ The hub keeps one state document and a revision number `rev` that increases by e
 ```ts
 interface BoothState {
   rev: number;
+  epoch: number;                  // (added) reset generation: 0 until the first admin reset, +1 per reset
+  resetAt: number | null;         // (added) server ms of the last reset
   sessions?: KioskSession[];      // (added) staff only: the live session of every connected kiosk; not revisioned, see Assist
   kiosks: KioskEntry[];           // (added) every kiosk the hub knows, oldest first; absent from older servers
   kioskOpen: KioskOpen;           // (added, deprecated) open unless every kiosk is closed; use kiosks[].open
@@ -171,7 +174,7 @@ Alerts the hub raises:
 | `health` (warning) | A health problem on one kiosk that lasts 45 s: Square not authorized, no reader ready (real payments only), reader or iPad battery at or under 20 % and not charging, catalog error. Titled "... at <kiosk name>". | Resolved when the condition clears, or the kiosk is removed. |
 
 Every alert about a kiosk carries its `kioskId`, and renaming a kiosk retitles its open alerts.
-| `soldout` (info; warning when cups and cones are both out) | A flavor, vessel or topping is marked sold out or back ("Waffle cones are sold out", "Gummy Bears are back"). Keyed `soldout:<flavor id>` for flavors and `soldout:<kind>:<id>` otherwise. | Superseded by the next change to that item. |
+| `soldout` (info; warning when cups and cones are both out, or every flavor is) | A flavor, vessel or topping is marked sold out or back ("Waffle cones are sold out", "Gummy Bears are back"). Keyed `soldout:<flavor id>` for flavors and `soldout:<kind>:<id>` otherwise. | Superseded by the next change to that item. |
 
 ## WebSocket: `GET /v1/ws`
 
@@ -188,7 +191,10 @@ Server to client:
 { "type": "session", "kiosk": "<device id>", "session": KioskSession | null }   // (added) staff only; null when the kiosk disconnects
 { "type": "assist", "active": true, "by": "Toppings iPad", "expiresIn": 30000 }  // (added) kiosk only; on connect and whenever staff assisting it change
 { "type": "command", "command": AssistCommand }                                 // (added) kiosk only; relayed from staff
+{ "type": "control", "control": { "id": "<uuid>", "op": "attract" | "reloadCatalog" | "resync", "by": "Admin page" } }   // (added) kiosk only; from the admin page
 ```
+
+A kiosk applies each `control` id once and reports it in its session's `results`, like assist commands: `attract` cancels the current customer session and shows the welcome screen (refused while a payment is under way), `reloadCatalog` reloads the Square catalog, `resync` asks for a snapshot, sends fresh health and flushes its outbox and logs. Unknown ops are ignored. The hub may also send an unsolicited `snapshot` (after a reset, or after the admin page deletes test orders from the feed); clients replace their state as usual.
 
 `Change` is one of:
 
@@ -270,7 +276,7 @@ interface KioskSession {
 { ..., "op": "startOver" }                                // clears the order and returns to the welcome screen
 ```
 
-The hub validates the shape and relays the command to every open socket of that kiosk, answering the staff socket with `result` `ok` (relayed), or `rejected` with `bad_request` or `kiosk_offline` ("Front table isn't connected"). It doesn't dedupe or store commands. The kiosk applies them one at a time in arrival order, the same way a customer's taps would: an item that isn't on screen is first taken back out of the tray (or the review sheet) and the builder moves to the step that edits it, so the customer sees each change happen. Its answer is in the `results` of its next session: `applied`, `rejected` with a plain reason ("3 scoops max", "Payment is in progress on the kiosk", "Chocolate is sold out"), or `duplicate` for an id it already applied (it remembers the last 500). Staff resend a command with the same id until it appears in `results`, so a resend never applies twice. Commands are relative ("add a vanilla scoop"), so simultaneous taps by the customer and staff both apply in the order the kiosk sees them and every page converges on the kiosk's next session.
+The hub validates the shape and relays the command to every open socket of that kiosk, answering the staff socket with `result` `ok` (relayed), or `rejected` with `bad_request` or `kiosk_offline` ("Front table isn't connected"). It doesn't dedupe or store commands. The kiosk applies them one at a time in arrival order, the same way a customer's taps would: an item that isn't on screen is first taken back out of the tray (or the review sheet) and the builder moves to the step that edits it, so the customer sees each change happen. Its answer is in the `results` of its next session: `applied`, `rejected` with a plain reason ("3 scoops max", "Payment is in progress on the kiosk", "Chocolate is sold out"), or `duplicate` for an id it already applied (it remembers the last 500); a resend that arrives while the kiosk is still applying that id is ignored. Staff resend a command with the same id until it appears in `results`, so a resend never applies twice. Commands are relative ("add a vanilla scoop"), so simultaneous taps by the customer and staff both apply in the order the kiosk sees them and every page converges on the kiosk's next session.
 
 ## Kiosk events: `POST /v1/events` (kiosk)
 
@@ -279,7 +285,7 @@ The hub validates the shape and relays the command to every open socket of that 
 ```
 
 ```jsonc
-{ "id": "6F1C...", "seq": 17, "type": "help", "at": "2026-12-05T13:02:11.120-08:00",
+{ "id": "6F1C...", "seq": 17, "epoch": 1, "type": "help", "at": "2026-12-05T13:02:11.120-08:00",
   "reason": "button" | "payment_failed" | "no_reader" | "idle", "message": "Customer pressed the help button" }
 { "id": "7A2B...", "seq": 18, "type": "health", "at": "...", "health": KioskHealth }
 ```
@@ -296,6 +302,8 @@ interface KioskHealth {
   lastError: string | null; lastErrorAt: string | null;
   flavors?: { id: string; name: string }[];          // the kiosk's flavor list, in display order
   kioskName?: string;                                 // (added) the kiosk's configured name, at most 40 characters
+  epoch?: number;                                     // (added) the reset epoch the kiosk has applied
+  outbox?: { orders: number; events: number };        // (added) items still queued on the kiosk (help events, not health)
 }
 ```
 
@@ -305,7 +313,7 @@ Response `200`:
 { "results": [{ "id": "6F1C...", "status": "ok", "alertId": "..." }, { "id": "7A2B...", "status": "stale" }], "rev": 42 }
 ```
 
-Each item is `ok`, `duplicate` (already processed; same `alertId`), `stale` (an older health snapshot; dropped) or `rejected` (failed validation; carries `error`, don't retry it). A whole-request `400` means the envelope itself was bad.
+`epoch` *(added, optional)* is the reset epoch the kiosk knew when it queued the event; see [Reset](#reset-added). Each item is `ok`, `duplicate` (already processed; same `alertId`), `stale` (an older health snapshot, or an event from before the last reset; dropped) or `rejected` (failed validation; carries `error`, don't retry it). A whole-request `400` means the envelope itself was bad.
 
 ## Staff actions: `POST /v1/actions` (staff)
 
@@ -323,18 +331,18 @@ Each item is `ok`, `duplicate` (already processed; same `alertId`), `stale` (an 
 
 Response `200`: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "rejected", "error"?: {...} }], "rev": 43 }`. The same actions can be sent one at a time over the websocket (`{"type":"action"}`), answered with `result`.
 
-Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut`, `setSupply`, `setOrderStatus`, `setKioskOpen`, `renameKiosk` and `setKioskDebug` are last-writer-wins in the order the hub receives them; setting the value something already has is `ok` and changes nothing (no patch). A kiosk is open until staff close it. A flavor change sends a `flavors` patch and then a `supplies` patch; a vessel or topping change sends only `supplies`. `setSupply` with an unknown kind is `rejected` with `bad_request`, with an item not in the list with `not_found`. Sold out only stops new choices on the kiosks: carts that already hold the item are still checked out and paid (`/v1/checkout` and `/v1/orders` never look at it), and while cups and cones are both out the kiosks show Closed. `setOrderStatus` for an order not in the feed, and `setKioskOpen` (with `kiosk`), `renameKiosk` or `setKioskDebug` for a kiosk not in the registry, are `rejected` with `not_found`. `removeKiosk` of an unknown kiosk is `ok`. Names are trimmed, runs of spaces collapsed and cut at 40 characters.
+Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut`, `setSupply`, `setOrderStatus`, `setKioskOpen`, `renameKiosk` and `setKioskDebug` are last-writer-wins in the order the hub receives them; setting the value something already has is `ok` and changes nothing (no patch). A kiosk is open until staff close it. A flavor change sends a `flavors` patch and then a `supplies` patch; a vessel or topping change sends only `supplies`. `setSupply` with an unknown kind is `rejected` with `bad_request`, with an item not in the list with `not_found`. Sold out only stops new choices on the kiosks: carts that already hold the item are still checked out and paid (`/v1/checkout` and `/v1/orders` never look at it), and while cups and cones are both out, or every flavor is, the kiosks show Closed. `setOrderStatus` for an order not in the feed, and `setKioskOpen` (with `kiosk`), `renameKiosk` or `setKioskDebug` for a kiosk not in the registry, are `rejected` with `not_found`. `removeKiosk` of an unknown kiosk is `ok`. Names are trimmed, runs of spaces collapsed and cut at 40 characters.
 
 Clients that queue offline should keep only the newest unsent `setSoldOut`/`setSupply`/`setOrderStatus`/`setKioskOpen`/`renameKiosk`/`setKioskDebug` per item, order, kiosk flag or name (a `setKioskOpen` without `kiosk` also replaces unsent ones for single kiosks), and not send over the websocket while an HTTP batch is in flight, so an older change can't land after a newer one. The staff pages do both (see [Staff pages](#staff-pages-get-staffrole-added)).
 
 ## Logs: `POST /v1/logs` (kiosk)
 
 ```jsonc
-{ "appVersion": "0.1 (1)", "lines": [{ "id": "<device>-<file>-<offset>", "ts": "2026-12-05T13:02:11.120-08:00",
+{ "appVersion": "0.1 (1)", "epoch": 1, "lines": [{ "id": "<device>-<file>-<offset>", "ts": "2026-12-05T13:02:11.120-08:00",
   "level": "debug" | "info" | "warn" | "error", "message": "...", "context": { } }] }
 ```
 
-1 to 500 lines, at most 1 MB; `message` is cut at 8 KB and `context` at 8 KB of JSON. Response: `{ "accepted": 3, "stored": 2, "duplicates": 1 }`. Lines are kept 30 days and also written to Workers Logs.
+1 to 500 lines, at most 1 MB; `message` is cut at 8 KB and `context` at 8 KB of JSON. Response: `{ "accepted": 3, "stored": 2, "duplicates": 1 }`. A batch whose `epoch` *(added, optional)* is older than the hub's is dropped whole: `{ "accepted": 0, "stored": 0, "duplicates": 0, "rejected": 0, "stale": <lines> }`. Lines are kept 30 days and also written to Workers Logs.
 
 ## Orders: `POST /v1/orders` (kiosk)
 
@@ -345,11 +353,12 @@ Clients that queue offline should keep only the newest unsent `setSoldOut`/`setS
   "paidAt": "2026-12-05T13:02:11Z", "appVersion": "0.1 (1)",
   "receiptToken": "Qm9vdGhSZWNlaXB0VG9rZW4",                                     // (added) optional
   "giftCardPaymentId": "...", "giftCardCents": 500, "giftCardLast4": "1234",     // (added) optional, nullable: the gift card part of a split or gift-only order
+  "epoch": 1,                                                                     // (added) optional: the reset epoch when it was queued
   "items": [{ "vessel": "cone", "flavors": ["vanilla", "chocolate"], "toppings": ["sprinkles"] }],   // toppings (added) optional
   "lines": [{ "title": "1 Scoop", "detail": "#1 Waffle Cone: Vanilla", "cents": 400 }] }] }
 ```
 
-1 to 50 orders. Response: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "rejected" }] }`. An order is a duplicate if its `id`, its `squarePaymentId` or its `receiptToken` was stored before. Orders are never alerts. Every stored order (and a retried duplicate stored under the same `id`) is pushed into the hub's order feed, which ignores ones it already has; if the hub can't be reached the response is `503` and the kiosk's retry completes it.
+1 to 50 orders. Response: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "stale" | "rejected" }] }`. `stale` *(added)*: the order was queued before the last reset (its `epoch` is older than the hub's); it is not stored, only written to Workers Logs (`order-dropped-before-reset`), and the kiosk drops it. Orders without `epoch` are always taken. An order is a duplicate if its `id`, its `squarePaymentId` or its `receiptToken` was stored before. Orders are never alerts. Every stored order (and a retried duplicate stored under the same `id`) is pushed into the hub's order feed, which ignores ones it already has; if the hub can't be reached the response is `503` and the kiosk's retry completes it.
 
 `id` is the checkout id the kiosk generated when the customer pressed pay (the same id sent to `POST /v1/checkout`), so a receipt, a checkout and a paid order share one id.
 
@@ -357,7 +366,7 @@ Clients that queue offline should keep only the newest unsent `setSoldOut`/`setS
 
 For a split order `squarePaymentId` is the card reader's payment and `card` reads like `Visa 4242 + Gift card 1234`; for a gift-card-only order `squarePaymentId` is the gift card payment. `giftCardCents` is an integer >= 0. The receipt page shows both tenders when `giftCardCents` > 0.
 
-`GET /v1/orders?since=<ms>&limit=<n>` (staff) lists orders paid since `since`, newest first, with the count and total of real (not simulated) orders. Each row also has `status`, `status_at` and `status_by`.
+`GET /v1/orders?since=<ms>&limit=<n>` (staff) lists orders paid since `since`, newest first (at most 2000), with the count and total of real (not simulated) orders. *(added)* `&device=<id>` lists only orders stored by that device. Each row also has `status`, `status_at` and `status_by`.
 
 ## Square credentials: `GET /v1/square/credentials` (kiosk) *(added)*
 
@@ -402,7 +411,7 @@ Creates the Square order for a cart, priced by the server, and returns what the 
   "lines": [{ "title": "1 Scoop", "detail": "#1 Waffle Cone: Vanilla", "quantity": 1, "baseCents": 400, "cents": 400 }] }
 ```
 
-Pricing is the app's: scoops by position in the whole order ($4, $3, then $2 each), $1.50 per waffle cone, $0.50 per topping. Line items reference the catalog category `SQUARE_CATEGORY_NAME` (*1 Scoop*, *2nd Scoop*, *3rd+ Scoop*, *Waffle Cone*, *Topping*, cached 10 minutes, a stale copy up to a day old is used if Square fails); if it's missing or priced differently the order uses ad-hoc line items, exactly as the app does, and `catalogError` says why. Taxes are auto-applied by Square.
+Pricing is the app's: each cup or cone priced on its own, scoops by position within the item ($4, $3, then $2; no discount across items), $1.50 per waffle cone, $0.50 per topping. Line items reference the catalog category `SQUARE_CATEGORY_NAME` (*1 Scoop*, *2nd Scoop*, *3rd+ Scoop*, *Waffle Cone*, *Topping*, cached 10 minutes, a stale copy up to a day old is used if Square fails); if it's missing or priced differently the order uses ad-hoc line items, exactly as the app does, and `catalogError` says why. Taxes are auto-applied by Square.
 
 Idempotent by `id`: a retry returns the stored result with `status: "duplicate"` and no second Square call; the same `id` with a different cart is `409 conflict`. The Square idempotency key is the checkout id, so concurrent retries also get one Square order. The kiosk's own fallback uses `<id>-device`, so a slow backend answer and a device-created order never collide (an abandoned unpaid Square order is harmless).
 
@@ -440,19 +449,49 @@ Defaults to the last 24 hours. Counts real orders only: simulated ones are only 
 
 ## Staff pages: `GET /staff/<role>` *(added)*
 
-Self-contained pages (inline CSS, script and lucide SVG icons, a Noto Serif subset embedded as a `data:` font for customer names, no external requests, a per-request CSP nonce that also allows `media-src blob:` for the alert chime and `font-src data:`). They are styled as a light-mode iPadOS app whatever the device's appearance setting. The roles are listed in `src/staff-roles.ts`: `scooper` and `toppings` (iPads, interactive) and `organizer` and `board` (laptop displays, read-only). `GET /staff` lists them; `GET /dashboard` is a `303` to `/staff`; an unknown role is `404`. Without a session every page shows the PIN form, which posts `pin` and `next` (the page to return to, only `/staff` or `/staff/<role>`) to `POST /dashboard/login` and gets a `303` back with the session cookie; `POST /dashboard/logout` clears it. `POST /dashboard/renew` (cookie, same origin) answers `204`, with a fresh 72-hour cookie once the current one has under 48 hours left; pages call it every 30 minutes so an unattended display stays signed in. Pages send `Referrer-Policy: same-origin` so the browser sends the real `Origin` on the form post (with `no-referrer` Chrome sends `Origin: null` and the same-origin check refuses it).
+Self-contained pages (the admin page is described under [Admin](#admin-added); inline CSS, script and lucide SVG icons, a Noto Serif subset embedded as a `data:` font for customer names, no external requests, a per-request CSP nonce that also allows `media-src blob:` for the alert chime and `font-src data:`). They are styled as a light-mode iPadOS app whatever the device's appearance setting. The roles are listed in `src/staff-roles.ts`: `scooper` and `toppings` (iPads, interactive) and `organizer` and `board` (laptop displays, read-only). `GET /staff` lists them; `GET /dashboard` is a `303` to `/staff`; an unknown role is `404`. Without a session every page shows the PIN form, which posts `pin` and `next` (the page to return to, only `/staff` or `/staff/<role>`) to `POST /dashboard/login` and gets a `303` back with the session cookie; `POST /dashboard/logout` clears it. `POST /dashboard/renew` (cookie, same origin) answers `204`, with a fresh 72-hour cookie once the current one has under 48 hours left; pages call it every 30 minutes so an unattended display stays signed in. Pages send `Referrer-Policy: same-origin` so the browser sends the real `Origin` on the form post (with `no-referrer` Chrome sends `Origin: null` and the same-origin check refuses it).
 
 Signed in, a page opens `GET /v1/ws` with the cookie and follows the client rules above (replace on `snapshot`, apply a patch only at rev + 1, `sync` on a gap or a `pong` ahead, ping every 10 s, reconnect after 25 s of silence with 1 s to 30 s backoff, and again when the tab becomes visible or the network returns). Actions go through `POST /v1/actions` with `X-Booth-Device: web-<random>`, generated once per browser and kept in `localStorage`, and `by` set to the page title (`Scooper iPad` in the app, `Scooper page` in a browser). Each action is first written to a `localStorage` queue with its id, sent oldest first in batches (never more than one batch in flight), and removed only on `ok`, `duplicate` or `rejected`; network errors, `429` and `5xx` keep it and retry with backoff. An unsent `setSoldOut`/`setSupply`, `setOrderStatus` or `setKioskOpen` is replaced by a newer one for the same item, order or flag, and items unsent for an hour are dropped with a notice. Because the device id is stable, a batch that reached the hub before the connection dropped is answered `duplicate` on resend. The organizer page refetches `GET /v1/stats?since=<local midnight>` after each order patch and every 30 s. A `401` from the API reloads the page, which shows the PIN form.
 
 The staff app's web view identifies itself with `BoothStaffApp/1` in its user agent; pages then hide sign-out and the page switcher, play the alert chime and show *Exit staff mode*. After its confirmation the page posts `{ "type": "exitStaffMode" }` to the app's `boothApp` script message handler (`window.webkit.messageHandlers.boothApp`), and the app goes back to its role picker. In a browser the pages never play sound and have no exit control.
 
-The iPad pages and the organizer display list every kiosk in a *Kiosks* section: name, open or closed, online or last heard, and a short health line. On the iPads a kiosk opens a sheet to rename it, close or reopen it, switch its debug tools, see its full health and remove it once it's offline; *Close all kiosks* and *Open all kiosks* act on every kiosk. Closing, reopening and removing ask first; renaming and debug tools don't. While cups and cones are both sold out every open kiosk is listed as *Closed* with "No cups or cones left".
+The iPad pages and the organizer display list every kiosk in a *Kiosks* section: name, open or closed, online or last heard, and a short health line. On the iPads a kiosk opens a sheet to rename it, close or reopen it, switch its debug tools, see its full health and remove it once it's offline; *Close all kiosks* and *Open all kiosks* act on every kiosk. Closing, reopening and removing ask first; renaming and debug tools don't. While cups and cones are both sold out every open kiosk is listed as *Closed* with "No cups or cones left", and while every flavor is sold out with "Out of ice cream".
+
+**Alerts.** The toppings page leads with one *Needs you* section with *Acknowledge all* in its header: customer help (the help button and an idle customer) first, as large red bars; then payment and reader problems (a failed payment, no reader at checkout, no reader ready, low reader battery, Square not authorized, a kiosk offline) as large list rows with their own *Acknowledge*; then everything else (iPad battery, catalog, sold-out notices) in the compact list. The scooper page keeps its compact list and the organizer display its read-only one, in the same order. Every alert shows the kiosk it is about (sold-out notices say *All kiosks*). When the toppings page is scrolled past *Needs you*, a floating pill names the newest help request and scrolls back up.
 
 **Assist** (both iPad roles, not the displays): *Assist* in the navigation bar opens the kiosk picker, or goes straight to the kiosk when only one is online; each kiosk's sheet has *Assist* too. Opening it asks first. It is a full-page view of the kiosk's live session: each item with cup or cone, scoop steppers, topping chips and the kiosk's price, the total, which screen the kiosk is on with *Building the order*, *Reviewing the order* and *Entering a name* to move it there, the name for pickup, *Add another item* and *Start over*. Removing an item and starting over ask first. Changes are commands sent over the socket and resent every 3 s until the kiosk answers (given up after 15 s with a notice); the view shows only what the kiosk reports, and a refused command shows the kiosk's reason. Everything is disabled, with a plain explanation, while the page or the kiosk is offline or the customer is paying, and after payment only *Start over* remains. Urgent alerts stay on top of the view. *Done* closes it, and the kiosk's note goes away.
 
 Sold out is split by role. The scooper page switches flavors and *Cups and cones*; the toppings page switches *Toppings*. Each shows the other role's items read-only in a compact list of what is sold out ("All available" otherwise), with a note naming the page that sets them. Every switch, either direction, asks for confirmation first. The organizer display lists all three groups read-only. The split is in the pages (`owns` in `src/staff-roles.ts`); the hub accepts `setSupply` for any kind from any staff client.
 
+## Admin *(added)*
+
+`/staff/admin` is listed on the `/staff` picker under *Admin*. The page itself needs no session, but it always opens on a PIN lock screen: `POST /v1/admin/session` with `{ "pin": "..." }` (`STAFF_PIN`, or `STAFF_TOKEN` for scripts; wrong is `401`, more than 10 tries a minute from one IP `429`) returns `{ "token": "ad1....", "expiresAt": <ms> }`. The page keeps the token in memory only, so a reload or a new visit asks again. Every `/v1/admin/` route needs `Authorization: Bearer <admin token>`; a staff session, the staff cookie, `STAFF_TOKEN` or the kiosk token are refused with `401 admin_required`. The token lasts 15 minutes from its last use and at most 4 hours from the PIN: responses carry `X-Booth-Admin-Expires` and, once a minute or more has passed, a renewed token in `X-Booth-Admin-Token` that replaces the old one. Admin tokens are signed like staff sessions with a key derived from `STAFF_TOKEN`. Mutations take an optional `by` (default `Admin`).
+
+| Route | |
+| --- | --- |
+| `GET /v1/admin/state` | `BoothState` for staff (with `sessions`, `epoch`), plus `admin.expiresAt`. Kiosk diagnostics come from `kiosks[].health` and `sessions`. |
+| `POST /v1/admin/kiosks/<id>/control` | `{ "op": "attract" \| "reloadCatalog" \| "resync" }` relays a `control` message: `{ "id", "relayed": true }`; `409 kiosk_offline` if the kiosk has no socket. The kiosk's answer appears in its session `results` under that id. |
+| `POST /v1/admin/kiosks/<id>/debug`, `.../forget` | `{ "debug": true }`; forget is `removeKiosk`. |
+| `GET /v1/admin/logs` | Kiosk log lines from D1, newest first: `device`, `level` (minimum: `debug`, `info`, `warn`, `error`), `since`/`until` (ms), `q` (text in the message or context), `limit` (up to 200), `before` (the previous page's `next`). `{ "lines": [...], "next": "<cursor>" \| null, "devices": [{ "device", "lines", "lastTs" }] }` (`devices` on the first page only). |
+| `GET /v1/admin/square` | `/v1/square/status` plus `location`, `reachable` and a live catalog check of `SQUARE_CATEGORY_NAME`: each required item with its expected and found price (1 Scoop 400, 2nd Scoop 300, 3rd+ Scoop 200, Waffle Cone 150, Topping 50 cents) and the problem if any. |
+| `POST /v1/admin/square/refresh`, `.../connect` | Refresh the OAuth token now; start the connect flow (`{ "url" }` to open). |
+| `GET /v1/admin/orders?q=` | Search D1 orders by customer name (substring), receipt token or `/r/` link, order reference, order number, checkout id or Square order or payment id; empty `q` lists the 50 newest. Rows carry `receiptUrl` and `squareUrl` (the payment in the Square Dashboard, where refunds are done). |
+| `GET /v1/admin/orders/<id>`, `POST .../status` | Details with the checkout and gift card payments; `{ "status": "ready" }` sets the status through the hub (`via: "hub"`), or straight in D1 for an order no longer in the feed (`via: "d1"`). |
+| `POST /v1/admin/selftest` | `{ "ok", "checks": [{ "id": "d1" \| "hub" \| "square" \| "catalog", "name", "ok", "detail", "ms" }] }`. |
+| `GET /v1/admin/cleanup`, `POST /v1/admin/cleanup/test-orders` | Counts, then deletes test orders only: `simulated`, or stored by a `smoke-*` or `chaos-*` device (and those devices' checkouts), from D1 and the feed. |
+| `POST /v1/admin/alerts/ack-all` | Acknowledges every open alert. |
+| `GET /v1/admin/backup` | A JSON download: every D1 order, the hub's kiosks, alerts, order feed and supplies, and all-time stats. |
+| `GET /v1/admin/reset`, `POST /v1/admin/reset` | Counts of what a reset erases and keeps; `{ "confirm": "RESET" }` does it and returns `{ "epoch", "resetAt", "erased" }`. |
+
+Resets, test-order cleanups and acknowledge-all are recorded in the D1 `admin_events` table, which a reset keeps.
+
+### Reset *(added)*
+
+A reset erases, in the hub: every alert, the kiosk registry (names, open/closed, debug tools, health), the order feed, the sold-out map, health sequence numbers and grace timers, the processed-id memory, assist sessions and staff assist presence. In D1: every order, every checkout (and so every receipt link) except those of open gift card holds, completed and canceled gift card records, gift card lookup failures, and every log line. It keeps the Square OAuth tokens, the OAuth states and catalog cache, open (`pending` or `approved`) gift card holds with their checkouts, so the 10-minute sweep can still release a customer's held balance, the flavor list and the admin audit trail. The revision keeps counting up.
+
+The hub bumps `epoch`, recreates a fresh entry for each kiosk still connected, and sends every socket a new snapshot carrying the epoch. A kiosk seeing a higher epoch than it has applied restarts its order numbers, clears its cached flags and drops queued items from before the reset; a kiosk offline at the time does so when it reconnects. Items stamped with an older epoch (events, orders, log batches) are answered `stale` and not stored, and an order that races the reset is refused by the hub and removed from D1 again, so a stale kiosk can't bring back old orders, alerts or state. Items without an epoch (kiosk builds from before the reset feature, or a kiosk that has never seen one) are taken as current. The reset writes a `warn` log line from device `booth-admin` and an `admin_events` row.
+
 ## Other routes
 
 - `GET /v1/state` (any role): the current `BoothState`.
-- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "features": [...], "time": ... }`. `features` *(added)* lists additions a client can rely on (`square-oauth`, `square-credentials`, `checkout`, `receipt-tokens`, `order-feed`, `stats`, `staff-session`, `kiosk-registry`, `supplies`, `gift-cards`, `assist`). With a token, `?deep=1` also checks D1 and the hub.
+- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "features": [...], "time": ... }`. `features` *(added)* lists additions a client can rely on (`square-oauth`, `square-credentials`, `checkout`, `receipt-tokens`, `order-feed`, `stats`, `staff-session`, `kiosk-registry`, `supplies`, `gift-cards`, `assist`, `admin`, `reset-epoch`). With a token, `?deep=1` also checks D1 and the hub.

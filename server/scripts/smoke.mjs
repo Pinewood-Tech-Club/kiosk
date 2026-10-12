@@ -253,7 +253,7 @@ await step("square", async () => {
   check("square credentials for the kiosk", credentials.status === 200 && !!credentials.json?.accessToken && !!credentials.json?.locationId, `${credentials.json?.source}, ${credentials.json?.locationId}`);
   if (!tryCheckout) return;
   const cart = {
-    id: randomUUID(), receiptToken, orderNumber: 0, customerName: "Smoke Test", sourceName: "Smoke test", quotedCents: 1100,
+    id: randomUUID(), receiptToken, orderNumber: 0, customerName: "Smoke Test", sourceName: "Smoke test", quotedCents: 1300,
     locationId: credentials.json.locationId,
     items: [{ vessel: "cone", flavors: ["vanilla", "chocolate"], toppings: ["sprinkles"] }, { vessel: "cup", flavors: ["cookies"] }],
   };
@@ -261,7 +261,7 @@ await step("square", async () => {
   const first = await http("/v1/checkout", { token: kioskToken, device: kioskDevice, body: cart });
   check("checkout created a Square order", first.status === 200 && first.json?.status === "created" && !!first.json?.squareOrderId,
     `${Date.now() - started} ms, ${first.json?.totalCents ?? JSON.stringify(first.json)} cents, catalog ${first.json?.usedCatalog}`);
-  check("checkout priced like the kiosk", first.json?.expectedSubtotalCents === 1100 && first.json?.priceMatches === true, first.json?.catalogError ?? "");
+  check("checkout priced like the kiosk", first.json?.expectedSubtotalCents === 1300 && first.json?.priceMatches === true, first.json?.catalogError ?? "");
   const again = await http("/v1/checkout", { token: kioskToken, device: kioskDevice, body: cart });
   check("checkout retry replays the same order", again.json?.status === "duplicate" && again.json?.squareOrderId === first.json?.squareOrderId);
   const receipt = await fetch(`${base}/r/${receiptToken}`);
@@ -278,6 +278,28 @@ await step("staff session and dashboard", async () => {
     const response = await fetch(`${base}/staff/${page}`, { headers: { Cookie: `booth_staff=${session.json?.token}` } });
     check(`staff page ${page} served`, response.status === 200 && (await response.text()).includes("new WebSocket"));
   }
+  const refused = await http("/v1/admin/state", { token: session.json?.token });
+  check("admin tools refuse a staff session", refused.status === 401 && refused.json?.error?.code === "admin_required");
+  check("admin tools refuse the staff token", (await http("/v1/admin/state", { token: staffToken })).status === 401);
+  const admin = await http("/v1/admin/session", { body: { pin: staffToken } });
+  check("admin session issued", admin.status === 200 && admin.json?.token?.startsWith("ad1."));
+  const adminState = await http("/v1/admin/state", { token: admin.json?.token });
+  check("admin state", adminState.status === 200 && typeof adminState.json?.epoch === "number", `epoch ${adminState.json?.epoch}`);
+  const adminLogs = await http("/v1/admin/logs?limit=5", { token: admin.json?.token });
+  check("admin logs", adminLogs.status === 200 && Array.isArray(adminLogs.json?.lines));
+  const selftest = await http("/v1/admin/selftest", { token: admin.json?.token, method: "POST" });
+  const checks = Object.fromEntries((selftest.json?.checks ?? []).map((c) => [c.id, c.ok]));
+  check("admin self-test reaches D1 and the hub", checks.d1 === true && checks.hub === true, (selftest.json?.checks ?? []).map((c) => `${c.id} ${c.ok ? "ok" : "FAILED: " + c.detail}`).join(", "));
+  const adminPage = await fetch(`${base}/staff/admin`);
+  check("admin page served", adminPage.status === 200 && (await adminPage.text()).includes("/v1/admin/session"));
+  const cookieSocket = (origin) => new Promise((resolve) => {
+    const ws = new WebSocket(base.replace(/^http/, "ws") + "/v1/ws", { headers: { Cookie: `booth_staff=${session.json?.token}`, Origin: origin } });
+    ws.once("open", () => { ws.close(); resolve(101); });
+    ws.once("unexpected-response", (_req, res) => resolve(res.statusCode));
+    ws.once("error", () => resolve(0));
+  });
+  check("cookie socket from another origin refused", (await cookieSocket("https://elsewhere.techclub.pw")) === 403);
+  check("cookie socket from the staff pages' origin opens", (await cookieSocket(new URL(base).origin)) === 101);
 });
 
 await step("orders", async () => {

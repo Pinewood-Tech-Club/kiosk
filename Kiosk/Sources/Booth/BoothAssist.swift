@@ -49,6 +49,41 @@ struct AssistCommand: Decodable, Equatable, Sendable {
     }
 }
 
+struct BoothControl: Decodable, Equatable, Sendable {
+    enum Op: Equatable, Sendable {
+        case attract
+        case reloadCatalog
+        case resync
+        case unknown(String)
+
+        var name: String {
+            switch self {
+            case .attract: "attract"
+            case .reloadCatalog: "reloadCatalog"
+            case .resync: "resync"
+            case .unknown(let name): name
+            }
+        }
+    }
+
+    let id: String
+    let by: String?
+    let op: Op
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        id = c.lenient(AnyKey("id"), "")
+        by = c.lenientOptional(AnyKey("by"))
+        let name: String = c.lenient(AnyKey("op"), "")
+        switch name {
+        case "attract": op = .attract
+        case "reloadCatalog": op = .reloadCatalog
+        case "resync": op = .resync
+        default: op = .unknown(name)
+        }
+    }
+}
+
 struct AssistSession: Encodable, Equatable, Sendable {
     struct Item: Encodable, Equatable, Sendable {
         let id: String

@@ -171,7 +171,7 @@ struct GiftCardView: View {
                 }
             }
         }
-        .font(Theme.sans(42, .medium))
+        .font(Theme.serif(40, .medium))
         .monospacedDigit()
         .frame(width: 660, height: 112)
         .glassField(isFocused: true, cornerRadius: 56)
@@ -377,7 +377,7 @@ private struct AmountCard: View {
                         .foregroundStyle(row.emphasized ? Theme.text : Theme.textSecondary)
                     Spacer()
                     Text(row.cents < 0 ? "−" + (-row.cents).formattedAsUSD : row.cents.formattedAsUSD)
-                        .font(row.emphasized ? Theme.serif(30, .bold) : Theme.sans(22, .medium))
+                        .font(Theme.serif(row.emphasized ? 30 : 24, row.emphasized ? .semibold : .medium))
                         .monospacedDigit()
                         .foregroundStyle(Theme.text)
                 }

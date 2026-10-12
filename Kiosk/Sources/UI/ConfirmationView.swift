@@ -152,7 +152,7 @@ struct ReceiptItem: Identifiable {
 
     /// Groups Square's charged lines by the item tag in each line's note ("#2 Cup: Chocolate"), so every
     /// amount is exactly what Square billed. If the lines can't be grouped that way, falls back to the
-    /// kiosk's order-position pricing, which is the same rule the catalog encodes.
+    /// kiosk's per-item pricing, which is the same rule the catalog encodes.
     static func group(_ receipt: Receipt, items: [IceCreamItem]) -> [ReceiptItem] {
         var groups: [Int: (vessel: Int, scoops: Int, scoopCents: Int, toppings: Int, toppingCents: Int, hint: String)] = [:]
         var tagged = true

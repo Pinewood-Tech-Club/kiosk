@@ -87,6 +87,7 @@ final class AppModel {
 
     private var debugBarOverride: Bool?
     private var debugBarDismissed = false
+    private var debugBarUnlocked = false
     var simulatePayment: Bool
     var slowMotion: Double = 1 {
         didSet { stage.timeScale = slowMotion }
@@ -148,9 +149,8 @@ final class AppModel {
         }
     }
 
-    /// What one more scoop adds to the order: scoops are billed by their position in the whole order.
     var nextScoopCents: Int {
-        Pricing.scoopCents(atPosition: liveQuote.scoopCount + 1)
+        Pricing.scoopCents(atPosition: current.scoopCount + 1)
     }
 
     func count(of flavor: Flavor) -> Int {
@@ -246,11 +246,23 @@ final class AppModel {
     }
 
     var showsDebugBar: Bool {
-        debugBarOverride ?? (booth.debugEnabled && !debugBarDismissed)
+        debugBarOverride ?? ((booth.debugEnabled || debugBarUnlocked || !booth.isEnabled) && !debugBarDismissed)
+    }
+
+    var canUnlockDebugBar: Bool { Config.staffPin != nil }
+
+    func unlockDebugBar(pin: String) -> Bool {
+        guard let expected = Config.staffPin, pin.trimmingCharacters(in: .whitespaces) == expected else { return false }
+        square.record("Debug bar unlocked with the staff PIN")
+        debugBarOverride = nil
+        debugBarUnlocked = true
+        debugBarDismissed = false
+        return true
     }
 
     func hideDebugBar() {
         debugBarOverride = nil
+        debugBarUnlocked = false
         debugBarDismissed = true
     }
 
@@ -264,10 +276,12 @@ final class AppModel {
         withAnimation(.easeInOut(duration: 0.5)) { screen = .roleSetup }
     }
 
-    var orderingOpen: Bool { booth.kioskOpen && !booth.outOfVessels }
+    var orderingOpen: Bool { booth.kioskOpen && !booth.outOfVessels && !booth.outOfFlavors }
 
     var closedReason: String {
-        booth.kioskOpen ? "We're out of cups and cones for now. Please see a staff member." : "Ordering is paused. Please see a staff member."
+        if !booth.kioskOpen { return "Ordering is paused. Please see a staff member." }
+        if booth.outOfFlavors { return "We're out of ice cream for now. Please see a staff member." }
+        return "We're out of cups and cones for now. Please see a staff member."
     }
 
     func vesselsChanged() {
@@ -531,6 +545,10 @@ final class AppModel {
         switch confirmation {
         case .removeEmptyEdit(let next):
             guard let editingID else { return }
+            guard current.scoopCount == 0 else {
+                finishEditing(then: next)
+                return
+            }
             delete(editingID, presentNewItem: next == .newItem)
             if next != .newItem { proceed(to: next) }
         case .deleteItem(let id): delete(id)
@@ -631,11 +649,17 @@ final class AppModel {
         withAnimation(.easeInOut(duration: 0.4)) { screen = .builder }
     }
 
+    private static let orderCounterKey = "orderCounter"
+
     func nextOrderNumber() -> Int {
         let defaults = UserDefaults.standard
-        let number = defaults.integer(forKey: "orderCounter") + 1
-        defaults.set(number, forKey: "orderCounter")
+        let number = defaults.integer(forKey: Self.orderCounterKey) + 1
+        defaults.set(number, forKey: Self.orderCounterKey)
         return number
+    }
+
+    func resetOrderCounter() {
+        UserDefaults.standard.set(0, forKey: Self.orderCounterKey)
     }
 
     func submitName() {

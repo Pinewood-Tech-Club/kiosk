@@ -492,7 +492,7 @@ async function main() {
 
   // Verification goes straight to the Worker, around the proxy.
   const allOrders = new Map(ledger.orders.map((order) => [order.id, order]));
-  const listed = await api(`/v1/orders?since=${started - 3 * 24 * 60 * 60 * 1000}&limit=2000`, { token: STAFF_TOKEN, device: "chaos-verify", base: UPSTREAM });
+  const listed = await api(`/v1/orders?since=${started - 3 * 24 * 60 * 60 * 1000}&limit=2000&device=${encodeURIComponent(device)}`, { token: STAFF_TOKEN, device: "chaos-verify", base: UPSTREAM });
   const stored = (listed.json?.orders ?? []).filter((o) => o.device === device);
   const storedIds = stored.map((o) => o.id);
   const expectedIds = [...allOrders.keys()];

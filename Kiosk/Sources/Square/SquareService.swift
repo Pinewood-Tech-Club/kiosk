@@ -81,6 +81,7 @@ final class SquareService: NSObject {
     private var hasApplicationID: Bool { Config.squareApplicationID != nil }
     var isConfigured: Bool { hasApplicationID && credentialSource != nil }
     var isSandbox: Bool { hasApplicationID && sdk.settingsManager.sdkSettings.environment == .sandbox }
+    var isProduction: Bool { hasApplicationID && !isSandbox }
     var environmentName: String { hasApplicationID ? (isSandbox ? "Sandbox" : "Production") : "No credentials" }
     var isAuthorized: Bool { authorizationState == .authorized }
 
@@ -171,6 +172,14 @@ final class SquareService: NSObject {
                 record("Location lookup failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    func reloadCatalog() -> String? {
+        guard isStarted, hasApplicationID else { return "Square isn't running on this kiosk" }
+        guard credentials.current != nil else { return "This kiosk has no Square credentials yet" }
+        record("Reloading the Square catalog")
+        loadCatalog()
+        return nil
     }
 
     func loadCatalog() {

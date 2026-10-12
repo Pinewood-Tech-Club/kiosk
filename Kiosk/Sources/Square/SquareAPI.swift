@@ -63,11 +63,10 @@ struct SquareAPI {
 
     static func catalogLineItems(for quote: OrderQuote, catalog: SquareCatalog) -> [[String: Any]] {
         var lines: [[String: Any]] = []
-        var position = 0
         for (index, line) in quote.lines.enumerated() {
             let label = "#\(index + 1) \(line.item.vessel.title)"
-            for flavor in line.item.flavors {
-                position += 1
+            for (scoop, flavor) in line.item.flavors.enumerated() {
+                let position = scoop + 1
                 lines.append([
                     "catalog_object_id": catalog.scoopEntry(atPosition: position).variationID,
                     "quantity": "1",
