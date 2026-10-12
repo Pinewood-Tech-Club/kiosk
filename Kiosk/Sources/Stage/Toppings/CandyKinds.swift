@@ -147,7 +147,7 @@ struct GummyBears: ScatterKind {
 
     private static func jelly(_ flavor: Flavor) -> JellyMaterial.Flavor {
         switch flavor {
-        case .raspberry: .init(color: [0.72, 0.022, 0.02], see: 0.07)
+        case .raspberry: .init(color: [0.62, 0.016, 0.016], see: 0.07)
         case .orange: .init(color: [0.92, 0.36, 0.015], see: 0.1)
         case .lemon: .init(color: [0.9, 0.74, 0.03], see: 0.18)
         case .strawberry: .init(color: [0.13, 0.42, 0.02], see: 0.1)
