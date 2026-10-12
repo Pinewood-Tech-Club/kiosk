@@ -428,7 +428,7 @@ export function pickerBody(message: string | null = null): string {
     return `<div class="section-head"><h2>${heading}</h2></div><nav class="group list roles">${rows}</nav>`;
   };
   const error = message ? `<div class="section-head"><p class="err" role="alert">${icon("alert")} ${escapeHtml(message)}</p></div>` : "";
-  const admin = `<div class="section-head"><h2>Admin</h2></div><nav class="group list roles"><a class="role" href="/staff/admin"><span class="ric admin">${icon("lock")}</span><span class="rt"><b>Admin</b><span>Kiosk diagnostics, logs, Square check, order lookup, self-test, cleanup and reset. Asks for the PIN every time.</span></span>${icon("chevron", "chev")}</a></nav>`;
+  const admin = `<div class="section-head"><h2>Admin</h2></div><nav class="group list roles"><a class="role" href="/staff/admin"><span class="ric admin">${icon("lock")}</span><span class="rt"><b>Admin</b><span>Kiosk diagnostics, logs, Square check, order lookup, self-test, cleanup and reset. Only listed admins, signed in through Cloudflare Access.</span></span>${icon("chevron", "chev")}</a></nav>`;
   return `<div class="page">${nav("Booth staff", signOut(), false)}${error}${group("ipad", "iPads")}${group("display", "Laptop displays")}${admin}</div>`;
 }
 
@@ -460,7 +460,7 @@ const SECTIONS: Record<StaffSection, (display: boolean, role: StaffRole) => stri
   board: () => `<div class="board"><section><div class="section-head"><h2>Ready for pickup</h2><span id="readyCount"></span></div><div class="group list" id="boardReady"></div></section><section><div class="section-head"><h2>Being made</h2><span id="makingCount"></span></div><div class="group list" id="boardMaking"></div></section></div>`,
   feed: () => `<div class="section-head"><h2>Orders</h2><span id="feedCount"></span></div><div class="group list" id="feed"></div>`,
   supplies: (display, role) => `<div id="soldout">${suppliesSection(display, role)}</div>`,
-  kiosks: (display) => `<div class="section-head"><h2>Kiosks</h2><span id="kioskCount"></span></div><div class="group list" id="kiosks"></div>${display ? "" : `<p class="footnote">Debug shows the debug bar at the top of that kiosk's screen. Tap a kiosk to rename it or to close or reopen it.</p>`}`,
+  kiosks: (display) => `<div class="section-head"><h2>Kiosks</h2><span id="kioskCount"></span></div><div class="group list" id="kiosks"></div>${display ? "" : `<p class="footnote">Debug tools shows the debug bar at the top of that kiosk's screen. Tap a kiosk to rename it or to close or reopen it.</p>`}`,
   stats: () => `<div class="section-head"><h2>Today</h2><span id="updated"></span></div>
 <div class="group tiles">
 <div class="tile wide"><div class="k">Revenue</div><div class="v" id="tRevenue">$0</div><div class="s" id="tAvg"></div></div>
