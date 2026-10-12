@@ -271,6 +271,15 @@ final class Stage {
             x += 0.09
             group.addChild(copy)
         }
+        let drizzle = DrizzleLayer(style: .chocolate)
+        drizzle.apply(onto: FlatSurface(radius: 0.02), seed: 1, animated: false, now: 0)
+        for fading in [WhipLayer.makeIconDollop(), drizzle.entity] {
+            applyLighting(fading)
+            fading.setOpacity(0.5)
+            fading.position = [x, 0.1, 0]
+            x += 0.09
+            group.addChild(fading)
+        }
         if let candy = assets.candy {
             var rng = ToppingRandom(seed: 1)
             let kinds: [any ScatterKind] = [candy.gummyBears, candy.candyLentils, candy.sprinkles]
