@@ -246,7 +246,7 @@ interface KioskSession {
   }[];
   customerName: string;
   totalCents: number;             // the kiosk's own total
-  paying: boolean;                // Square's payment is up; the kiosk refuses every command
+  paying: boolean;                // a payment is under way (Square's screen or the gift card flow); the kiosk refuses every command
   orderingOpen: boolean;          // false while this kiosk is closed or out of cups and cones
   assisted: boolean;              // the kiosk is showing "A staff member is helping you"
   maxScoops: number;              // per item, 3
