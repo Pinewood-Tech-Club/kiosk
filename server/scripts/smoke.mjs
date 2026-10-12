@@ -210,6 +210,24 @@ await step("supplies", async () => {
   check("unknown topping rejected", bad.json?.results?.[0]?.error?.code === "not_found");
 });
 
+await step("assist", async () => {
+  const session = { screen: "builder", step: "flavors", items: [{ id: "smoke-item", vessel: "cup", flavors: ["vanilla"], toppings: [], cents: 400, current: true, inOrder: true }], customerName: "Smoke", totalCents: 400, results: [] };
+  kiosk.send({ type: "session", session });
+  const relayed = await staff.next("session", (m) => m.kiosk === kioskDevice && m.session?.totalCents === 400);
+  check("kiosk session reached staff", relayed.session.items[0].flavors[0] === "vanilla");
+  const state = await http("/v1/state", { token: staffToken, device: staffDevice });
+  check("staff state lists the session", state.json?.sessions?.some((x) => x.kiosk === kioskDevice));
+  staff.send({ type: "assist", kiosk: kioskDevice, by: "Smoke test" });
+  check("kiosk told staff are assisting", (await kiosk.next("assist", (m) => m.active)).by === "Smoke test");
+  const id = randomUUID();
+  staff.send({ type: "command", command: { id, kiosk: kioskDevice, op: "addScoop", item: "smoke-item", flavor: "chocolate", by: "Smoke test" } });
+  check("assist command relayed", (await staff.next("result", (m) => m.id === id)).status === "ok" && (await kiosk.next("command", (m) => m.command.id === id)).command.flavor === "chocolate");
+  kiosk.send({ type: "session", session: { ...session, results: [{ id, status: "applied" }] } });
+  check("kiosk's result reached staff", (await staff.next("session", (m) => m.session?.results?.[0]?.id === id)).session.results[0].status === "applied");
+  staff.send({ type: "assist", kiosk: null });
+  check("assist ended on the kiosk", (await kiosk.next("assist", (m) => !m.active)).active === false);
+});
+
 await step("logs", async () => {
   const lines = [
     { id: `smoke-${run}-0`, ts: new Date().toISOString(), level: "info", message: "Smoke test log line" },

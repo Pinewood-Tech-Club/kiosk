@@ -2,8 +2,8 @@
 
 The booth backend is an HTTP API plus one websocket hub. Two kinds of client use it:
 
-- **kiosk**: a customer-facing iPad (the booth plans for up to 3). Each one is told apart by its `X-Booth-Device` id. It reports heartbeats, health, help requests, log lines and paid orders, and reads the sold-out map and its own entry in the kiosk registry (open/closed, debug tools).
-- **staff**: the staff web pages (on the booth iPads, inside the app's staff role, and on laptops) and scripts holding `STAFF_TOKEN`. It reads alerts, the kiosk registry, the sold-out map and the order feed, acknowledges alerts, marks flavors, cups and cones and toppings sold out or back, closes and reopens kiosks one at a time or all together, renames kiosks, switches their debug tools and moves orders through their statuses.
+- **kiosk**: a customer-facing iPad (the booth plans for up to 3). Each one is told apart by its `X-Booth-Device` id. It reports heartbeats, health, help requests, log lines and paid orders, reads the sold-out map and its own entry in the kiosk registry (open/closed, debug tools), and while connected publishes its live session and applies staff assist commands.
+- **staff**: the staff web pages (on the booth iPads, inside the app's staff role, and on laptops) and scripts holding `STAFF_TOKEN`. It reads alerts, the kiosk registry, the sold-out map and the order feed, acknowledges alerts, marks flavors, cups and cones and toppings sold out or back, closes and reopens kiosks one at a time or all together, renames kiosks, switches their debug tools, moves orders through their statuses, and assists a customer at a kiosk (sees its live order and sends it commands).
 
 It also owns the Square connection: the OAuth flow, token storage and refresh, and Square order creation for the kiosk.
 
@@ -66,6 +66,7 @@ The hub keeps one state document and a revision number `rev` that increases by e
 ```ts
 interface BoothState {
   rev: number;
+  sessions?: KioskSession[];      // (added) staff only: the live session of every connected kiosk; not revisioned, see Assist
   kiosks: KioskEntry[];           // (added) every kiosk the hub knows, oldest first; absent from older servers
   kioskOpen: KioskOpen;           // (added, deprecated) open unless every kiosk is closed; use kiosks[].open
   flavors: { id: string; name: string; soldOut: boolean }[]; // order is display order; the flavor rows of supplies
@@ -184,6 +185,9 @@ Server to client:
 { "type": "pong", "t": 1791700000000, "rev": 42, "serverTime": 1791700000123, "kioskLastSeenAt": 1791699995000 }   // a kiosk gets its own last contact; staff the latest of any kiosk
 { "type": "result", "id": "<event or action id>", "status": "ok" | "duplicate" | "stale" | "rejected", "alertId": "...", "error": {...} }
 { "type": "error", "error": { "code": "bad_request", "message": "..." } }
+{ "type": "session", "kiosk": "<device id>", "session": KioskSession | null }   // (added) staff only; null when the kiosk disconnects
+{ "type": "assist", "active": true, "by": "Toppings iPad", "expiresIn": 30000 }  // (added) kiosk only; on connect and whenever staff assisting it change
+{ "type": "command", "command": AssistCommand }                                 // (added) kiosk only; relayed from staff
 ```
 
 `Change` is one of:
@@ -213,9 +217,60 @@ Client to server:
 { "type": "sync" }                                                  // answered with a snapshot
 { "type": "event", "event": Event }                                 // kiosk; answered with result
 { "type": "action", "action": Action }                              // staff; answered with result
+{ "type": "session", "session": KioskSession }                      // (added) kiosk; relayed to staff, no reply (error if invalid)
+{ "type": "assist", "kiosk": "<device id>" | null, "by": "Toppings iPad" }   // (added) staff; which kiosk this page is assisting, every 10 s while open
+{ "type": "command", "command": AssistCommand }                     // (added) staff; answered with result (relayed, or rejected)
 ```
 
 Liveness: clients send `heartbeat` or `ping` every 10 s and treat 25 s without any message from the server as a dead socket: close it and reconnect. Reconnect with backoff (1 s doubling to 30 s, with jitter), and at once when the app returns to the foreground or the network path comes back. The server treats 30 s without kiosk contact as offline. Text frames over 64 KB are rejected, and a socket that floods (more than 60 messages in 10 s) gets an error and is closed with code 1008.
+
+## Assist *(added)*
+
+A staff member at one of the booth iPads can follow and change the order of the customer standing at a kiosk. The kiosk is authoritative: staff send commands, the kiosk applies them through its own ordering model (pricing, the three-scoop limit and sold out all hold, and the customer sees the change on screen), and staff only ever display what the kiosk publishes. Assist needs live sockets on both sides; nothing is queued, and ordering and payment never depend on it.
+
+**Session.** While its socket is open the kiosk sends its session whenever it changes, at most 4 times a second (a socket is closed past 60 messages in 10 s), and again after every reconnect. The hub keeps the latest one in its Durable Object storage only while that kiosk has an open socket (never in D1, never in `rev`), sends it to every staff socket as `{"type":"session"}`, includes it in staff snapshots and `GET /v1/state` for staff as `sessions`, and sends `session: null` once the kiosk's last socket closes. Kiosk sockets never receive sessions.
+
+```ts
+interface KioskSession {
+  kiosk: string;                  // set by the hub: the kiosk's X-Booth-Device
+  updatedAt: number;              // set by the hub: server ms when it arrived
+  screen: string;                 // "attract" | "builder" | "summary" | "name" | "confirmation" | "roleSetup" | "staff"
+  step: "vessel" | "flavors" | "toppings" | null;   // the builder step, on "builder" only
+  editing: boolean;               // the item on screen is one taken back out of the order
+  items: {
+    id: string;                   // the kiosk's item id; commands name items by it
+    vessel: "cup" | "cone"; flavors: string[]; toppings: string[];
+    cents: number;                // what the kiosk charges for it, with scoops priced by position in the order
+    current: boolean;             // the item at the center of the builder
+    inOrder: boolean;             // false for the item being built while it has no choices yet (it isn't charged)
+  }[];
+  customerName: string;
+  totalCents: number;             // the kiosk's own total
+  paying: boolean;                // Square's payment is up; the kiosk refuses every command
+  orderingOpen: boolean;          // false while this kiosk is closed or out of cups and cones
+  assisted: boolean;              // the kiosk is showing "A staff member is helping you"
+  maxScoops: number;              // per item, 3
+  results: { id: string; status: "applied" | "duplicate" | "rejected"; message?: string }[];  // the last 20 commands
+}
+```
+
+**Presence.** A staff page sends `{"type":"assist","kiosk":"<device id>","by":"Toppings iPad"}` when it opens assist and every 10 s while it stays open, and `"kiosk": null` when it closes. The hub remembers it on that socket (surviving hibernation) for 30 s. Whenever the set of staff assisting a kiosk changes, and when the kiosk connects, the kiosk gets `{"type":"assist","active":...,"expiresIn":30000}`; it shows its *assisting* note while active and hides it if no refresh arrives within `expiresIn` plus 5 s, so a staff iPad that drops off the network can't leave it up.
+
+**Commands.** Staff send `{"type":"command","command":AssistCommand}`:
+
+```jsonc
+{ "id": "<uuid>", "kiosk": "<device id>", "by": "Toppings iPad", "op": "addScoop", "item": "<item id>", "flavor": "vanilla" }
+{ ..., "op": "removeScoop", "item": "<item id>", "flavor": "vanilla" }
+{ ..., "op": "setVessel", "item": "<item id>", "vessel": "cup" | "cone" }
+{ ..., "op": "setTopping", "item": "<item id>", "topping": "whip", "on": true }
+{ ..., "op": "addItem" }                                  // finishes the item on screen and starts a fresh one (from the review sheet: back to the builder)
+{ ..., "op": "removeItem", "item": "<item id>" }          // the item being built is cleared instead
+{ ..., "op": "setName", "name": "Alex" }                  // the kiosk keeps at most 24 characters
+{ ..., "op": "navigate", "to": "builder" | "summary" | "name" }   // from the welcome screen, "builder" begins an order
+{ ..., "op": "startOver" }                                // clears the order and returns to the welcome screen
+```
+
+The hub validates the shape and relays the command to every open socket of that kiosk, answering the staff socket with `result` `ok` (relayed), or `rejected` with `bad_request` or `kiosk_offline` ("Front table isn't connected"). It doesn't dedupe or store commands. The kiosk applies them one at a time in arrival order, the same way a customer's taps would: an item that isn't on screen is first taken back out of the tray (or the review sheet) and the builder moves to the step that edits it, so the customer sees each change happen. Its answer is in the `results` of its next session: `applied`, `rejected` with a plain reason ("3 scoops max", "Payment is in progress on the kiosk", "Chocolate is sold out"), or `duplicate` for an id it already applied (it remembers the last 500). Staff resend a command with the same id until it appears in `results`, so a resend never applies twice. Commands are relative ("add a vanilla scoop"), so simultaneous taps by the customer and staff both apply in the order the kiosk sees them and every page converges on the kiosk's next session.
 
 ## Kiosk events: `POST /v1/events` (kiosk)
 
@@ -393,9 +448,11 @@ The staff app's web view identifies itself with `BoothStaffApp/1` in its user ag
 
 The iPad pages and the organizer display list every kiosk in a *Kiosks* section: name, open or closed, online or last heard, and a short health line. On the iPads a kiosk opens a sheet to rename it, close or reopen it, switch its debug tools, see its full health and remove it once it's offline; *Close all kiosks* and *Open all kiosks* act on every kiosk. Closing, reopening and removing ask first; renaming and debug tools don't. While cups and cones are both sold out every open kiosk is listed as *Closed* with "No cups or cones left".
 
+**Assist** (both iPad roles, not the displays): *Assist* in the navigation bar opens the kiosk picker, or goes straight to the kiosk when only one is online; each kiosk's sheet has *Assist* too. Opening it asks first. It is a full-page view of the kiosk's live session: each item with cup or cone, scoop steppers, topping chips and the kiosk's price, the total, which screen the kiosk is on with *Building the order*, *Reviewing the order* and *Entering a name* to move it there, the name for pickup, *Add another item* and *Start over*. Removing an item and starting over ask first. Changes are commands sent over the socket and resent every 3 s until the kiosk answers (given up after 15 s with a notice); the view shows only what the kiosk reports, and a refused command shows the kiosk's reason. Everything is disabled, with a plain explanation, while the page or the kiosk is offline or the customer is paying, and after payment only *Start over* remains. Urgent alerts stay on top of the view. *Done* closes it, and the kiosk's note goes away.
+
 Sold out is split by role. The scooper page switches flavors and *Cups and cones*; the toppings page switches *Toppings*. Each shows the other role's items read-only in a compact list of what is sold out ("All available" otherwise), with a note naming the page that sets them. Every switch, either direction, asks for confirmation first. The organizer display lists all three groups read-only. The split is in the pages (`owns` in `src/staff-roles.ts`); the hub accepts `setSupply` for any kind from any staff client.
 
 ## Other routes
 
 - `GET /v1/state` (any role): the current `BoothState`.
-- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "features": [...], "time": ... }`. `features` *(added)* lists additions a client can rely on (`square-oauth`, `square-credentials`, `checkout`, `receipt-tokens`, `order-feed`, `stats`, `staff-session`, `kiosk-registry`, `supplies`, `gift-cards`). With a token, `?deep=1` also checks D1 and the hub.
+- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "features": [...], "time": ... }`. `features` *(added)* lists additions a client can rely on (`square-oauth`, `square-credentials`, `checkout`, `receipt-tokens`, `order-feed`, `stats`, `staff-session`, `kiosk-registry`, `supplies`, `gift-cards`, `assist`). With a token, `?deep=1` also checks D1 and the hub.
