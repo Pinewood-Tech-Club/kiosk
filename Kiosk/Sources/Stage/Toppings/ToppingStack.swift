@@ -107,7 +107,6 @@ final class ToppingStack {
     static let scoopsRemovedDuration = 0.5
     /// A scoop lifted off the top takes a moment to clear the toppings that sat on it before they sink.
     static let scoopsRemovedDelay = 0.25
-    /// Pieces that rode the whip settle onto the finished surface over this long.
     static let rideSettleDuration = 0.3
 
     init(rig: ItemRig) {
@@ -346,7 +345,6 @@ final class ToppingStack {
     }
 }
 
-/// Heights blended between two surfaces.
 struct MixedSurface: ToppingSurface {
     let a: any ToppingSurface
     let b: any ToppingSurface
@@ -366,7 +364,6 @@ struct MixedSurface: ToppingSurface {
 }
 
 extension ToppingSurface {
-    /// How far this surface is above `other` at each (x, z), where both have one.
     func sampleDelta(against other: any ToppingSurface) -> (Float, Float) -> Float {
         { x, z in
             guard let now = sample(x: x, z: z)?.height, let then = other.sample(x: x, z: z)?.height else { return 0 }
@@ -396,7 +393,7 @@ enum ToppingFactory {
         case .whip:
             return (WhipLayer.makeIconDollop(), [])
         case .chocolate:
-            return (DrizzleLayer.makeIconPuddle(style: .chocolate), [])
+            return (DrizzleLayer.makeIcon(style: .chocolate), [])
         case .gummies, .mms, .sprinkles:
             var random = ToppingRandom(seed: ToppingSeed.layer(item: 0x5EED, topping: topping))
             let pile = scatterKind(topping, candy: candy).makeIconPile(rng: &random)

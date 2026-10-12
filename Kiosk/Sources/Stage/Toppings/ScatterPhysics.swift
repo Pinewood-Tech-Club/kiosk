@@ -168,7 +168,6 @@ struct ScatterSettle {
     static let maxRollingResistance: Float = 0.0012
     static let whipFriction: Float = 3
     static let whipRollingResistance: Float = 0.004
-    /// How far a piece settles into whipped cream.
     static let whipSink: Float = 0.0009
 
     let surface: ToppingSurface

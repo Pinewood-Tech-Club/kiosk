@@ -137,13 +137,12 @@ final class DrizzleLayer: ToppingLayer {
         model.name = "drizzle-\(style.name)"
     }
 
-    /// A settled drizzle, optionally over a glossy pool of syrup, tipped toward the viewer so the pattern reads on
-    /// the topping card's icon. The caller still applies the stage's lighting to it.
-    static func makeIconPuddle(style: DrizzleStyle = .chocolate, seed: UInt64 = 11, showsPool: Bool = false) -> Entity {
+    /// A settled drizzle tipped toward the viewer so its pattern reads on the topping card's icon. The caller still
+    /// applies the stage's lighting to it.
+    static func makeIcon(style: DrizzleStyle = .chocolate, seed: UInt64 = 11) -> Entity {
         let pool = IconPool(radius: 0.02, depth: 0.0022, seed: seed)
         let root = Entity()
         root.name = "drizzle-icon"
-        if showsPool, let mesh = pool.mesh() { root.addChild(ModelEntity(mesh: mesh, materials: [style.material])) }
         let layer = DrizzleLayer(style: style)
         layer.apply(onto: pool, seed: seed, animated: false, now: 0)
         root.addChild(layer.entity)
@@ -242,7 +241,6 @@ final class DrizzleLayer: ToppingLayer {
     }
 }
 
-/// A shallow syrup pool with a rounded, slightly wavy rim; the drizzle on top covers its middle.
 private struct IconPool: ToppingSurface {
     let poolRadius: Float
     let depth: Float
@@ -274,40 +272,6 @@ private struct IconPool: ToppingSurface {
         let dx = height(x + e, z) - height(x - e, z)
         let dz = height(x, z + e) - height(x, z - e)
         return (height(x, z), simd_normalize(SIMD3(-dx, 2 * e, -dz)))
-    }
-
-    func mesh() -> MeshResource? {
-        let rings = 24, segments = 72
-        var positions: [SIMD3<Float>] = [[0, depth, 0]]
-        var normals: [SIMD3<Float>] = [[0, 1, 0]]
-        var uvs: [SIMD2<Float>] = [[1, 0.5]]
-        for k in 0..<segments {
-            let angle = Float(k) / Float(segments) * 2 * .pi
-            let rim = edge(angle)
-            for j in 1...rings {
-                let d = 1 - pow(1 - Float(j) / Float(rings), 1.6)
-                let r = rim * min(d, 0.9995)
-                let x = cos(angle) * r, z = sin(angle) * r
-                positions.append([x, max(height(x, z), 0.00005), z])
-                normals.append(sample(x: x, z: z)?.normal ?? [0, 1, 0])
-                uvs.append([1 - 0.75 * pow(d, 10), 0.5])
-            }
-        }
-        var indices: [UInt32] = []
-        func index(_ k: Int, _ j: Int) -> UInt32 { j == 0 ? 0 : UInt32(1 + (k % segments) * rings + j - 1) }
-        for k in 0..<segments {
-            indices += [0, index(k + 1, 1), index(k, 1)]
-            for j in 1..<rings {
-                let a = index(k, j), b = index(k + 1, j), c = index(k, j + 1), d = index(k + 1, j + 1)
-                indices += [a, b, d, a, d, c]
-            }
-        }
-        var descriptor = MeshDescriptor(name: "drizzle-pool")
-        descriptor.positions = MeshBuffer(positions)
-        descriptor.normals = MeshBuffer(normals)
-        descriptor.textureCoordinates = MeshBuffer(uvs)
-        descriptor.primitives = .triangles(indices)
-        return try? MeshResource.generate(from: [descriptor])
     }
 }
 
