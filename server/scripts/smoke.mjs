@@ -268,6 +268,26 @@ await step("square", async () => {
   check("receipt page knows the checkout", receipt.status === 200);
 });
 
+async function denied(path, headers = {}, method = "GET") {
+  const response = await fetch(base + path, { method, headers, redirect: "manual", body: method === "GET" ? undefined : "{}" });
+  const text = await response.text();
+  const redirected = response.status >= 300 && response.status < 400 && /cloudflareaccess\.com/.test(response.headers.get("location") ?? "");
+  const refused = response.status === 401 || response.status === 403;
+  return { ok: (redirected || refused) && !/"kiosks"|"alerts"|\/v1\/admin\//.test(text), status: response.status };
+}
+
+async function adminIsBehindAccess(staffSession) {
+  console.log("SKIP  admin tool checks  (skipped: behind Cloudflare Access, no service token); checking that nothing leaks without it");
+  for (const [name, headers] of [["no credentials", {}], ["the staff token", { Authorization: `Bearer ${staffToken}` }], ["a staff session", { Authorization: `Bearer ${staffSession}`, Cookie: `booth_staff=${staffSession}` }], ["the kiosk token", { Authorization: `Bearer ${kioskToken}` }]]) {
+    const state = await denied("/v1/admin/state", headers);
+    check(`GET /v1/admin/state with ${name} returns no admin data`, state.ok, `HTTP ${state.status}`);
+    const page = await denied("/staff/admin", headers);
+    check(`GET /staff/admin with ${name} returns no admin page`, page.ok, `HTTP ${page.status}`);
+  }
+  const reset = await denied("/v1/admin/reset", { Authorization: `Bearer ${staffToken}` }, "POST");
+  check("POST /v1/admin/reset with the staff token is refused", reset.ok, `HTTP ${reset.status}`);
+}
+
 await step("staff session and dashboard", async () => {
   const session = await http("/v1/staff/session", { body: { pin: staffToken } });
   check("staff session issued", session.status === 200 && session.json?.token?.startsWith("st1."));
@@ -278,20 +298,7 @@ await step("staff session and dashboard", async () => {
     const response = await fetch(`${base}/staff/${page}`, { headers: { Cookie: `booth_staff=${session.json?.token}` } });
     check(`staff page ${page} served`, response.status === 200 && (await response.text()).includes("new WebSocket"));
   }
-  const refused = await http("/v1/admin/state", { token: session.json?.token });
-  check("admin tools refuse a staff session", refused.status === 401 && refused.json?.error?.code === "admin_required");
-  check("admin tools refuse the staff token", (await http("/v1/admin/state", { token: staffToken })).status === 401);
-  const admin = await http("/v1/admin/session", { body: { pin: staffToken } });
-  check("admin session issued", admin.status === 200 && admin.json?.token?.startsWith("ad1."));
-  const adminState = await http("/v1/admin/state", { token: admin.json?.token });
-  check("admin state", adminState.status === 200 && typeof adminState.json?.epoch === "number", `epoch ${adminState.json?.epoch}`);
-  const adminLogs = await http("/v1/admin/logs?limit=5", { token: admin.json?.token });
-  check("admin logs", adminLogs.status === 200 && Array.isArray(adminLogs.json?.lines));
-  const selftest = await http("/v1/admin/selftest", { token: admin.json?.token, method: "POST" });
-  const checks = Object.fromEntries((selftest.json?.checks ?? []).map((c) => [c.id, c.ok]));
-  check("admin self-test reaches D1 and the hub", checks.d1 === true && checks.hub === true, (selftest.json?.checks ?? []).map((c) => `${c.id} ${c.ok ? "ok" : "FAILED: " + c.detail}`).join(", "));
-  const adminPage = await fetch(`${base}/staff/admin`);
-  check("admin page served", adminPage.status === 200 && (await adminPage.text()).includes("/v1/admin/session"));
+  await adminIsBehindAccess(session.json?.token);
   const cookieSocket = (origin) => new Promise((resolve) => {
     const ws = new WebSocket(base.replace(/^http/, "ws") + "/v1/ws", { headers: { Cookie: `booth_staff=${session.json?.token}`, Origin: origin } });
     ws.once("open", () => { ws.close(); resolve(101); });

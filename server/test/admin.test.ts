@@ -1,9 +1,8 @@
 import { env, exports } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
-import { ADMIN_IDLE_MS, ADMIN_MAX_MS, ADMIN_TOKEN_HEADER, createAdminSession } from "../src/admin";
+import { beforeAll, describe, expect, it } from "vitest";
 import { checkCatalogItems } from "../src/catalog";
 import type { BoothState, ServerMessage } from "../src/protocol";
-import { createStaffSession } from "../src/session";
+import { newKey, OWNER, serveKeys, signToken, type TestKey } from "./access-helpers";
 
 const KIOSK = "test-kiosk-token";
 const STAFF = "test-staff-token";
@@ -16,8 +15,9 @@ function headers(token: string, device: string, extra: Record<string, string> = 
   return { Authorization: `Bearer ${token}`, "X-Booth-Device": device, ...extra };
 }
 
-async function request(path: string, init: { token?: string; device?: string; method?: string; body?: unknown; headers?: Record<string, string> } = {}) {
+async function request(path: string, init: { token?: string; access?: string; device?: string; method?: string; body?: unknown; headers?: Record<string, string> } = {}) {
   const h: Record<string, string> = { ...(init.headers ?? {}) };
+  if (init.access) h["Cf-Access-Jwt-Assertion"] = init.access;
   if (init.token) h.Authorization = `Bearer ${init.token}`;
   if (init.device) h["X-Booth-Device"] = init.device;
   if (init.body !== undefined) h["Content-Type"] = "application/json";
@@ -36,11 +36,16 @@ async function request(path: string, init: { token?: string; device?: string; me
   return { status: response.status, body, headers: response.headers };
 }
 
-async function adminToken(): Promise<string> {
-  return (await createAdminSession(env)).token;
-}
+let accessKey: TestKey;
 
-const admin = async (path: string, init: { method?: string; body?: unknown } = {}) => request(path, { ...init, token: await adminToken() });
+beforeAll(async () => {
+  accessKey = await newKey("admin-test-key");
+  serveKeys(accessKey);
+});
+
+const adminToken = () => signToken(accessKey);
+
+const admin = async (path: string, init: { method?: string; body?: unknown } = {}) => request(path, { ...init, access: await adminToken() });
 
 class Socket {
   inbox: ServerMessage[] = [];
@@ -100,71 +105,6 @@ const order = (id: string, extra: Record<string, unknown> = {}) => ({
 
 const help = (id: string, extra: Record<string, unknown> = {}) => ({ id, seq: 1, type: "help", reason: "button", message: `help ${id}`, ...extra });
 
-describe("admin sessions", () => {
-  it("needs the PIN again: staff sessions, the staff token and kiosk tokens are refused", async () => {
-    const staffSession = (await createStaffSession(env)).token;
-    for (const token of [undefined, STAFF, KIOSK, staffSession, "ad1.bogus.token"]) {
-      const response = await request("/v1/admin/state", { token });
-      expect(response.status).toBe(401);
-      expect(response.body.error.code).toBe("admin_required");
-    }
-    const login = await exports.default.fetch(`${BASE}/dashboard/login`, {
-      method: "POST",
-      redirect: "manual",
-      headers: { Origin: BASE, "Content-Type": "application/x-www-form-urlencoded" },
-      body: "pin=2468",
-    });
-    const cookie = login.headers.get("Set-Cookie")!.split(";")[0];
-    expect((await request("/v1/admin/state", { headers: { Cookie: cookie } })).status).toBe(401);
-    expect((await request("/v1/admin/session", { body: { pin: "0000" } })).status).toBe(401);
-    expect((await request("/v1/admin/session", { body: {} })).status).toBe(400);
-  });
-
-  it("issues a 15 minute token that works on every admin route and slides while in use", async () => {
-    const before = Date.now();
-    const issued = await request("/v1/admin/session", { body: { pin: "2468" } });
-    expect(issued.body.token).toMatch(/^ad1\./);
-    expect(issued.body.expiresAt).toBeGreaterThanOrEqual(before + ADMIN_IDLE_MS);
-    expect(issued.body.expiresAt).toBeLessThanOrEqual(Date.now() + ADMIN_IDLE_MS);
-    const fresh = await request("/v1/admin/state", { token: issued.body.token });
-    expect(fresh.status).toBe(200);
-    expect(fresh.headers.get(ADMIN_TOKEN_HEADER)).toBeNull();
-
-    const older = await createAdminSession(env, Date.now() - 5 * 60_000);
-    const used = await request("/v1/admin/state", { token: older.token });
-    expect(used.status).toBe(200);
-    const renewed = used.headers.get(ADMIN_TOKEN_HEADER)!;
-    expect(renewed).toMatch(/^ad1\./);
-    expect(Number(used.headers.get("X-Booth-Admin-Expires"))).toBeGreaterThan(older.expiresAt + 4 * 60_000);
-    expect((await request("/v1/admin/state", { token: renewed })).status).toBe(200);
-  });
-
-  it("refuses an expired token and caps sliding at four hours", async () => {
-    const expired = await createAdminSession(env, Date.now() - ADMIN_IDLE_MS - 1000);
-    expect((await request("/v1/admin/state", { token: expired.token })).status).toBe(401);
-    const old = await createAdminSession(env, Date.now(), { sid: "s", iat: Date.now() - ADMIN_MAX_MS + 60_000, exp: Date.now() + 60_000 });
-    expect(old.expiresAt).toBeLessThanOrEqual(Date.now() + 60_000);
-    const used = await request("/v1/admin/state", { token: old.token });
-    expect(used.status).toBe(200);
-    expect(used.headers.get(ADMIN_TOKEN_HEADER)).toBeNull();
-  });
-
-  it("serves the admin page without a session and lists it on the picker", async () => {
-    const page = await exports.default.fetch(`${BASE}/staff/admin`);
-    expect(page.status).toBe(200);
-    expect(page.headers.get("Content-Security-Policy")).toContain("script-src 'nonce-");
-    const login = await exports.default.fetch(`${BASE}/dashboard/login`, {
-      method: "POST",
-      redirect: "manual",
-      headers: { Origin: BASE, "Content-Type": "application/x-www-form-urlencoded" },
-      body: "pin=2468",
-    });
-    const cookie = login.headers.get("Set-Cookie")!.split(";")[0];
-    const picker = await (await exports.default.fetch(`${BASE}/staff`, { headers: { Cookie: cookie } })).text();
-    expect(picker).toContain('href="/staff/admin"');
-  });
-});
-
 describe("admin tools", () => {
   it("sends controls to a connected kiosk and refuses an offline one", async () => {
     const device = newDevice("k");
@@ -172,7 +112,7 @@ describe("admin tools", () => {
     const sent = await admin(`/v1/admin/kiosks/${device}/control`, { body: { op: "attract" } });
     expect(sent.status).toBe(200);
     const control = await socket.next("control");
-    expect(control.control).toMatchObject({ id: sent.body.id, op: "attract", by: "Admin" });
+    expect(control.control).toMatchObject({ id: sent.body.id, op: "attract", by: OWNER });
     expect((await admin(`/v1/admin/kiosks/${device}/control`, { body: { op: "explode" } })).status).toBe(400);
     socket.close();
     await new Promise((r) => setTimeout(r, 50));
@@ -203,7 +143,7 @@ describe("admin tools", () => {
     });
     await request("/v1/logs", { token: KIOSK, device: b, body: { lines: [{ id: `${b}-1`, ts: new Date(base + 2500).toISOString(), level: "error", message: "Other kiosk failed" }] } });
     const token = await adminToken();
-    const get = async (query: string) => (await request(`/v1/admin/logs?${query}`, { token })).body;
+    const get = async (query: string) => (await request(`/v1/admin/logs?${query}`, { access: token })).body;
 
     const mine = await get(`device=${a}&since=${base}`);
     expect(mine.lines.map((l: any) => l.message)).toEqual(["Frame stats", "Order 3F2A-1 paid", "Payment failed (3)", "Reader slow", "Authorized"]);
@@ -229,7 +169,7 @@ describe("admin tools", () => {
     const o = order(id, { customerName: "Priya Natarajan", orderRef: "F1ND-41", orderNumber: 41 });
     expect((await request("/v1/orders", { token: KIOSK, device, body: { orders: [o] } })).body.results[0].status).toBe("ok");
     const token = await adminToken();
-    const find = async (q: string) => (await request(`/v1/admin/orders?q=${encodeURIComponent(q)}`, { token })).body.orders.map((x: any) => x.id);
+    const find = async (q: string) => (await request(`/v1/admin/orders?q=${encodeURIComponent(q)}`, { access: token })).body.orders.map((x: any) => x.id);
     expect(await find("natara")).toContain(id);
     expect(await find(o.receiptToken)).toEqual([id]);
     expect(await find(`https://kiosk.example/r/${o.receiptToken}`)).toEqual([id]);
@@ -239,22 +179,22 @@ describe("admin tools", () => {
     expect(await find("41")).toContain(id);
     expect(await find("nobody at all")).toEqual([]);
 
-    const detail = (await request(`/v1/admin/orders/${id}`, { token })).body;
+    const detail = (await request(`/v1/admin/orders/${id}`, { access: token })).body;
     expect(detail.order).toMatchObject({ id, customer_name: "Priya Natarajan", square_payment_id: `PAY-${id}`, receiptUrl: `/r/${o.receiptToken}` });
     expect(detail.order.squareUrl).toBe(`https://squareup.com/dashboard/sales/transactions/PAY-${id}`);
     expect(detail.order.items[0].flavors).toEqual(["vanilla", "chocolate"]);
-    expect((await request(`/v1/admin/orders/missing-order`, { token })).status).toBe(404);
+    expect((await request(`/v1/admin/orders/missing-order`, { access: token })).status).toBe(404);
 
-    const changed = await request(`/v1/admin/orders/${id}/status`, { token, body: { status: "canceled" } });
+    const changed = await request(`/v1/admin/orders/${id}/status`, { access: token, body: { status: "canceled" } });
     expect(changed.body).toEqual({ status: "canceled", via: "hub" });
     expect((await state()).orders.find((x) => x.id === id)?.status).toBe("canceled");
     const row = await env.DB.prepare("SELECT status, status_by FROM orders WHERE id = ?").bind(id).first<{ status: string; status_by: string }>();
-    expect(row).toEqual({ status: "canceled", status_by: "Admin" });
+    expect(row).toEqual({ status: "canceled", status_by: OWNER });
 
     const old = `old-${crypto.randomUUID()}`;
     await env.DB.prepare("INSERT INTO orders (id, total_cents, items, paid_at, received_at, status) VALUES (?, 400, '[]', 1, 1, 'collected')").bind(old).run();
-    expect((await request(`/v1/admin/orders/${old}/status`, { token, body: { status: "ready" } })).body).toEqual({ status: "ready", via: "d1" });
-    expect((await request(`/v1/admin/orders/${old}/status`, { token, body: { status: "lost" } })).status).toBe(400);
+    expect((await request(`/v1/admin/orders/${old}/status`, { access: token, body: { status: "ready" } })).body).toEqual({ status: "ready", via: "d1" });
+    expect((await request(`/v1/admin/orders/${old}/status`, { access: token, body: { status: "lost" } })).status).toBe(400);
   });
 
   it("deletes only test, simulated and smoke orders, and acknowledges every alert", async () => {
@@ -265,9 +205,9 @@ describe("admin tools", () => {
     await request("/v1/orders", { token: KIOSK, device: kiosk, body: { orders: [order(real), order(sim, { simulated: true })] } });
     await request("/v1/orders", { token: KIOSK, device: "smoke-run-kiosk", body: { orders: [order(smoke)] } });
     const token = await adminToken();
-    const preview = (await request("/v1/admin/cleanup", { token })).body;
+    const preview = (await request("/v1/admin/cleanup", { access: token })).body;
     expect(preview.testOrders).toBeGreaterThanOrEqual(2);
-    const removed = (await request("/v1/admin/cleanup/test-orders", { token, method: "POST" })).body;
+    const removed = (await request("/v1/admin/cleanup/test-orders", { access: token, method: "POST" })).body;
     expect(removed.orders).toBe(preview.testOrders);
     const left = (await env.DB.prepare("SELECT id FROM orders WHERE id IN (?, ?, ?)").bind(real, sim, smoke).all<{ id: string }>()).results.map((r) => r.id);
     expect(left).toEqual([real]);
@@ -278,11 +218,13 @@ describe("admin tools", () => {
 
     await request("/v1/events", { token: KIOSK, device: kiosk, body: { events: [help(`h1-${kiosk}`), help(`h2-${kiosk}`, { reason: "idle", seq: 2 })] } });
     expect((await state()).alerts.filter((a) => !a.ackedAt && !a.resolvedAt).length).toBeGreaterThanOrEqual(2);
-    const acked = (await request("/v1/admin/alerts/ack-all", { token, method: "POST", body: { by: "Owner" } })).body;
+    const acked = (await request("/v1/admin/alerts/ack-all", { access: token, method: "POST", body: { by: "Someone Else" } })).body;
     expect(acked.acknowledged).toBeGreaterThanOrEqual(2);
     const after = await state();
     expect(after.alerts.filter((a) => !a.ackedAt && !a.resolvedAt)).toEqual([]);
-    expect(after.alerts.find((a) => a.kioskId === kiosk)?.ackedBy).toBe("Owner");
+    expect(after.alerts.find((a) => a.kioskId === kiosk)?.ackedBy).toBe(OWNER);
+    const ackAudit = await env.DB.prepare("SELECT by FROM admin_events WHERE action = 'ack-all' ORDER BY at DESC").first<{ by: string }>();
+    expect(ackAudit?.by).toBe(OWNER);
   });
 
   it("self-tests D1 and the hub, and reports Square plainly when it isn't connected", async () => {
@@ -360,7 +302,7 @@ describe("reset everything", () => {
     ]);
 
     const token = await adminToken();
-    const preview = (await request("/v1/admin/reset", { token })).body;
+    const preview = (await request("/v1/admin/reset", { access: token })).body;
     expect(preview.epoch).toBe(before.epoch);
     expect(preview.erase.orders).toBeGreaterThanOrEqual(1);
     expect(preview.erase.alerts).toBeGreaterThanOrEqual(1);
@@ -368,10 +310,10 @@ describe("reset everything", () => {
     expect(preview.erase.soldOut).toBeGreaterThanOrEqual(1);
     expect(preview.keep.giftCardHolds).toBe(1);
 
-    expect((await request("/v1/admin/reset", { token, body: {} })).status).toBe(400);
-    expect((await request("/v1/admin/reset", { token, body: { confirm: "reset" } })).status).toBe(400);
-    expect((await request("/v1/admin/reset", { token: STAFF, body: { confirm: "RESET" } })).status).toBe(401);
-    const done = await request("/v1/admin/reset", { token, body: { confirm: "RESET", by: "Owner" } });
+    expect((await request("/v1/admin/reset", { access: token, body: {} })).status).toBe(400);
+    expect((await request("/v1/admin/reset", { access: token, body: { confirm: "reset" } })).status).toBe(400);
+    expect((await request("/v1/admin/reset", { token: STAFF, body: { confirm: "RESET" } })).status).toBe(403);
+    const done = await request("/v1/admin/reset", { access: token, body: { confirm: "RESET", by: "Someone Else" } });
     expect(done.status).toBe(200);
     expect(done.body.epoch).toBe(before.epoch + 1);
 
@@ -397,9 +339,9 @@ describe("reset everything", () => {
     const logs = (await env.DB.prepare("SELECT device, level, message FROM logs").all<{ device: string; level: string; message: string }>()).results;
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({ device: "booth-admin", level: "warn" });
-    expect(logs[0].message).toContain("Booth reset by Owner");
+    expect(logs[0].message).toContain(`Booth reset by ${OWNER}`);
     const audit = await env.DB.prepare("SELECT action, by FROM admin_events WHERE action = 'reset' ORDER BY at DESC").first();
-    expect(audit).toEqual({ action: "reset", by: "Owner" });
+    expect(audit).toEqual({ action: "reset", by: OWNER });
     await env.DB.prepare("DELETE FROM square_tokens WHERE environment = 'reset-test'").run();
 
     kiosk.close();

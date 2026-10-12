@@ -1,3 +1,4 @@
+import { escapeHtml } from "./http";
 import { TOPPING_TITLES } from "./pricing";
 
 const ICONS: Record<string, string> = {
@@ -44,8 +45,8 @@ const SECTIONS: { id: string; title: string; icon: string; group: number }[] = [
 
 const STYLE = `
 .signin .appicon.admin{background:#636366;box-shadow:0 10px 24px -12px rgba(0,0,0,.45)}
-.signin .note{font-size:16px;color:var(--label-2);font-weight:500}
-.lockbar{position:fixed;top:env(safe-area-inset-top);right:max(24px,env(safe-area-inset-right));height:50px;display:flex;align-items:center;gap:22px}
+a.srow{color:inherit}
+.signin .navbtn{justify-self:center}
 .sv{position:fixed;inset:0;display:grid;grid-template-columns:320px minmax(0,1fr);background:var(--bg)}
 .side,.detail{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-top:env(safe-area-inset-top);padding-bottom:calc(48px + env(safe-area-inset-bottom))}
 .side{padding-left:max(20px,env(safe-area-inset-left));padding-right:20px;border-right:.5px solid var(--sep)}
@@ -68,7 +69,8 @@ const STYLE = `
 .srow.sel{background:var(--tint);color:#fff}
 .srow.sel .sval{color:rgba(255,255,255,.85)}
 .list>.srow.sel::before,.list>.srow.sel+.srow::before{display:none}
-.sfoot{font-size:14px;color:var(--label-2);margin:14px 16px 0;line-height:1.35}
+.sfoot{font-size:14px;color:var(--label-2);margin:14px 16px 0;line-height:1.35;overflow-wrap:anywhere}
+.sfoot b{font-weight:600;color:var(--label)}
 .pane{max-width:820px;margin:0 auto}
 .pbar{height:50px;display:flex;align-items:center;justify-content:space-between;gap:16px}
 .pbar .back{visibility:hidden;margin-left:-6px}
@@ -106,10 +108,11 @@ const STYLE = `
 .btnrow:disabled .k,.btnrow:disabled .s{opacity:.4}
 .btnrow .lead{font-size:20px;color:var(--tint);flex:none}
 .btnrow.danger .lead{color:var(--red)}
-.kh{display:flex;align-items:baseline;gap:12px;margin:38px 20px 10px}
+.kh{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 12px;margin:38px 20px 10px}
 .kh h2{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.1;min-width:0;overflow-wrap:anywhere}
 .kh .tagid{font-size:15px;color:var(--label-3);font-weight:500;font-variant-numeric:tabular-nums}
 .kh .dot{margin-left:auto;font-size:16px;font-weight:600;color:var(--label-2);white-space:nowrap}
+.kh .dbg{display:inline-flex;align-items:center;gap:10px;font-size:15px;font-weight:500;color:var(--label-2);white-space:nowrap;margin-left:8px}
 .kh+.ag{margin-top:0}
 .ag+.ag{margin-top:16px}
 .ag+.footnote{margin-top:8px}
@@ -234,16 +237,24 @@ function pane(id: string, title: string, inner: string, right = ""): string {
   return `<section class="pane" data-pane="${id}" hidden aria-labelledby="t-${id}">${bar(right)}<h1 id="t-${id}">${title}</h1>${inner}</section>`;
 }
 
-function sidebar(): string {
+function sidebar(email: string): string {
   const groups = [0, 1, 2, 3].map((g) =>
     `<nav class="group list slist">${SECTIONS.filter((s) => s.group === g).map((s) =>
       `<button class="srow${s.id === "reset" ? " danger" : ""}" type="button" data-sec="${s.id}"><span class="stile">${icon(s.icon)}</span><span class="sname">${s.title}</span><span class="sval" id="sv-${s.id}"></span>${icon("chevron", "chev")}</button>`).join("")}</nav>`).join("");
-  const top = `<div class="sbar"><span><a class="navbtn web-only" href="/staff">${icon("layout")}Pages</a><button class="navbtn app-only" type="button" data-exit>${icon("logOut")}Exit staff mode</button></span><button class="navbtn" type="button" id="lockNow">${icon("lock")}Lock</button></div>`;
-  return `<aside class="side" id="side">${top}<h1>Admin</h1>${groups}<p class="sfoot">Locks after 15 minutes without activity. Every visit asks for the PIN.</p></aside>`;
+  const top = `<div class="sbar"><span><a class="navbtn web-only" href="/staff">${icon("layout")}Pages</a><button class="navbtn app-only" type="button" data-exit>${icon("logOut")}Exit staff mode</button></span></div>`;
+  const account = `<nav class="group list slist"><a class="srow" href="/cdn-cgi/access/logout"><span class="stile">${icon("logOut")}</span><span class="sname">Sign out</span>${icon("chevron", "chev")}</a></nav>`;
+  return `<aside class="side" id="side">${top}<h1>Admin</h1>${groups}${account}<p class="sfoot">Signed in as <b id="who">${escapeHtml(email)}</b>. Cloudflare Access signs you out after 24 hours.</p></aside>`;
 }
 
-export function adminBody(): string {
-  const lock = `<main class="signin" id="lock"><div class="lockbar"><a class="navbtn web-only" href="/staff">${icon("layout")}Pages</a><button class="navbtn app-only" type="button" data-exit>${icon("logOut")}Exit staff mode</button></div><form id="lockForm" autocomplete="off"><div class="appicon admin">${icon("lock")}</div><h1>Admin</h1><p>Enter the staff PIN to open the admin tools.</p><p class="note" id="lockNote" hidden></p><p class="err" id="lockErr" role="alert" hidden></p><label for="pin" class="vh">Staff PIN</label><input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" required autofocus><button class="primary" id="unlock" type="submit">${icon("lock")} Unlock</button></form></main>`;
+function gate(id: string, title: string, text: string, action: string, hidden: boolean): string {
+  return `<main class="signin" id="${id}"${hidden ? " hidden" : ""}><form method="get" action="/staff/admin"><div class="appicon admin">${icon("lock")}</div><h1>${title}</h1><p>${text}</p><button class="primary" type="submit">${action}</button><a class="navbtn" href="/cdn-cgi/access/logout">Sign out</a></form></main>`;
+}
+
+export function forbiddenBody(): string {
+  return gate("forbidden", "No access", "This page is for the booth owners. Sign in with an authorized account to open the admin tools.", "Try again", false);
+}
+
+export function adminBody(email: string): string {
   const kiosks = pane("kiosks", "Kiosks", `<p class="lede">Live status of every kiosk, updated every few seconds. Controls reach a kiosk only while it's connected.</p><div id="kList"></div>`);
   const logs = pane("logs", "Logs", `<label class="search">${icon("search")}<input id="logQ" type="search" placeholder="Search messages and context" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="clear" type="button" id="logQClear" hidden aria-label="Clear search">${icon("circleX")}</button></label>
 <div class="gh">Filters</div><div class="group list ag">
@@ -262,7 +273,7 @@ export function adminBody(): string {
 <dialog id="reset1" class="wide" aria-labelledby="r1Title"><h3 id="r1Title">Reset everything?</h3><div id="r1Body"></div><div class="dialog-actions"><button class="cancel" type="button" data-close="reset1">Cancel</button><button class="confirm danger" type="button" id="r1Go">Continue</button></div></dialog>
 <dialog id="reset2" aria-labelledby="r2Title"><h3 id="r2Title">Type RESET to confirm</h3><p>This can't be undone. Make sure no customer is paying on any kiosk.</p><label for="r2Input" class="vh">Type RESET</label><input id="r2Input" class="typed" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="RESET" enterkeyhint="done"><div class="swrow"><div class="grow"><div class="k">Download a backup first</div><div class="s">Orders, kiosks, alerts and stats as a JSON file.</div></div><button class="switch" role="switch" type="button" id="r2Backup" aria-checked="true" aria-label="Download a backup first"></button></div><div class="derr" id="r2Err" role="alert" hidden></div><div class="dialog-actions"><button class="cancel" type="button" id="r2Cancel">Cancel</button><button class="confirm danger" type="button" id="r2Go" disabled>Reset everything</button></div></dialog>
 <dialog id="reset3" class="wide" aria-labelledby="r3Title"><h3 id="r3Title">The booth was reset</h3><div id="r3Body"></div><div class="dialog-actions one"><button class="confirm" type="button" data-close="reset3">Done</button></div></dialog>`;
-  return `${lock}<div class="sv" id="app" hidden>${sidebar()}<main class="detail" id="detail">${kiosks}${logs}${square}${orders}${selftest}${cleanup}${reset}</main></div>${dialogs}`;
+  return `<div class="sv" id="app">${sidebar(email)}<main class="detail" id="detail">${kiosks}${logs}${square}${orders}${selftest}${cleanup}${reset}</main></div>${gate("expired", "Session ended", "Your admin sign-in has ended. Reload to sign in again.", "Reload", true)}${dialogs}`;
 }
 
 const SCRIPT = String.raw`
@@ -271,8 +282,6 @@ const SCRIPT = String.raw`
 var ICONS = __ICONS__;
 var TOPPINGS = __TOPPINGS__;
 var IN_APP = /BoothStaffApp\//.test(navigator.userAgent);
-var BY = IN_APP ? "Admin iPad" : "Admin page";
-var IDLE_MS = 15 * 60000, IDLE_MSG = "Locked after 15 minutes without activity.";
 var NET_MSG = "Can't reach the booth. Check the connection and try again.";
 var STATUSES = ["paid","preparing","ready","collected","canceled"];
 var STATUS_LABEL = {paid:"Waiting",preparing:"Scooping",ready:"Ready",collected:"Handed off",canceled:"Canceled"};
@@ -288,7 +297,7 @@ function titleCase(s){return String(s).replace(/[-_]/g," ").replace(/\b\w/g,func
 function dis(b){return b?" disabled":"";}
 if(IN_APP)document.body.classList.add("app");
 
-var token=null, gen=0, lastActive=Date.now(), lastRequest=0, current=null;
+var ended=false, current=null;
 var state=null, stateAt=0, serverOffset=0, polling=false, lastPoll=0;
 var ctl={}, debugWant={};
 var narrowQuery=window.matchMedia?window.matchMedia("(max-width: 899px)"):null;
@@ -330,32 +339,28 @@ function row(k,v,cls,sub){
 }
 function gh(left,right){return '<div class="gh"><span>'+esc(left)+"</span>"+(right?'<span class="r">'+right+"</span>":"")+"</div>";}
 
-function Locked(){this.locked=true;this.message="Locked";}
+function Ended(){this.ended=true;this.message="Session ended";}
 
 function api(method,path,body){
-  if(!token)return Promise.reject(new Locked());
-  var g=gen,h={"Authorization":"Bearer "+token};
-  lastRequest=Date.now();
+  if(ended)return Promise.reject(new Ended());
+  var h={};
   if(body!==undefined)h["Content-Type"]="application/json";
-  return fetch(path,{method:method,headers:h,cache:"no-store",credentials:"omit",body:body===undefined?undefined:JSON.stringify(body)}).then(function(r){
-    if(g!==gen)throw new Locked();
-    var renewed=r.headers.get("X-Booth-Admin-Token");
-    if(renewed)token=renewed;
+  return fetch(path,{method:method,headers:h,cache:"no-store",credentials:"same-origin",redirect:"manual",body:body===undefined?undefined:JSON.stringify(body)}).then(function(r){
+    if(ended)throw new Ended();
+    if(r.type==="opaqueredirect"||r.status===401||r.status===403){endSession();throw new Ended();}
     return r.text().then(function(text){
-      if(g!==gen)throw new Locked();
       var j=null;try{j=text?JSON.parse(text):null;}catch(e){}
       var err=j&&j.error;
-      if(r.status===401&&err&&err.code==="admin_required"){lock(IDLE_MSG);throw new Locked();}
       if(!r.ok){
         var e=new Error((err&&err.message)||(typeof err==="string"?err:"")||("The booth answered with an error ("+r.status+")."));
         e.status=r.status;e.code=err&&err.code;e.body=j;throw e;
       }
       return {body:j,response:r};
     });
-  },function(e){if(e&&e.locked)throw e;throw new Error(NET_MSG);});
+  },function(e){if(e&&e.ended)throw e;throw new Error(NET_MSG);});
 }
 function get(path){return api("GET",path).then(function(x){return x.body;});}
-function post(path,body){return api("POST",path,body===undefined?{by:BY}:body).then(function(x){return x.body;});}
+function post(path,body){return api("POST",path,body===undefined?{}:body).then(function(x){return x.body;});}
 
 var toastTimer=null;
 function toast(text){
@@ -365,7 +370,7 @@ function toast(text){
   t.textContent=text;t.hidden=false;
   toastTimer=setTimeout(function(){t.hidden=true;},6000);
 }
-function fail(e){if(e&&e.locked)return;toast(e&&e.message||NET_MSG);}
+function fail(e){if(e&&e.ended)return;toast(e&&e.message||NET_MSG);}
 
 function showDialog(d){
   if(d.showModal){if(!d.open)d.showModal();}else d.setAttribute("open","");
@@ -392,46 +397,12 @@ function askExit(){
   });
 }
 
-function lock(message){
-  token=null;gen++;
-  state=null;stateAt=0;ctl={};debugWant={};polling=false;
+function endSession(){
+  if(ended)return;
+  ended=true;
   document.querySelectorAll("dialog").forEach(hideDialog);
   pendingConfirm=null;
-  ["kList","logList","sqBody","ordList","testBody","cleanBody","resetBody","osBody","r1Body","r3Body"].forEach(function(id){$(id).innerHTML="";});
-  ["logQ","ordQ","r2Input"].forEach(function(id){$(id).value="";});
-  ["logCount","ordCount","osName","osSub"].forEach(function(id){$(id).textContent="";});
-  document.querySelectorAll(".sval").forEach(function(el){el.textContent="";});
-  logs=freshLogs();orders=freshOrders();square=null;resetPreview=null;
-  renderLogFilters();
-  $("app").hidden=true;$("lock").hidden=false;
-  $("lockErr").hidden=true;
-  $("lockNote").hidden=!message;$("lockNote").textContent=message||"";
-  $("pin").value="";
-  $("unlock").disabled=false;
-  setTimeout(function(){try{$("pin").focus();}catch(e){}},50);
-}
-
-function unlock(pin){
-  var b=$("unlock");b.disabled=true;b.innerHTML=ico("loader","spin")+" Unlocking";
-  $("lockErr").hidden=true;
-  var done=function(){b.disabled=false;b.innerHTML=ico("lock")+" Unlock";};
-  fetch("/v1/admin/session",{method:"POST",headers:{"Content-Type":"application/json"},cache:"no-store",credentials:"omit",body:JSON.stringify({pin:pin})}).then(function(r){
-    return r.json().catch(function(){return null;}).then(function(j){
-      done();
-      if(r.status===429)return lockError("Too many attempts. Wait a minute.");
-      if(r.status===401)return lockError("Wrong PIN.");
-      if(!r.ok||!j||!j.token)return lockError((j&&j.error&&j.error.message)||"The booth answered with an error ("+r.status+").");
-      token=j.token;lastActive=lastRequest=Date.now();gen++;
-      $("pin").value="";$("pin").blur();
-      $("lock").hidden=true;$("app").hidden=false;
-      if(narrow())back();else show("kiosks");
-      loadState();
-    });
-  },function(){done();lockError(NET_MSG);});
-}
-function lockError(text){
-  var e=$("lockErr");e.innerHTML=ico("alert")+" "+esc(text);e.hidden=false;$("lockNote").hidden=true;
-  $("pin").value="";try{$("pin").focus();}catch(x){}
+  $("app").hidden=true;$("expired").hidden=false;
 }
 
 function show(id){
@@ -452,7 +423,7 @@ function back(){
   document.querySelectorAll("[data-sec]").forEach(function(b){b.classList.remove("sel");b.removeAttribute("aria-current");});
 }
 if(narrowQuery){
-  var onNarrow=function(){if(token&&!narrow()&&!current)show("kiosks");};
+  var onNarrow=function(){if(!ended&&!narrow()&&!current)show("kiosks");};
   if(narrowQuery.addEventListener)narrowQuery.addEventListener("change",onNarrow);else if(narrowQuery.addListener)narrowQuery.addListener(onNarrow);
 }
 
@@ -479,7 +450,7 @@ function loadState(){
     if(current==="logs")renderLogFilters();
   },function(e){
     polling=false;
-    if(e&&e.locked)return;
+    if(e&&e.ended)return;
     if(current==="kiosks"&&!state)$("kList").innerHTML=errGroup(e.message);
   });
 }
@@ -562,11 +533,10 @@ function controlResult(k,op){
 function kioskBlock(k){
   var debug=Object.prototype.hasOwnProperty.call(debugWant,k.id)?debugWant[k.id]:k.debug;
   var tag=k.name===("Kiosk "+k.tag)?"":'<span class="tagid">'+esc(k.tag)+"</span>";
-  var head='<div class="kh"><h2>'+esc(k.name)+"</h2>"+tag+'<span class="dot'+(k.online?"":" off")+'">'+(k.online?"Online":"Offline")+"</span></div>";
+  var head='<div class="kh"><h2>'+esc(k.name)+"</h2>"+tag+'<span class="dot'+(k.online?"":" off")+'">'+(k.online?"Online":"Offline")+'</span><span class="dbg">Debug tools<button class="switch" role="switch" type="button" data-debug="'+esc(k.id)+'" aria-checked="'+(!!debug)+'" aria-label="Debug tools on '+esc(k.name)+'"></button></span></div>';
   var acts=CONTROLS.map(function(c){
     return '<button class="btnrow" type="button" data-ctl="'+c[0]+'" data-k="'+esc(k.id)+'"'+dis(!k.connected)+'><div class="grow"><div class="k">'+c[1]+'</div><div class="s">'+c[2]+"</div></div>"+controlResult(k,c[0])+"</button>";
   }).join("");
-  acts+='<div class="ac"><div class="grow"><div class="k">Debug tools</div><div class="s">Shows the debug bar on this kiosk\'s screen.</div></div><button class="switch" role="switch" type="button" data-debug="'+esc(k.id)+'" aria-checked="'+(!!debug)+'" aria-label="Debug tools on '+esc(k.name)+'"></button></div>';
   var note=k.connected?"":'<p class="footnote">Controls need a live connection, and '+esc(k.name)+" isn't connected.</p>";
   return head+'<div class="group list ag">'+kioskRows(k)+row("Device ID",'<span class="mono">'+esc(k.id)+"</span>","")+'</div><div class="gh">Controls</div><div class="group list ag">'+acts+"</div>"+note+
     '<div class="group ag mt16"><button class="btnrow danger" type="button" data-forget="'+esc(k.id)+'"><div class="grow"><div class="k">Forget kiosk</div><div class="s">Removes it from the kiosk list and closes its alerts.</div></div></button></div>';
@@ -596,12 +566,12 @@ function sendControl(id,op){
   var key=id+":"+op;
   ctl[key]={kiosk:id,op:op,status:"sending",at:Date.now()};
   renderKiosks();
-  post("/v1/admin/kiosks/"+encodeURIComponent(id)+"/control",{op:op,by:BY}).then(function(r){
+  post("/v1/admin/kiosks/"+encodeURIComponent(id)+"/control",{op:op}).then(function(r){
     ctl[key]={kiosk:id,op:op,id:r.id,status:"sent",at:Date.now()};
     renderKiosks();
     setTimeout(loadState,700);
   },function(e){
-    if(e&&e.locked)return;
+    if(e&&e.ended)return;
     ctl[key]={kiosk:id,op:op,status:"error",message:e.code==="kiosk_offline"?"Not connected":e.message,at:Date.now()};
     renderKiosks();
     if(e.code!=="kiosk_offline")toast(e.message);
@@ -618,7 +588,7 @@ function toggleDebug(id){
   var k=kioskById(id);if(!k)return;
   var want=!(Object.prototype.hasOwnProperty.call(debugWant,id)?debugWant[id]:k.debug);
   debugWant[id]=want;renderKiosks();
-  post("/v1/admin/kiosks/"+encodeURIComponent(id)+"/debug",{debug:want,by:BY}).then(function(){loadState();},function(e){delete debugWant[id];renderKiosks();fail(e);});
+  post("/v1/admin/kiosks/"+encodeURIComponent(id)+"/debug",{debug:want}).then(function(){loadState();},function(e){delete debugWant[id];renderKiosks();fail(e);});
 }
 
 function askForget(id){
@@ -659,7 +629,7 @@ function loadLogs(fresh){
     if(r.devices)logs.devices=r.devices;
     renderLogFilters();renderLogs();
   },function(e){
-    if(seq!==logs.seq||(e&&e.locked))return;
+    if(seq!==logs.seq||(e&&e.ended))return;
     logs.loading=false;
     if(fresh){logs.lines=[];$("logList").innerHTML=errGroup(e.message);$("logCount").textContent="";}
     else{renderLogs();toast(e.message);}
@@ -711,7 +681,7 @@ function loadSquare(){
     sqLoading=false;square=s;renderSquare();
   },function(e){
     sqLoading=false;
-    if(e&&e.locked)return;
+    if(e&&e.ended)return;
     if(!square)$("sqBody").innerHTML='<div class="mt28">'+errGroup(e.message)+"</div>";else toast(e.message);
     resetSqButton();
   });
@@ -769,7 +739,7 @@ function refreshToken(){
     sqRefresh=r.status==="refreshed"?{text:"Refreshed"+(r.expiresAt?", expires "+when(r.expiresAt):""),cls:"good"}:{text:"Not refreshed: "+(r.reason||"skipped"),cls:"warn"};
     renderSquare();loadSquare();
   },function(e){
-    if(e&&e.locked)return;
+    if(e&&e.ended)return;
     sqRefresh={text:"Failed: "+e.message,cls:"bad"};renderSquare();loadSquare();
   });
 }
@@ -792,7 +762,7 @@ function loadOrders(){
     if(seq!==orders.seq)return;
     orders.loaded=true;orders.list=r.orders;renderOrders();
   },function(e){
-    if(seq!==orders.seq||(e&&e.locked))return;
+    if(seq!==orders.seq||(e&&e.ended))return;
     orders.list=[];$("ordList").innerHTML=errGroup(e.message);
   });
 }
@@ -826,7 +796,7 @@ function loadOrder(id){
     if(orders.detailId!==id)return;
     orders.detail=d;renderOrder();
   },function(e){
-    if(e&&e.locked||orders.detailId!==id)return;
+    if(e&&e.ended||orders.detailId!==id)return;
     $("osBody").innerHTML='<div class="mt20">'+errGroup(e.message)+"</div>";
   });
 }
@@ -880,7 +850,7 @@ function askStatus(s){
   var o=d.order,name=o.customer_name||"Guest",label=STATUS_LABEL[s];
   var text=s==="canceled"?"It leaves the queue and stops counting in totals. Any refund is done separately in Square.":"Staff pages and the pickup board show it as "+label+" right away.";
   ask("Mark "+name+"'s order "+label+"?",text,s==="canceled"?"Cancel order":"Mark "+label,s==="canceled",function(){
-    post("/v1/admin/orders/"+encodeURIComponent(o.id)+"/status",{status:s,by:BY}).then(function(){
+    post("/v1/admin/orders/"+encodeURIComponent(o.id)+"/status",{status:s}).then(function(){
       toast(name+": "+label);
       loadOrder(o.id);loadOrders();
     },fail);
@@ -901,13 +871,13 @@ function runTest(){
     $("testBody").innerHTML=gh("Results, "+clockSec(r.at),summary)+'<div class="group list ag">'+r.checks.map(function(c){
       return '<div class="ac"><span class="glyph '+(c.ok?"good":"bad")+'">'+ico(c.ok?"circleCheck":"circleX")+'</span><div class="grow"><div class="k">'+esc(c.name)+'</div><div class="s'+(c.ok?"":" bad")+'">'+esc(c.detail)+'</div></div><span class="ms">'+c.ms+" ms</span></div>";
     }).join("")+"</div>";
-  },function(e){done();if(e&&e.locked)return;$("testBody").innerHTML='<div class="mt24">'+errGroup(e.message)+"</div>";});
+  },function(e){done();if(e&&e.ended)return;$("testBody").innerHTML='<div class="mt24">'+errGroup(e.message)+"</div>";});
 }
 
 var cleanup=null, cleanResult={};
 function loadCleanup(){
   if(!cleanup)$("cleanBody").innerHTML='<div class="group ag mt28">'+spinner()+"</div>";
-  get("/v1/admin/cleanup").then(function(c){cleanup=c;renderCleanup();},function(e){if(e&&e.locked)return;$("cleanBody").innerHTML='<div class="mt28">'+errGroup(e.message)+"</div>";});
+  get("/v1/admin/cleanup").then(function(c){cleanup=c;renderCleanup();},function(e){if(e&&e.ended)return;$("cleanBody").innerHTML='<div class="mt28">'+errGroup(e.message)+"</div>";});
 }
 function renderCleanup(){
   var c=cleanup;if(!c)return;
@@ -962,7 +932,7 @@ function keepRows(k){
 }
 function loadReset(){
   if(!resetPreview)$("resetBody").innerHTML='<div class="group ag mt28">'+spinner()+"</div>";
-  get("/v1/admin/reset").then(function(r){resetPreview=r;renderReset();},function(e){if(e&&e.locked)return;$("resetBody").innerHTML='<div class="mt28">'+errGroup(e.message)+"</div>";});
+  get("/v1/admin/reset").then(function(r){resetPreview=r;renderReset();},function(e){if(e&&e.ended)return;$("resetBody").innerHTML='<div class="mt28">'+errGroup(e.message)+"</div>";});
 }
 function renderReset(){
   var r=resetPreview;if(!r)return;
@@ -1018,17 +988,17 @@ function doReset(){
   if(resetting||$("r2Input").value!=="RESET")return;
   $("r2Err").hidden=true;
   var withBackup=$("r2Backup").getAttribute("aria-checked")==="true";
-  var step=withBackup?(r2Busy("Saving backup"),downloadBackup().catch(function(e){if(e&&e.locked)throw e;var x=new Error("The backup couldn't be saved, so nothing was reset. "+e.message);x.backup=true;throw x;})):Promise.resolve();
+  var step=withBackup?(r2Busy("Saving backup"),downloadBackup().catch(function(e){if(e&&e.ended)throw e;var x=new Error("The backup couldn't be saved, so nothing was reset. "+e.message);x.backup=true;throw x;})):Promise.resolve();
   step.then(function(){
     r2Busy("Resetting");
-    return post("/v1/admin/reset",{confirm:"RESET",by:BY});
+    return post("/v1/admin/reset",{confirm:"RESET"});
   }).then(function(r){
     r2Busy(false);hideDialog($("reset2"));
     resetDone(r,withBackup);
     resetPreview=null;cleanup=null;state=null;logs=freshLogs();orders=freshOrders();ctl={};
     renderLogFilters();
     loadState();if(current==="reset")loadReset();
-  },function(e){if(e&&e.locked)return;r2Error(e.message);});
+  },function(e){if(e&&e.ended)return;r2Error(e.message);});
 }
 
 function resetDone(r,withBackup){
@@ -1046,10 +1016,8 @@ function refreshTimes(){
 }
 
 setInterval(function(){
-  if(!token)return;
-  if(Date.now()-lastActive>IDLE_MS){lock(IDLE_MSG);return;}
+  if(ended)return;
   refreshTimes();
-  if(Date.now()-lastRequest>5*60000&&Date.now()-lastActive<60000)loadState();
   if(current==="kiosks"&&document.visibilityState!=="hidden"){
     var before=JSON.stringify(ctl);
     checkControls();
@@ -1058,11 +1026,6 @@ setInterval(function(){
   }
 },1000);
 
-["pointerdown","keydown","wheel","touchstart"].forEach(function(t){document.addEventListener(t,function(){lastActive=Date.now();},{passive:true,capture:true});});
-document.addEventListener("visibilitychange",function(){
-  if(document.visibilityState==="visible"&&token&&Date.now()-lastActive>IDLE_MS)lock(IDLE_MSG);
-});
-
 document.addEventListener("click",function(e){
   var el=e.target.closest&&e.target.closest("button,[data-ctx]");
   if(!el||el.disabled)return;
@@ -1070,8 +1033,7 @@ document.addEventListener("click",function(e){
   if(el.id==="confirmYes"){var go=pendingConfirm;pendingConfirm=null;hideDialog($("confirm"));if(go)go();return;}
   if(el.id==="confirmNo"){pendingConfirm=null;hideDialog($("confirm"));return;}
   if(d.exit!=null){askExit();return;}
-  if(!token)return;
-  if(el.id==="lockNow"){lock(null);return;}
+  if(ended)return;
   if(d.sec){show(d.sec);return;}
   if(d.back!=null){back();return;}
   if(d.close){hideDialog($(d.close));return;}
@@ -1104,12 +1066,6 @@ document.addEventListener("keydown",function(e){
   if((e.key==="Enter"||e.key===" ")&&e.target&&e.target.dataset&&e.target.dataset.ctx){e.preventDefault();toggleLog(e.target.dataset.ctx);}
 });
 
-$("lockForm").addEventListener("submit",function(e){
-  e.preventDefault();
-  var pin=$("pin").value;
-  if(!pin){lockError("Enter the staff PIN.");return;}
-  unlock(pin);
-});
 $("logDev").addEventListener("change",function(){logs.device=this.value;renderLogFilters();loadLogs(true);});
 $("logQ").addEventListener("input",function(){
   $("logQClear").hidden=!this.value;
@@ -1132,7 +1088,9 @@ $("confirm").addEventListener("close",function(){pendingConfirm=null;});
 $("reset2").addEventListener("cancel",function(e){if(resetting)e.preventDefault();});
 $("orderSheet").addEventListener("close",function(){orders.detailId=null;orders.detail=null;});
 
-lock(null);
+renderLogFilters();
+if(narrow())back();else show("kiosks");
+loadState();
 })();
 `;
 

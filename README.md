@@ -115,7 +115,7 @@ All staff tooling is the web dashboard served by the backend. Two people work th
 | `/staff/toppings` | Toppings + customer service iPad | A *Needs you* section on top with *Acknowledge all*: customer help requests first as large red bars with a chime, then payment and card reader problems (and offline kiosks) as large rows, then other notices in a compact list; orders ready to hand off and coming up, each item's toppings in large type; *Handed off* (to collected), *Cancel*, *Reopen* for finished ones; the kiosks; sold-out switches for toppings, with the scooper's sold-out flavors, cups and cones read-only. |
 | `/staff/organizer` | Laptop display | Read-only: today's stats, the order feed, each kiosk's status, sold-out flavors, cups and cones and toppings, and open alerts. |
 | `/staff/board` | Laptop display | Read-only: customer names of orders being made and ready for pickup, in large type, without order numbers. |
-| `/staff/admin` | Owner, iPad or laptop | [Admin page](#admin-page): asks for the staff PIN every time it opens. |
+| `/staff/admin` | Owner, iPad or laptop | [Admin page](#admin-page): behind Cloudflare Access, not the staff PIN. |
 
 Customers are called by name, so every page leads with the name; the per-kiosk order number is fine print, followed by the kiosk's name when there is more than one kiosk.
 
@@ -138,15 +138,21 @@ Behavior shared by every page:
 
 ### Admin page
 
-`/staff/admin` is for the owner, on an iPad or a laptop. It always opens on a lock screen asking for the staff PIN, even when the browser is signed in to the staff pages, and the admin session it gets lasts 15 minutes from the last action (4 hours at most) and lives only in the page, so a reload asks again; *Lock* ends it at once. In the staff app, open it with `STAFF_PAGE = admin` or `-staffPage admin`. Sections:
+`/staff/admin` is for the owner, on an iPad or a laptop. It is protected by Cloudflare Access, not the staff PIN: Access asks for a Google or one-time PIN login the first time (24 hour session), then the page just opens, and a reload never asks again. The staff PIN, the staff cookie, `STAFF_TOKEN` and the kiosk token don't open it. The sidebar shows who is signed in and has *Sign out* (`/cdn-cgi/access/logout`); if the Access session ends while the page is open it says so and offers a reload. Everything done here (reset, cleanup, status changes, debug tools) is recorded under the signed-in email. In the staff app, open it with `STAFF_PAGE = admin` or `-staffPage admin`. Sections:
 
-- **Kiosks**: per kiosk, app version, last seen, live connection, Square environment and authorization, card reader and its battery, iPad battery, outbox backlog, current screen, and whether a reset is still pending on it. Actions: send back to the welcome screen (cancels the customer's order, never a payment in progress; asks first), reload the Square catalog, force a resync, debug tools, forget the kiosk (asks first).
+- **Kiosks**: per kiosk, app version, last seen, live connection, Square environment and authorization, card reader and its battery, iPad battery, outbox backlog, current screen, and whether a reset is still pending on it. Actions: send back to the welcome screen (cancels the customer's order, never a payment in progress; asks first), reload the Square catalog, force a resync, forget the kiosk (asks first). The *Debug tools* switch sits on each kiosk's header row.
 - **Logs**: the kiosk log lines stored in D1, by kiosk, level, time window and text, newest first, a page at a time.
 - **Square**: connected or not, token source, environment, location, token expiry, the last refresh and its outcome, and a live check that the catalog category has every item at the kiosk's prices (1 Scoop $4, 2nd Scoop $3, 3rd+ Scoop $2, Waffle Cone $1.50, Topping $0.50). *Refresh token now* and *Connect Square*.
 - **Orders**: search by customer name, receipt token or link, reference or Square payment id; details, the receipt, the Square payment id, and changing the status by hand. Refunds stay in the Square Dashboard (linked).
 - **Self-test**: D1, the live hub, the Square API and the catalog, each green or red.
 - **Cleanup**: delete test orders only (simulated, smoke and chaos), and acknowledge every alert.
 - **Reset**: erases all orders, stats, alerts, the kiosk registry and names, sold-out and open/closed flags, the hub's processed-id memory, assist sessions, logs, checkouts and receipt links. It keeps the Square connection and tokens, open gift card holds (with their checkouts, so held balances are still released) and the admin audit trail; completed and canceled gift card records go, since Square keeps those payments. Two confirmations: a dialog listing exactly what will be erased with counts, then typing RESET. A backup (JSON of orders, kiosks, alerts and stats) downloads first by default. The reset bumps the booth's epoch: connected kiosks restart their order numbers at #1, clear their cached flags and drop queued items from before the reset right away, offline ones when they reconnect, and the server refuses anything a stale kiosk sends from before it. Do it only when no customer is paying. Details in [`server/PROTOCOL.md`](server/PROTOCOL.md#reset-added).
+
+#### Who can open the admin page
+
+Cloudflare Access (account Pinewood Tech Club, team `pinewoodtechclub.cloudflareaccess.com`, application *Kiosk admin*) fronts `/staff/admin` and `/v1/admin` on `kiosk.jamboree.techclub.pw` and `kiosk-staging.jamboree.techclub.pw`. Its reusable policy *Kiosk admins* allows `28axu@pinewood.edu`, `28hkent@pinewood.edu` and `hmark@pinewood.edu` (Google or one-time PIN login, 24 hour session). The Worker checks the Access JWT again on every admin request (signature against the team's certs, audience, issuer, expiry and the email in `ADMIN_EMAILS`), so the admin tools stay closed even if the Access application were misconfigured, and answers `403` otherwise.
+
+To add or remove an admin, change both places, then deploy: the policy (Zero Trust > Access > Policies > *Kiosk admins*, or `CLOUDFLARE_ACCOUNT_ID=d1687fcac82d7199c8c8af57bbe570fc cf zero-trust access policies ...`) and `ADMIN_EMAILS` in `server/wrangler.jsonc` (top level and `env.staging`). The policy decides who can sign in; `ADMIN_EMAILS` decides who the Worker accepts, so an email in only one of them can't use the tools.
 
 ## Testing payments
 
@@ -171,7 +177,8 @@ Each feature lives in its own module and exports its routes; `src/index.ts` only
 | `checkout.ts`, `pricing.ts` | `/v1/checkout`: server-priced Square order creation |
 | `receipts.ts` | `/r/<token>`, the public receipt page |
 | `stats.ts` | `/v1/stats` |
-| `admin.ts`, `admin-page.ts` | `/staff/admin` and `/v1/admin/*`: admin sessions, kiosk diagnostics and controls, logs, Square check, order lookup, self-test, cleanup, backup and reset |
+| `access.ts` | Verifies Cloudflare Access JWTs (RS256, cached team certs) for the admin routes |
+| `admin.ts`, `admin-page.ts` | `/staff/admin` and `/v1/admin/*`: Access-gated kiosk diagnostics and controls, logs, Square check, order lookup, self-test, cleanup, backup and reset |
 | `dashboard.ts`, `dashboard-page.ts`, `staff-roles.ts`, `session.ts` | `/staff` and `/staff/<role>` pages (shared shell and script in `dashboard-page.ts`, the role list in `staff-roles.ts`), PIN sign-in, session renewal, staff sessions (`/v1/staff/session`) |
 | `http.ts` | Errors, auth (bearer and cookie), body parsing, retries |
 
@@ -198,14 +205,14 @@ Each feature lives in its own module and exports its routes; `src/index.ts` only
 
 The Worker owns the Square connection. Square tokens expire after 30 days; the daily cron (09:17 UTC production, 09:47 UTC staging) refreshes once a token is 6 days old, and a kiosk credential fetch of a due token refreshes in the background too. The kiosk fetches its token and location from `GET /v1/square/credentials` at launch and every 30 minutes, caches them in the Keychain, and authorizes the Mobile Payments SDK with them; a new token is swapped in only while the attract screen shows. At checkout it asks `POST /v1/checkout` to create the Square order (priced by the server with the same rules and catalog) and falls back to creating it on the device.
 
-Vars in `wrangler.jsonc`: `SQUARE_ENVIRONMENT` (`production` or `sandbox`; production uses `production`, staging `sandbox`), `SQUARE_LOCATION_ID` (empty: the first active location that takes cards), `SQUARE_CATEGORY_NAME` (`TC`). Optional secrets (not in `secrets.required`, so a deploy without them works and the Square routes answer `503 not_configured`):
+Admin access vars in `wrangler.jsonc` (top level and `env.staging`, same values): `ACCESS_TEAM_DOMAIN` (`https://pinewoodtechclub.cloudflareaccess.com`), `ACCESS_AUD` (the AUD tag of the *Kiosk admin* Access application) and `ADMIN_EMAILS` (comma-separated admin emails). `ADMIN_EMAILS` must be kept in step with the *Kiosk admins* policy; see [Who can open the admin page](#who-can-open-the-admin-page). Other vars: `SQUARE_ENVIRONMENT` (`production` or `sandbox`; production uses `production`, staging `sandbox`), `SQUARE_LOCATION_ID` (empty: the first active location that takes cards), `SQUARE_CATEGORY_NAME` (`TC`). Optional secrets (not in `secrets.required`, so a deploy without them works and the Square routes answer `503 not_configured`):
 
 | Secret | |
 | --- | --- |
 | `SQUARE_APPLICATION_ID` | The Square application ID for the Worker's environment. Must be the same application the kiosk build uses. |
 | `SQUARE_APPLICATION_SECRET` | From the Developer Console's *OAuth* page. Enables the OAuth flow and encrypts stored tokens. |
 | `SQUARE_ACCESS_TOKEN` | Static fallback token (staging and tests): served to the kiosk when no OAuth token is stored. |
-| `STAFF_PIN` | Staff sign-in for the staff pages in a browser. Without it only `STAFF_TOKEN` signs in. |
+| `STAFF_PIN` | Staff sign-in for the staff pages in a browser. Without it only `STAFF_TOKEN` signs in. It doesn't open the admin page. |
 
 One-time connection (per environment):
 

@@ -3,7 +3,7 @@
 The booth backend is an HTTP API plus one websocket hub. Two kinds of client use it:
 
 - **kiosk**: a customer-facing iPad (the booth plans for up to 3). Each one is told apart by its `X-Booth-Device` id. It reports heartbeats, health, help requests, log lines and paid orders, reads the sold-out map and its own entry in the kiosk registry (open/closed, debug tools), and while connected publishes its live session and applies staff assist commands.
-- **admin**: the admin page (`/staff/admin`) and scripts holding an admin token from the staff PIN. See [Admin](#admin-added).
+- **admin**: the admin page (`/staff/admin`), reached through Cloudflare Access with an authorized email. See [Admin](#admin-added).
 - **staff**: the staff web pages (on the booth iPads, inside the app's staff role, and on laptops) and scripts holding `STAFF_TOKEN`. It reads alerts, the kiosk registry, the sold-out map and the order feed, acknowledges alerts, marks flavors, cups and cones and toppings sold out or back, closes and reopens kiosks one at a time or all together, renames kiosks, switches their debug tools, moves orders through their statuses, and assists a customer at a kiosk (sees its live order and sends it commands).
 
 It also owns the Square connection: the OAuth flow, token storage and refresh, and Square order creation for the kiosk.
@@ -16,7 +16,7 @@ The kiosk must work fully without the backend. Nothing in ordering or payment wa
 
 ## Auth
 
-Every route except `GET /v1/health`, `POST /v1/staff/session`, the OAuth callback and the browser pages (`/r/...`, `/staff...`, `/dashboard...`) needs, including the websocket:
+Every route except `GET /v1/health`, `POST /v1/staff/session`, the OAuth callback, the browser pages (`/r/...`, `/staff...`, `/dashboard...`) and `/v1/admin/*` (Cloudflare Access, see [Admin](#admin-added)) needs, including the websocket:
 
 | Header | Value |
 | --- | --- |
@@ -481,11 +481,33 @@ Sold out is split by role. The scooper page switches flavors and *Cups and cones
 
 ## Admin *(added)*
 
-`/staff/admin` is listed on the `/staff` picker under *Admin*. The page itself needs no session, but it always opens on a PIN lock screen: `POST /v1/admin/session` with `{ "pin": "..." }` (`STAFF_PIN`, or `STAFF_TOKEN` for scripts; wrong is `401`, more than 10 tries a minute from one IP `429`) returns `{ "token": "ad1....", "expiresAt": <ms> }`. The page keeps the token in memory only, so a reload or a new visit asks again. Every `/v1/admin/` route needs `Authorization: Bearer <admin token>`; a staff session, the staff cookie, `STAFF_TOKEN` or the kiosk token are refused with `401 admin_required`. The token lasts 15 minutes from its last use and at most 4 hours from the PIN: responses carry `X-Booth-Admin-Expires` and, once a minute or more has passed, a renewed token in `X-Booth-Admin-Token` that replaces the old one. Admin tokens are signed like staff sessions with a key derived from `STAFF_TOKEN`. Mutations take an optional `by` (default `Admin`).
+`/staff/admin` is listed on the `/staff` picker under *Admin*. It and every `/v1/admin/*` route are protected by Cloudflare Access, not by the staff PIN, and nothing else grants admin: the staff PIN, a staff session or cookie, `STAFF_TOKEN` and the kiosk token are all refused. There is no admin login endpoint and no admin token (`POST /v1/admin/session` is gone).
+
+**Authentication.** Access puts a signed JWT on each request that passes its login, in the `Cf-Access-Jwt-Assertion` header and the `CF_Authorization` cookie (the page's same-origin fetches carry the cookie by themselves). The Worker verifies it again on `GET /staff/admin` and on every `/v1/admin/*` route, from the header first, then the cookie:
+
+- RS256 signature, using the key whose `kid` the token names, from the team's certs at `<ACCESS_TEAM_DOMAIN>/cdn-cgi/access/certs` (JWKS `keys`). Keys are cached in memory for 10 minutes. An unknown `kid` triggers one refetch, and refetches are limited to one per 30 seconds, so junk tokens can't make the Worker hammer the endpoint. If a refresh fails, cached keys keep being used.
+- `aud` contains `ACCESS_AUD`, `iss` equals `ACCESS_TEAM_DOMAIN`, `exp` is in the future and `nbf` (if present) has passed, each with 60 seconds of clock skew allowed.
+- The `email` claim, lower-cased, is in `ADMIN_EMAILS`.
+
+Anything else is `403` with the usual error body, code `forbidden` and a plain message; `GET /staff/admin` answers a small *No access* page instead of the app. Requests are rate limited per admin email (`429` with `Retry-After`). The verified email is the actor: it is recorded as `by` on the audit trail (`admin_events`), alert acknowledgements, order status changes and kiosk controls, and a `by` in a request body is ignored.
+
+**Who is allowed.** The Access application *Kiosk admin* (account `d1687fcac82d7199c8c8af57bbe570fc`, team `pinewoodtechclub.cloudflareaccess.com`) covers `/staff/admin` and `/v1/admin` on `kiosk.jamboree.techclub.pw` and `kiosk-staging.jamboree.techclub.pw`. Its reusable policy *Kiosk admins* allows `28axu@pinewood.edu`, `28hkent@pinewood.edu` and `hmark@pinewood.edu` (Google or one-time PIN login, 24 hour session). To add or remove someone, edit that policy (Zero Trust > Access > Policies > *Kiosk admins*, or `CLOUDFLARE_ACCOUNT_ID=d1687fcac82d7199c8c8af57bbe570fc cf zero-trust access policies ...`) and `ADMIN_EMAILS`, then deploy. `ADMIN_EMAILS` has to be kept in step with the policy: the policy decides who can log in, `ADMIN_EMAILS` who the Worker accepts.
+
+Vars, set in `wrangler.jsonc` for the top-level (production) environment and `env.staging`:
+
+| Var | Value |
+| --- | --- |
+| `ACCESS_TEAM_DOMAIN` | `https://pinewoodtechclub.cloudflareaccess.com` |
+| `ACCESS_AUD` | The application's AUD tag |
+| `ADMIN_EMAILS` | Comma-separated admin emails (case-insensitive) |
+
+With any of the three missing or empty every admin request is `403`.
+
+Scripts can't pass Access without a service token, so `pnpm smoke` skips the admin tool checks and only checks that `GET /staff/admin` and `/v1/admin/state` give no admin data without credentials (a `302` to the Access login, or `401`/`403`).
 
 | Route | |
 | --- | --- |
-| `GET /v1/admin/state` | `BoothState` for staff (with `sessions`, `epoch`), plus `admin.expiresAt`. Kiosk diagnostics come from `kiosks[].health` and `sessions`. |
+| `GET /v1/admin/state` | `BoothState` for staff (with `sessions`, `epoch`), plus `admin.email`, the signed-in admin. Kiosk diagnostics come from `kiosks[].health` and `sessions`. |
 | `POST /v1/admin/kiosks/<id>/control` | `{ "op": "attract" \| "reloadCatalog" \| "resync" }` relays a `control` message: `{ "id", "relayed": true }`; `409 kiosk_offline` if the kiosk has no socket. The kiosk's answer appears in its session `results` under that id. |
 | `POST /v1/admin/kiosks/<id>/debug`, `.../forget` | `{ "debug": true }`; forget is `removeKiosk`. |
 | `GET /v1/admin/logs` | Kiosk log lines from D1, newest first: `device`, `level` (minimum: `debug`, `info`, `warn`, `error`), `since`/`until` (ms), `q` (text in the message or context), `limit` (up to 200), `before` (the previous page's `next`). `{ "lines": [...], "next": "<cursor>" \| null, "devices": [{ "device", "lines", "lastTs" }] }` (`devices` on the first page only). |

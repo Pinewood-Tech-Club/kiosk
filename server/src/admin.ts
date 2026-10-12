@@ -1,5 +1,6 @@
 import * as z from "zod";
-import { adminBody, adminScript, adminStyle } from "./admin-page";
+import { requireAccess } from "./access";
+import { adminBody, adminScript, adminStyle, forbiddenBody } from "./admin-page";
 import { catalogReport, type CatalogReport } from "./catalog";
 import { staffPage } from "./dashboard";
 import { callHub, HttpError, hub, json, readBody, withRetry, type Route, type RouteContext } from "./http";
@@ -11,53 +12,28 @@ import {
   AdminDebugBody,
   AdminOrderStatusBody,
   AdminResetBody,
-  AdminSessionBody,
   DeviceId,
 } from "./schema";
-import { checkStaffSecret, newSessionId, signSession, verifySession, type SessionPayload } from "./session";
 import { listLocations, squareEnvironment, type SquareEnvironment } from "./square";
 import { summarize } from "./stats";
 
-export const ADMIN_IDLE_MS = 15 * 60_000;
-export const ADMIN_MAX_MS = 4 * 60 * 60_000;
-export const ADMIN_TOKEN_HEADER = "X-Booth-Admin-Token";
-const ADMIN_PREFIX = "ad1";
-const ADMIN_LABEL = "booth-admin-session";
-const RENEW_AFTER_MS = 60_000;
 const LEVELS = ["debug", "info", "warn", "error"] as const;
 const TEST_ORDERS = "(simulated = 1 OR device LIKE 'smoke-%' OR device LIKE 'chaos-%')";
 const TEST_CHECKOUTS = "(device LIKE 'smoke-%' OR device LIKE 'chaos-%')";
 const OPEN_HOLDS = "(SELECT checkout_id FROM giftcard_payments WHERE status IN ('pending', 'approved'))";
 
-export interface AdminSession {
-  token: string;
-  expiresAt: number;
-}
-
 interface AdminClient {
-  payload: SessionPayload;
+  email: string;
   device: string;
-  renewed: AdminSession | null;
 }
 
 type AdminContext = RouteContext & { admin: AdminClient };
 
-export async function createAdminSession(env: Env, now = Date.now(), previous?: SessionPayload): Promise<AdminSession> {
-  const since = previous?.iat ?? now;
-  const payload: SessionPayload = { sid: previous?.sid ?? newSessionId(), iat: since, exp: Math.min(now + ADMIN_IDLE_MS, since + ADMIN_MAX_MS) };
-  return { token: await signSession(env, ADMIN_PREFIX, ADMIN_LABEL, payload), expiresAt: payload.exp };
-}
-
-/** Only an admin token counts, never a staff session or STAFF_TOKEN. The page keeps it in memory, not a cookie, so every visit asks for the PIN. */
 export async function authenticateAdmin(request: Request, env: Env, now = Date.now()): Promise<AdminClient> {
-  const header = request.headers.get("Authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  const payload = token ? await verifySession(token, env, ADMIN_PREFIX, ADMIN_LABEL, now) : null;
-  if (!payload) throw new HttpError(401, "admin_required", "Enter the staff PIN to use the admin tools");
-  const { success } = await env.CLIENT_LIMITER.limit({ key: `admin:${payload.sid}` });
+  const { email } = await requireAccess(request, env, now);
+  const { success } = await env.CLIENT_LIMITER.limit({ key: `admin:${email}` });
   if (!success) throw new HttpError(429, "rate_limited", "Too many requests", { "Retry-After": "30" });
-  const renewable = payload.exp - now < ADMIN_IDLE_MS - RENEW_AFTER_MS && payload.exp < payload.iat + ADMIN_MAX_MS;
-  return { payload, device: `admin-${payload.sid}`, renewed: renewable ? await createAdminSession(env, now, payload) : null };
+  return { email, device: `admin-${email}`.slice(0, 64).replace(/[^A-Za-z0-9._-]/g, "-") };
 }
 
 function adminRoute(method: Route["method"], path: Route["path"], handle: (c: AdminContext) => Promise<Response>): Route {
@@ -65,18 +41,9 @@ function adminRoute(method: Route["method"], path: Route["path"], handle: (c: Ad
     method,
     path,
     async handle(c) {
-      const admin = await authenticateAdmin(c.request, c.env);
-      const response = await handle({ ...c, admin });
-      const headers = new Headers(response.headers);
-      headers.set("X-Booth-Admin-Expires", String(admin.renewed?.expiresAt ?? admin.payload.exp));
-      if (admin.renewed) headers.set(ADMIN_TOKEN_HEADER, admin.renewed.token);
-      return new Response(response.body, { status: response.status, headers });
+      return handle({ ...c, admin: await authenticateAdmin(c.request, c.env) });
     },
   };
-}
-
-function actor(by: string | undefined): string {
-  return by?.trim() || "Admin";
 }
 
 function kioskParam(raw: string): string {
@@ -297,7 +264,8 @@ async function orderDetail(env: Env, id: string) {
   return { order: orderView(env, row), checkout, giftCards: giftCards.results };
 }
 
-async function setOrderStatus(env: Env, admin: AdminClient, id: string, status: string, by: string) {
+async function setOrderStatus(env: Env, admin: AdminClient, id: string, status: string) {
+  const by = admin.email;
   const result = await hubAction(env, admin.device, { type: "setOrderStatus", orderId: id, status, by });
   if (result.status !== "rejected") return { status, via: "hub" };
   if (result.error?.code !== "not_found") throw new HttpError(400, result.error?.code ?? "bad_request", result.error?.message ?? "Rejected");
@@ -418,37 +386,34 @@ export const routes: Route[] = [
   {
     method: "GET",
     path: "/staff/admin",
-    async handle({ url }) {
-      return staffPage(url, "Admin", adminBody(), 200, adminScript(), adminStyle());
-    },
-  },
-  {
-    method: "POST",
-    path: "/v1/admin/session",
-    async handle({ request, env }) {
-      const body = await readBody(request, AdminSessionBody, 4 * 1024);
-      await checkStaffSecret(request, env, body.pin);
-      return json(await createAdminSession(env));
+    async handle({ request, env, url }) {
+      try {
+        const { email } = await requireAccess(request, env);
+        return staffPage(url, "Admin", adminBody(email), 200, adminScript(), adminStyle());
+      } catch (error) {
+        if (error instanceof HttpError && error.status === 403) return staffPage(url, "Admin", forbiddenBody(), 403, "", adminStyle());
+        throw error;
+      }
     },
   },
   adminRoute("GET", "/v1/admin/state", async ({ env, admin }) => {
     const state = await callHub("state", () => hub(env).getState("staff"));
-    return json({ ...state, admin: { expiresAt: admin.renewed?.expiresAt ?? admin.payload.exp } });
+    return json({ ...state, admin: { email: admin.email } });
   }),
-  adminRoute("POST", /^\/v1\/admin\/kiosks\/([^/]+)\/control$/, async ({ request, env, params }) => {
+  adminRoute("POST", /^\/v1\/admin\/kiosks\/([^/]+)\/control$/, async ({ request, env, params, admin }) => {
     const kiosk = kioskParam(params[0]);
     const body = await readBody(request, AdminControlBody, 4 * 1024);
-    const sent = await callHub("control", () => hub(env).control(kiosk, body.op, actor(body.by)));
+    const sent = await callHub("control", () => hub(env).control(kiosk, body.op, admin.email));
     if (!sent.relayed) throw new HttpError(409, "kiosk_offline", "That kiosk isn't connected", {}, false);
     return json(sent);
   }),
   adminRoute("POST", /^\/v1\/admin\/kiosks\/([^/]+)\/debug$/, async ({ request, env, params, admin }) => {
     const body = await readBody(request, AdminDebugBody, 4 * 1024);
-    return actionResponse(await hubAction(env, admin.device, { type: "setKioskDebug", kiosk: kioskParam(params[0]), debug: body.debug, by: actor(body.by) }));
+    return actionResponse(await hubAction(env, admin.device, { type: "setKioskDebug", kiosk: kioskParam(params[0]), debug: body.debug, by: admin.email }));
   }),
   adminRoute("POST", /^\/v1\/admin\/kiosks\/([^/]+)\/forget$/, async ({ request, env, params, admin }) => {
-    const body = await bodyOrEmpty(request, AdminByBody);
-    return actionResponse(await hubAction(env, admin.device, { type: "removeKiosk", kiosk: kioskParam(params[0]), by: actor(body.by) }));
+    await bodyOrEmpty(request, AdminByBody);
+    return actionResponse(await hubAction(env, admin.device, { type: "removeKiosk", kiosk: kioskParam(params[0]), by: admin.email }));
   }),
   adminRoute("GET", "/v1/admin/logs", async ({ env, url }) => json(await searchLogs(env, url))),
   adminRoute("GET", "/v1/admin/square", async ({ env, url }) => json(await squareCheck(env, url.origin))),
@@ -461,17 +426,17 @@ export const routes: Route[] = [
   adminRoute("GET", /^\/v1\/admin\/orders\/([A-Za-z0-9._:-]{1,64})$/, async ({ env, params }) => json(await orderDetail(env, params[0]))),
   adminRoute("POST", /^\/v1\/admin\/orders\/([A-Za-z0-9._:-]{1,64})\/status$/, async ({ request, env, params, admin }) => {
     const body = await readBody(request, AdminOrderStatusBody, 4 * 1024);
-    return json(await setOrderStatus(env, admin, params[0], body.status, actor(body.by)));
+    return json(await setOrderStatus(env, admin, params[0], body.status));
   }),
   adminRoute("POST", "/v1/admin/selftest", async ({ env }) => json(await selfTest(env))),
   adminRoute("GET", "/v1/admin/cleanup", async ({ env }) => json(await cleanupPreview(env))),
-  adminRoute("POST", "/v1/admin/cleanup/test-orders", async ({ request, env }) => {
-    const body = await bodyOrEmpty(request, AdminByBody);
-    return json(await deleteTestOrders(env, actor(body.by)));
+  adminRoute("POST", "/v1/admin/cleanup/test-orders", async ({ request, env, admin }) => {
+    await bodyOrEmpty(request, AdminByBody);
+    return json(await deleteTestOrders(env, admin.email));
   }),
-  adminRoute("POST", "/v1/admin/alerts/ack-all", async ({ request, env }) => {
-    const body = await bodyOrEmpty(request, AdminByBody);
-    const by = actor(body.by);
+  adminRoute("POST", "/v1/admin/alerts/ack-all", async ({ request, env, admin }) => {
+    await bodyOrEmpty(request, AdminByBody);
+    const by = admin.email;
     const outcome = await callHub("ack", () => hub(env).ackAll(by));
     await audit(env, "ack-all", by, outcome);
     return json(outcome);
@@ -482,8 +447,8 @@ export const routes: Route[] = [
     return json(data, 200, { "Content-Disposition": `attachment; filename="booth-backup-${stamp}.json"` });
   }),
   adminRoute("GET", "/v1/admin/reset", async ({ env }) => json(await resetPreview(env))),
-  adminRoute("POST", "/v1/admin/reset", async ({ request, env }) => {
-    const body = await readBody(request, AdminResetBody, 4 * 1024);
-    return json(await resetEverything(env, actor(body.by)));
+  adminRoute("POST", "/v1/admin/reset", async ({ request, env, admin }) => {
+    await readBody(request, AdminResetBody, 4 * 1024);
+    return json(await resetEverything(env, admin.email));
   }),
 ];

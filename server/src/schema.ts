@@ -251,7 +251,6 @@ export const CONTROL_OPS = ["attract", "reloadCatalog", "resync"] as const;
 export const ControlOp = z.enum(CONTROL_OPS);
 export type ControlOp = z.infer<typeof ControlOp>;
 
-export const AdminSessionBody = z.object({ pin: z.string().min(1).max(256) });
 export const AdminResetBody = z.object({ confirm: z.literal("RESET"), by: text(40).optional() });
 export const AdminControlBody = z.object({ op: ControlOp, by: text(40).optional() });
 export const AdminDebugBody = z.object({ debug: z.boolean(), by: text(40).optional() });

@@ -8,6 +8,11 @@ const secrets = {
   SQUARE_APPLICATION_ID: "sq0idp-test-app",
   SQUARE_APPLICATION_SECRET: "sq0csp-test-secret",
 };
+const accessVars = {
+  ACCESS_TEAM_DOMAIN: "https://test-team.cloudflareaccess.com",
+  ACCESS_AUD: "test-aud-tag",
+  ADMIN_EMAILS: "Owner@Test.example, second@test.example",
+};
 Object.assign(process.env, secrets);
 
 export default defineConfig(async () => {
@@ -17,7 +22,7 @@ export default defineConfig(async () => {
       cloudflareTest({
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
-          bindings: { ...secrets, TEST_MIGRATIONS: migrations },
+          bindings: { ...secrets, ...accessVars, TEST_MIGRATIONS: migrations },
         },
       }),
     ],
