@@ -672,7 +672,7 @@ struct ScatterPlanner {
                     simulated += 1
                 }
             } else if let found = layingPose(shape, at: spot, turn: Float(index) * 2.4 + Float(attempt) * 1.3,
-                                             highest: small && !climbing ? 0 : P.highestLay) {
+                                             highest: small ? (climbing ? min(P.highestLay, placedLift - 1e-4) : 0) : P.highestLay) {
                 consider(found, for: shape, placed: &placed, placedLift: &placedLift)
                 let onCream = placedLift == 0
                 if small {
@@ -725,7 +725,9 @@ struct ScatterPlanner {
         } else if landed == nil, let placed {
             landed = ScatterSettle.Outcome(rest: placed, track: [placed], fell: false, onPieces: placedLift > 0)
             verdict = "pressed"
-        } else if landed == nil, full, let piled = pile(shape, spots: spots.filter(\.lays).map(\.spot), index: index) {
+        } else if landed == nil, full, let piled = pile(shape, spots: spots.filter(\.lays).map(\.spot), index: index, highest: Self.pileHeight)
+                    ?? pile(shape, spots: wide.map { SIMD2(field.apex.x, field.apex.z) + $0 * max(field.radius, 1e-3) }, index: index,
+                            highest: 2 * Self.pileHeight) {
             landed = ScatterSettle.Outcome(rest: piled, track: [piled], fell: false, onPieces: true)
             verdict = "pressed"
         }
@@ -756,10 +758,10 @@ struct ScatterPlanner {
     }
 
     /// The whole serving has to go on: the lowest a piece can be laid onto the pieces already there.
-    private func pile(_ shape: ScatterShape, spots: [SIMD2<Float>], index: Int) -> ScatterPose? {
+    private func pile(_ shape: ScatterShape, spots: [SIMD2<Float>], index: Int, highest: Float) -> ScatterPose? {
         var best: (pose: ScatterPose, lift: Float)?
         for (k, spot) in spots.prefix(40).enumerated() {
-            guard let found = layingPose(shape, at: spot, turn: Float(index) * 2.4 + Float(k) * 1.3, highest: Self.pileHeight),
+            guard let found = layingPose(shape, at: spot, turn: Float(index) * 2.4 + Float(k) * 1.3, highest: highest),
                   found.lift < best?.lift ?? .infinity else { continue }
             best = found
             if found.lift < Self.pressedLift { break }
@@ -791,7 +793,7 @@ struct ScatterPlanner {
     /// Lying flat on the slope just clear of the surface, turned the way that needs the least lift to clear the pieces
     /// already there, so a piece laid where they lie comes down on top of them. Nil if it would have to rise too far.
     private func layingPose(_ shape: ScatterShape, at spot: SIMD2<Float>, turn: Float, highest: Float) -> (pose: ScatterPose, lift: Float)? {
-        guard let ground = field.sample(x: spot.x, z: spot.y) else { return nil }
+        guard highest >= 0, let ground = field.sample(x: spot.x, z: spot.y) else { return nil }
         let tilt = simd_quatf(from: [0, 1, 0], to: ground.normal)
         let base = SIMD3(spot.x, ground.height, spot.y) + ground.normal * (shape.half.y + Self.layGap)
         let near = bodies.filter { simd_distance($0.position, base) < $0.shape.bound + shape.bound + highest }
