@@ -351,7 +351,7 @@ final class AppModel {
 
     func addTopping(_ topping: Topping) {
         guard screen == .builder, mode == .customize, step == .toppings, current.scoopCount > 0,
-              !hasTopping(topping) else { return }
+              !hasTopping(topping), !booth.isSoldOut(topping) else { return }
         setToppings(current.toppings + [topping])
     }
 
@@ -499,6 +499,14 @@ final class AppModel {
         if mode == .summary, items.isEmpty {
             backToBuilder()
         }
+    }
+
+    func discardCurrentItem() {
+        guard screen == .builder, mode == .customize, !isEditing, currentHasChoices else { return }
+        stage.dismissCurrentHero()
+        current = freshItem()
+        setStep(.vessel)
+        stage.presentNewItem(vessel: current.vessel, delay: 0.3)
     }
 
     func requestStartOver() {

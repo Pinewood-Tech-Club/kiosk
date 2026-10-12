@@ -10,7 +10,7 @@ extension KeyedDecodingContainer {
     }
 }
 
-private struct AnyKey: CodingKey {
+struct AnyKey: CodingKey {
     let stringValue: String
     var intValue: Int? { nil }
     init(_ string: String) { stringValue = string }
@@ -487,6 +487,8 @@ enum BoothServerMessage: Sendable {
     case pong(rev: Int?)
     case result(BoothResult)
     case error(BoothErrorBody)
+    case assist(active: Bool, expiresIn: Double)
+    case command(AssistCommand)
     case unknown
 }
 
@@ -508,6 +510,10 @@ extension BoothServerMessage: Decodable {
             self = c.lenientOptional(AnyKey("result")).map(BoothServerMessage.result) ?? .result(Self.inlineResult(c))
         case "error":
             self = c.lenientOptional(AnyKey("error")).map(BoothServerMessage.error) ?? .unknown
+        case "assist":
+            self = .assist(active: c.lenient(AnyKey("active"), false), expiresIn: c.lenient(AnyKey("expiresIn"), 30_000) / 1000)
+        case "command":
+            self = c.lenientOptional(AnyKey("command")).map(BoothServerMessage.command) ?? .unknown
         default:
             self = .unknown
         }

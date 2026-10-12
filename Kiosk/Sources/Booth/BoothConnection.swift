@@ -30,6 +30,8 @@ final class BoothConnection {
     @ObservationIgnored var name: () -> String? = { nil }
     @ObservationIgnored var onState: ((BoothState) -> Void)?
     @ObservationIgnored var onConnectionChange: ((ConnectionState) -> Void)?
+    @ObservationIgnored var onAssist: ((Bool, TimeInterval) -> Void)?
+    @ObservationIgnored var onCommand: ((AssistCommand) -> Void)?
 
     @ObservationIgnored private let api: BoothAPI
     @ObservationIgnored private let log: (String) -> Void
@@ -298,6 +300,14 @@ final class BoothConnection {
         send(message)
     }
 
+    func send(session: AssistSession) -> Bool {
+        guard connectionState == .connected, let socket,
+              let data = try? JSONEncoder().encode(AssistSessionMessage(session: session)),
+              let text = String(data: data, encoding: .utf8) else { return false }
+        socket.send(.string(text)) { _ in }
+        return true
+    }
+
     private func send(_ object: [String: Any]) {
         guard connectionState == .connected, let socket, JSONSerialization.isValidJSONObject(object),
               let data = try? JSONSerialization.data(withJSONObject: object),
@@ -327,6 +337,10 @@ final class BoothConnection {
             break
         case .error(let body):
             log("Booth: server error \(body.code): \(body.message)")
+        case .assist(let active, let expiresIn):
+            onAssist?(active, expiresIn)
+        case .command(let command):
+            onCommand?(command)
         case .unknown:
             break
         }

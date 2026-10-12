@@ -28,6 +28,9 @@ final class BoothLink {
     private static let uploadInterval: TimeInterval = 15
     private static let healthDebounce: TimeInterval = 2
     private static let healthRefresh: TimeInterval = 60
+    private static let sessionInterval: TimeInterval = 0.25
+    private static let keptResults = 20
+    private static let rememberedCommands = 500
 
     private(set) var connectionState: BoothConnection.ConnectionState = .idle
     private(set) var soldOut: Set<Flavor>
@@ -37,6 +40,7 @@ final class BoothLink {
     private(set) var debugEnabled: Bool
     private(set) var kioskName: String?
     private(set) var helpBannerVisible = false
+    private(set) var assistActive = false
 
     @ObservationIgnored private weak var app: AppModel?
     @ObservationIgnored private var square: SquareService?
@@ -53,6 +57,13 @@ final class BoothLink {
     @ObservationIgnored private var lastHealthQueued = Date.distantPast
     @ObservationIgnored private var forceHealth = false
     @ObservationIgnored private var deviceID: String?
+    @ObservationIgnored private var assistExpiry = Date.distantPast
+    @ObservationIgnored private var lastSession: AssistSession?
+    @ObservationIgnored private var commandQueue: [AssistCommand] = []
+    @ObservationIgnored private var runningCommands = false
+    @ObservationIgnored private var handledCommands: [String: AssistSession.Result] = [:]
+    @ObservationIgnored private var handledOrder: [String] = []
+    @ObservationIgnored private var assistResults: [AssistSession.Result] = []
 
     init() {
         let stored = UserDefaults.standard.data(forKey: Self.soldOutKey).flatMap { try? JSONDecoder().decode(SoldOutSnapshot.self, from: $0) }
@@ -144,6 +155,8 @@ final class BoothLink {
         connection.name = { BoothConfig.kioskName }
         connection.onState = { [weak self] state in self?.applyState(state) }
         connection.onConnectionChange = { [weak self] state in self?.connectionChanged(state) }
+        connection.onAssist = { [weak self] active, expiresIn in self?.assistChanged(active, expiresIn: expiresIn) }
+        connection.onCommand = { [weak self] command in self?.receive(command) }
         self.connection = connection
 
         shipper = LogShipper(api: api, fileURL: SquareService.logFileURL) { [weak self] message in
@@ -157,11 +170,72 @@ final class BoothLink {
                 self?.tick()
             }
         }
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.sessionInterval))
+                self?.publishSession()
+            }
+        }
+    }
+
+    private func publishSession() {
+        guard connectionState == .connected, let app, let connection else { return }
+        let session = app.assistSession(assisted: assistActive, results: assistResults)
+        guard session != lastSession, connection.send(session: session) else { return }
+        lastSession = session
+    }
+
+    private func assistChanged(_ active: Bool, expiresIn: TimeInterval) {
+        assistExpiry = active ? Date().addingTimeInterval(expiresIn + 5) : .distantPast
+        guard active != assistActive else { return }
+        assistActive = active
+        log("Booth: staff assist " + (active ? "started" : "ended"))
+    }
+
+    private func receive(_ command: AssistCommand) {
+        guard !command.id.isEmpty else { return }
+        if let done = handledCommands[command.id] {
+            record(AssistSession.Result(id: command.id, status: done.status == "applied" ? "duplicate" : done.status, message: done.message))
+            return
+        }
+        guard !commandQueue.contains(where: { $0.id == command.id }) else { return }
+        commandQueue.append(command)
+        guard !runningCommands else { return }
+        runningCommands = true
+        Task { [weak self] in await self?.runCommands() }
+    }
+
+    private func runCommands() async {
+        while !commandQueue.isEmpty, let app {
+            let command = commandQueue.removeFirst()
+            lastTouch = Date()
+            idleSent = false
+            let outcome = await app.applyAssist(command.op)
+            let result: AssistSession.Result
+            switch outcome {
+            case .applied: result = AssistSession.Result(id: command.id, status: "applied", message: nil)
+            case .rejected(let reason): result = AssistSession.Result(id: command.id, status: "rejected", message: reason)
+            }
+            log("Booth: assist \(command.op) from \(command.by ?? "staff"): \(result.status)" + (result.message.map { " (\($0))" } ?? ""))
+            handledCommands[command.id] = result
+            handledOrder.append(command.id)
+            if handledOrder.count > Self.rememberedCommands {
+                handledCommands[handledOrder.removeFirst()] = nil
+            }
+            record(result)
+        }
+        runningCommands = false
+    }
+
+    private func record(_ result: AssistSession.Result) {
+        assistResults.append(result)
+        if assistResults.count > Self.keptResults { assistResults.removeFirst(assistResults.count - Self.keptResults) }
     }
 
     private func connectionChanged(_ state: BoothConnection.ConnectionState) {
         connectionState = state
         guard state == .connected else { return }
+        lastSession = nil
         forceHealth = true
         lastUpload = .distantPast
         let outbox = outbox
@@ -246,6 +320,7 @@ final class BoothLink {
 
     private func tick() {
         let now = Date()
+        if assistActive, now >= assistExpiry { assistChanged(false, expiresIn: 0) }
         checkIdle(now)
         queueHealth(now)
         if connectionState == .connected, now.timeIntervalSince(lastUpload) >= Self.uploadInterval, let shipper {
