@@ -23,10 +23,11 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
 ## Flow
 
 1. **Role setup** (every launch, unless `KIOSK_ROLE` or `-kioskRole` picks one): *Start Kiosk* or *Staff*. Square and the kiosk's backend link start only when the kiosk role is chosen, so a staff iPad never reports itself as a kiosk. *Staff* opens the [staff page](#staff-pages); its *Exit staff mode* (after a confirmation) comes back here, and *Start Kiosk* then starts Square and the backend link without a relaunch. Once the kiosk has started, switching this iPad to staff needs a relaunch.
-2. **Attract**: looping `loop.mp4`. *Begin Order* appears once every 3D asset is preloaded; tapping anywhere starts an order. While staff have closed this kiosk (each kiosk opens and closes on its own, or all together), the video keeps looping but *Begin Order* is a dimmed *Closed* button and taps do nothing; a customer already ordering is never interrupted. The last known open/closed state is kept across relaunches and while the backend is unreachable.
+2. **Attract**: looping `loop.mp4`. *Begin Order* appears once every 3D asset is preloaded; tapping anywhere starts an order. While staff have closed this kiosk (each kiosk opens and closes on its own, or all together), the video keeps looping but *Begin Order* is a dimmed *Closed* button and taps do nothing; a customer already ordering is never interrupted. While cups and waffle cones are both sold out it shows *Closed* the same way, with "We're out of cups and cones for now". The last known open/closed and sold-out state is kept across relaunches and while the backend is unreachable.
 3. **Builder** (one RealityView behind the SwiftUI controls holds every 3D object):
-   - *Vessel*: Cup (included) or Waffle Cone (+$1.50). Selecting flies the new vessel out of its icon while the old one spins back into its slot. Drag the item to orbit it; it eases back and resumes spinning.
+   - *Vessel*: Cup (included) or Waffle Cone (+$1.50). A new item starts as a cup, or as a cone while cups are sold out. Selecting flies the new vessel out of its icon while the old one spins back into its slot. Drag the item to orbit it; it eases back and resumes spinning.
    - *Flavors*: tap a flavor to fling a scoop onto the item (up to 3); each card shows what the next scoop costs. The card's minus button takes one of that flavor back off.
+   - Sold out (set by staff for every kiosk at once): that flavor or vessel card is dimmed, says *Sold out* and can't be tapped. Anything already in the order stays and is paid for as usual. Toppings carry the same flag (`booth.isSoldOut(topping)`) for when the toppings step is built.
    - *Toppings*: placeholder, then *Add to Order* flies the item into the tray.
    - The step selector at the top jumps between steps that are already reachable.
    - Tray: a pinned *New item* slot, live 3D minis (drag to scroll), *View Order* with the live total, and start-over (with confirmation). Tapping a mini lifts it back out to edit. Leaving an edit keeps the changes: *Done*, *New item*, tapping another mini or *View Order* return the item to its slot. The minus badge on its empty slot removes it (after a confirmation); an item edited down to no scoops asks to be removed. *New item* outside an edit adds the item being built to the order and starts a fresh cup.
@@ -90,7 +91,7 @@ xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk -destination 'platform=iO
 
 `StaffUITests` launches the staff role against an unreachable booth and checks the native *Can't reach the booth* screen. The staff pages themselves are web pages, tested in `server/test` and in a browser (see [Staff pages](#staff-pages)).
 
-`BoothRoleUITests` runs against a real booth (staging) and is skipped unless it gets one: exit staff mode, then *Start Kiosk*, and check the kiosk reaches the booth without a relaunch; switch a kiosk's debug tools and open/closed from the API and check the kiosk follows live and remembers both while the booth is unreachable. Each run removes its kiosk from the registry.
+`BoothRoleUITests` runs against a real booth (staging) and is skipped unless it gets one: exit staff mode, then *Start Kiosk*, and check the kiosk reaches the booth without a relaunch; switch a kiosk's debug tools and open/closed from the API and check the kiosk follows live and remembers both while the booth is unreachable; mark waffle cones sold out mid-order (the card says *Sold out* and can't be tapped, the cone already in the order stays in the total), then cups too (the attract screen shows *Closed* with the reason), then cones back (a new item starts as a cone). Each run removes its kiosk from the registry and leaves cups and cones available.
 
 ```sh
 TEST_RUNNER_BOOTH_TEST_URL=https://kiosk-staging.jamboree.techclub.pw TEST_RUNNER_BOOTH_TEST_STAFF_TOKEN=$STAGING_STAFF_TOKEN \
@@ -104,9 +105,9 @@ All staff tooling is the web dashboard served by the backend. Two people work th
 
 | Page | For | Shows |
 | --- | --- | --- |
-| `/staff/scooper` | Scooper + supplies iPad | Make list (oldest first; customer name and each cup or cone with its flavors in large type, toppings in small type) with *Start* (paid to preparing) and *Done* (to ready); the kiosks; flavor sold-out toggles; alerts in a compact list without sound. |
-| `/staff/toppings` | Toppings + customer service iPad | Help and other urgent alerts front and center with *Acknowledge* and a chime; orders ready to hand off and coming up, each item's toppings in large type; *Handed off* (to collected), *Cancel*, *Reopen* for finished ones; the kiosks; sold-out toggles. |
-| `/staff/organizer` | Laptop display | Read-only: today's stats, the order feed, each kiosk's status, sold-out state and open alerts. |
+| `/staff/scooper` | Scooper + supplies iPad | Make list (oldest first; customer name and each cup or cone with its flavors in large type, toppings in small type) with *Start* (paid to preparing) and *Done* (to ready); the kiosks; sold-out switches for flavors, cups and waffle cones, with the toppings page's sold-out toppings read-only; alerts in a compact list without sound. |
+| `/staff/toppings` | Toppings + customer service iPad | Help and other urgent alerts front and center with *Acknowledge* and a chime; orders ready to hand off and coming up, each item's toppings in large type; *Handed off* (to collected), *Cancel*, *Reopen* for finished ones; the kiosks; sold-out switches for toppings, with the scooper's sold-out flavors, cups and cones read-only. |
+| `/staff/organizer` | Laptop display | Read-only: today's stats, the order feed, each kiosk's status, sold-out flavors, cups and cones and toppings, and open alerts. |
 | `/staff/board` | Laptop display | Read-only: customer names of orders being made and ready for pickup, in large type, without order numbers. |
 
 Customers are called by name, so every page leads with the name; the per-kiosk order number is fine print, followed by the kiosk's name when there is more than one kiosk.
@@ -117,14 +118,14 @@ On the iPads the app's staff role is a full-screen web view of `BOOTH_URL/staff/
 
 Behavior shared by every page:
 
-- **Confirmations**: anything customers can see asks first in a large in-page dialog that says what will happen: marking a flavor sold out or available again, closing or reopening a kiosk or all of them, removing a kiosk, and cancelling an order. Exit staff mode asks too. Acknowledging an alert, moving an order along, renaming a kiosk and its debug tools don't.
-- **Offline-proof actions**: every change goes into a queue in `localStorage` with its own id and a per-browser device id (`X-Booth-Device`), shows at once, and is sent oldest first as soon as the booth is reachable, including after a reload or relaunch. A newer change to the same flavor, order, kiosk flag or kiosk name replaces an unsent older one. Unsent changes older than an hour are dropped with a notice.
+- **Confirmations**: anything customers can see asks first in a large in-page dialog that says what will happen: marking a flavor, cups, waffle cones or a topping sold out or available again (including that the kiosks show Closed once cups and cones are both out), closing or reopening a kiosk or all of them, removing a kiosk, and cancelling an order. Exit staff mode asks too. Acknowledging an alert, moving an order along, renaming a kiosk and its debug tools don't.
+- **Offline-proof actions**: every change goes into a queue in `localStorage` with its own id and a per-browser device id (`X-Booth-Device`), shows at once, and is sent oldest first as soon as the booth is reachable, including after a reload or relaunch. A newer change to the same sold-out item, order, kiosk flag or kiosk name replaces an unsent older one. Unsent changes older than an hour are dropped with a notice.
 - **Connection**: *Live*, *Connecting* or *Offline since 2:41 PM*, with a banner saying how many changes are waiting.
 - **Sound**: new urgent alerts chime on the toppings page and repeat every 30 s until acknowledged, only in the app's web view. In a browser the pages are silent.
 - **Undo**: status changes show a toast with *Undo* for a few seconds.
 - **Unattended displays**: pages renew their session cookie (`POST /dashboard/renew`) every 30 minutes, so a display left running never falls back to the PIN prompt.
 
-Not modeled yet: cups, cones and toppings can't be marked out of stock (only flavors), because the kiosk has no way to hide them.
+**Sold out** is split by who notices: the scooper switches flavors and cups and cones, the toppings iPad switches toppings, and each page shows the other's sold-out items read-only. It is booth-wide, so every kiosk follows it. With cups and cones both out the kiosks list as *Closed* (No cups or cones left) until one is back.
 
 ## Testing payments
 
@@ -167,7 +168,7 @@ Each feature lives in its own module and exports its routes; `src/index.ts` only
 
 - **Hub**: on connect a client gets a snapshot with the hub's revision, then one patch per change carrying the next revision. Clients ignore stale patches and resync when they see a gap, so every client converges after drops and reconnects. Everything lives in SQLite, so eviction or a redeploy loses nothing; a Durable Object alarm raises *<kiosk> is offline* after 30 s without contact from that kiosk.
 - **Kiosks**: each kiosk iPad (told apart by its `X-Booth-Device` id) has its own entry, created on first contact: name, open/closed, debug tools, online, screen and health. Staff remove an entry for an iPad that isn't a kiosk any more; entries silent for 7 days go by themselves.
-- **Alerts for staff**, per kiosk and naming it: customer needs help (urgent), *<kiosk> is offline* (urgent, a warning while that kiosk is closed, clears itself), kiosk health problems lasting 45 s (warning, clear themselves); plus sold-out changes (info). New paid orders are stored, not alerted; they go to staff as an order feed (`paid`, `preparing`, `ready`, `collected`, `canceled`).
+- **Alerts for staff**, per kiosk and naming it: customer needs help (urgent), *<kiosk> is offline* (urgent, a warning while that kiosk is closed, clears itself), kiosk health problems lasting 45 s (warning, clear themselves); plus sold-out changes to flavors, cups and cones and toppings (info; a warning when cups and cones are both out). New paid orders are stored, not alerted; they go to staff as an order feed (`paid`, `preparing`, `ready`, `collected`, `canceled`).
 - **Kiosk side** (`Kiosk/Sources/Booth/`): help requests, health snapshots, orders and log lines are written to a durable outbox on the iPad before any send, retried with backoff and jitter, and flushed in order when the network comes back. Every item has a client-generated id and the server dedupes, so retries never double-count. Ordering and Square payments never wait on the backend.
 
 ### Square OAuth and checkout

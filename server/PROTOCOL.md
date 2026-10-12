@@ -3,7 +3,7 @@
 The booth backend is an HTTP API plus one websocket hub. Two kinds of client use it:
 
 - **kiosk**: a customer-facing iPad (the booth plans for up to 3). Each one is told apart by its `X-Booth-Device` id. It reports heartbeats, health, help requests, log lines and paid orders, and reads the sold-out map and its own entry in the kiosk registry (open/closed, debug tools).
-- **staff**: the staff web pages (on the booth iPads, inside the app's staff role, and on laptops) and scripts holding `STAFF_TOKEN`. It reads alerts, the kiosk registry, the sold-out map and the order feed, acknowledges alerts, toggles sold-out flavors, closes and reopens kiosks one at a time or all together, renames kiosks, switches their debug tools and moves orders through their statuses.
+- **staff**: the staff web pages (on the booth iPads, inside the app's staff role, and on laptops) and scripts holding `STAFF_TOKEN`. It reads alerts, the kiosk registry, the sold-out map and the order feed, acknowledges alerts, marks flavors, cups and cones and toppings sold out or back, closes and reopens kiosks one at a time or all together, renames kiosks, switches their debug tools and moves orders through their statuses.
 
 It also owns the Square connection: the OAuth flow, token storage and refresh, and Square order creation for the kiosk.
 
@@ -68,11 +68,19 @@ interface BoothState {
   rev: number;
   kiosks: KioskEntry[];           // (added) every kiosk the hub knows, oldest first; absent from older servers
   kioskOpen: KioskOpen;           // (added, deprecated) open unless every kiosk is closed; use kiosks[].open
-  flavors: { id: string; name: string; soldOut: boolean }[]; // order is display order
+  flavors: { id: string; name: string; soldOut: boolean }[]; // order is display order; the flavor rows of supplies
+  supplies: Supply[];             // (added) flavors, then vessels, then toppings, in display order; absent from older servers
   kiosk: KioskState;              // deprecated: the most recently heard kiosk, in snapshots only (never patched)
   alerts: Alert[];                // open alerts, plus closed ones from the last 3 hours (newest first, at most 60)
   orders: OrderSummary[];         // (added) open orders, plus ones changed in the last 3 hours (newest paid first, at most 100)
   serverTime: number;
+}
+
+interface Supply {                // (added)
+  kind: "flavor" | "vessel" | "topping";
+  id: string;                     // flavor ids from the kiosk; vessels "cup", "cone"; toppings "whip", "chocolate", "gummies", "mms", "sprinkles"
+  name: string;                   // "Vanilla", "Cups", "Waffle cones", "Whipped Cream", "Chocolate Syrup", "Gummy Bears", "M&M's", "Sprinkles"
+  soldOut: boolean;               // booth-wide: every kiosk follows it
 }
 
 interface KioskEntry {            // (added)
@@ -162,7 +170,7 @@ Alerts the hub raises:
 | `health` (warning) | A health problem on one kiosk that lasts 45 s: Square not authorized, no reader ready (real payments only), reader or iPad battery at or under 20 % and not charging, catalog error. Titled "... at <kiosk name>". | Resolved when the condition clears, or the kiosk is removed. |
 
 Every alert about a kiosk carries its `kioskId`, and renaming a kiosk retitles its open alerts.
-| `soldout` (info) | A flavor is marked sold out or back. | Superseded by the next change to that flavor. |
+| `soldout` (info; warning when cups and cones are both out) | A flavor, vessel or topping is marked sold out or back ("Waffle cones are sold out", "Gummy Bears are back"). Keyed `soldout:<flavor id>` for flavors and `soldout:<kind>:<id>` otherwise. | Superseded by the next change to that item. |
 
 ## WebSocket: `GET /v1/ws`
 
@@ -181,7 +189,8 @@ Server to client:
 `Change` is one of:
 
 ```jsonc
-{ "kind": "flavors", "flavors": [{ "id": "vanilla", "name": "Vanilla", "soldOut": false }] }   // the whole list
+{ "kind": "flavors", "flavors": [{ "id": "vanilla", "name": "Vanilla", "soldOut": false }] }   // the whole list; only when a flavor changes
+{ "kind": "supplies", "supplies": Supply[] }                                                 // (added) the whole list, after every sold-out change
 { "kind": "alert", "alert": Alert }                                                          // insert or replace by id
 { "kind": "kiosks", "kiosks": KioskEntry[] }                                                 // (added) the whole registry
 { "kind": "order", "order": OrderSummary }                                                   // (added) insert or replace by id
@@ -194,7 +203,7 @@ Client rules, which make every client converge on the hub's state:
 1. On `snapshot`, replace local state and set `rev` from it.
 2. On `patch`: ignore it if `rev` is at or below the local rev (stale or duplicate). Apply it if it is exactly local rev + 1. If it is further ahead, a patch was missed: send `{"type":"sync"}` and wait for the snapshot.
 3. On `pong`, if its `rev` is ahead of the local rev, send `sync`.
-4. Persist what the app needs while offline (the kiosk keeps the sold-out map and its own entry's `open` and `debug` flags), and keep using it until a snapshot arrives. A kiosk finds its entry by its own device id; if `kiosks` is missing (an older server) it falls back to `kioskOpen`, and if its entry is missing it keeps what it had.
+4. Persist what the app needs while offline (the kiosk keeps what is sold out and its own entry's `open` and `debug` flags), and keep using it until a snapshot arrives. A kiosk finds its entry by its own device id; if `kiosks` is missing (an older server) it falls back to `kioskOpen`, and if its entry is missing it keeps what it had.
 
 Client to server:
 
@@ -248,7 +257,8 @@ Each item is `ok`, `duplicate` (already processed; same `alertId`), `stale` (an 
 ```jsonc
 { "actions": [Action, ...] }      // 1 to 50
 { "id": "...", "type": "ack", "alertId": "...", "by": "Maya" }
-{ "id": "...", "type": "setSoldOut", "flavor": "chocolate", "soldOut": true, "by": "Maya" }
+{ "id": "...", "type": "setSoldOut", "flavor": "chocolate", "soldOut": true, "by": "Maya" }       // flavors only; same as setSupply with kind "flavor"
+{ "id": "...", "type": "setSupply", "kind": "topping", "item": "gummies", "soldOut": true, "by": "Maya" }   // (added) kind flavor, vessel or topping
 { "id": "...", "type": "setOrderStatus", "orderId": "<checkout id>", "status": "ready", "by": "Maya" }   // (added)
 { "id": "...", "type": "setKioskOpen", "open": false, "kiosk": "<device id>", "by": "Maya" }          // (added); kiosk (added) optional, without it every kiosk
 { "id": "...", "type": "renameKiosk", "kiosk": "<device id>", "name": "Front iPad", "by": "Maya" }      // (added) "" goes back to the kiosk's own name
@@ -258,9 +268,9 @@ Each item is `ok`, `duplicate` (already processed; same `alertId`), `stale` (an 
 
 Response `200`: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "rejected", "error"?: {...} }], "rev": 43 }`. The same actions can be sent one at a time over the websocket (`{"type":"action"}`), answered with `result`.
 
-Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut`, `setOrderStatus`, `setKioskOpen`, `renameKiosk` and `setKioskDebug` are last-writer-wins in the order the hub receives them; setting the value something already has is `ok` and changes nothing (no patch). A kiosk is open until staff close it. `setOrderStatus` for an order not in the feed, and `setKioskOpen` (with `kiosk`), `renameKiosk` or `setKioskDebug` for a kiosk not in the registry, are `rejected` with `not_found`. `removeKiosk` of an unknown kiosk is `ok`. Names are trimmed, runs of spaces collapsed and cut at 40 characters.
+Acking an already acknowledged alert is `ok` and changes nothing. `setSoldOut`, `setSupply`, `setOrderStatus`, `setKioskOpen`, `renameKiosk` and `setKioskDebug` are last-writer-wins in the order the hub receives them; setting the value something already has is `ok` and changes nothing (no patch). A kiosk is open until staff close it. A flavor change sends a `flavors` patch and then a `supplies` patch; a vessel or topping change sends only `supplies`. `setSupply` with an unknown kind is `rejected` with `bad_request`, with an item not in the list with `not_found`. Sold out only stops new choices on the kiosks: carts that already hold the item are still checked out and paid (`/v1/checkout` and `/v1/orders` never look at it), and while cups and cones are both out the kiosks show Closed. `setOrderStatus` for an order not in the feed, and `setKioskOpen` (with `kiosk`), `renameKiosk` or `setKioskDebug` for a kiosk not in the registry, are `rejected` with `not_found`. `removeKiosk` of an unknown kiosk is `ok`. Names are trimmed, runs of spaces collapsed and cut at 40 characters.
 
-Clients that queue offline should keep only the newest unsent `setSoldOut`/`setOrderStatus`/`setKioskOpen`/`renameKiosk`/`setKioskDebug` per flavor, order, kiosk flag or name (a `setKioskOpen` without `kiosk` also replaces unsent ones for single kiosks), and not send over the websocket while an HTTP batch is in flight, so an older change can't land after a newer one. The staff pages do both (see [Staff pages](#staff-pages-get-staffrole-added)).
+Clients that queue offline should keep only the newest unsent `setSoldOut`/`setSupply`/`setOrderStatus`/`setKioskOpen`/`renameKiosk`/`setKioskDebug` per item, order, kiosk flag or name (a `setKioskOpen` without `kiosk` also replaces unsent ones for single kiosks), and not send over the websocket while an HTTP batch is in flight, so an older change can't land after a newer one. The staff pages do both (see [Staff pages](#staff-pages-get-staffrole-added)).
 
 ## Logs: `POST /v1/logs` (kiosk)
 
@@ -360,13 +370,15 @@ Defaults to the last 24 hours. Counts real orders only: simulated ones are only 
 
 Self-contained pages (inline CSS, script and lucide SVG icons, a Noto Serif subset embedded as a `data:` font for customer names, no external requests, a per-request CSP nonce that also allows `media-src blob:` for the alert chime and `font-src data:`). They are styled as a light-mode iPadOS app whatever the device's appearance setting. The roles are listed in `src/staff-roles.ts`: `scooper` and `toppings` (iPads, interactive) and `organizer` and `board` (laptop displays, read-only). `GET /staff` lists them; `GET /dashboard` is a `303` to `/staff`; an unknown role is `404`. Without a session every page shows the PIN form, which posts `pin` and `next` (the page to return to, only `/staff` or `/staff/<role>`) to `POST /dashboard/login` and gets a `303` back with the session cookie; `POST /dashboard/logout` clears it. `POST /dashboard/renew` (cookie, same origin) answers `204`, with a fresh 72-hour cookie once the current one has under 48 hours left; pages call it every 30 minutes so an unattended display stays signed in. Pages send `Referrer-Policy: same-origin` so the browser sends the real `Origin` on the form post (with `no-referrer` Chrome sends `Origin: null` and the same-origin check refuses it).
 
-Signed in, a page opens `GET /v1/ws` with the cookie and follows the client rules above (replace on `snapshot`, apply a patch only at rev + 1, `sync` on a gap or a `pong` ahead, ping every 10 s, reconnect after 25 s of silence with 1 s to 30 s backoff, and again when the tab becomes visible or the network returns). Actions go through `POST /v1/actions` with `X-Booth-Device: web-<random>`, generated once per browser and kept in `localStorage`, and `by` set to the page title (`Scooper iPad` in the app, `Scooper page` in a browser). Each action is first written to a `localStorage` queue with its id, sent oldest first in batches (never more than one batch in flight), and removed only on `ok`, `duplicate` or `rejected`; network errors, `429` and `5xx` keep it and retry with backoff. An unsent `setSoldOut`, `setOrderStatus` or `setKioskOpen` is replaced by a newer one for the same flavor, order or flag, and items unsent for an hour are dropped with a notice. Because the device id is stable, a batch that reached the hub before the connection dropped is answered `duplicate` on resend. The organizer page refetches `GET /v1/stats?since=<local midnight>` after each order patch and every 30 s. A `401` from the API reloads the page, which shows the PIN form.
+Signed in, a page opens `GET /v1/ws` with the cookie and follows the client rules above (replace on `snapshot`, apply a patch only at rev + 1, `sync` on a gap or a `pong` ahead, ping every 10 s, reconnect after 25 s of silence with 1 s to 30 s backoff, and again when the tab becomes visible or the network returns). Actions go through `POST /v1/actions` with `X-Booth-Device: web-<random>`, generated once per browser and kept in `localStorage`, and `by` set to the page title (`Scooper iPad` in the app, `Scooper page` in a browser). Each action is first written to a `localStorage` queue with its id, sent oldest first in batches (never more than one batch in flight), and removed only on `ok`, `duplicate` or `rejected`; network errors, `429` and `5xx` keep it and retry with backoff. An unsent `setSoldOut`/`setSupply`, `setOrderStatus` or `setKioskOpen` is replaced by a newer one for the same item, order or flag, and items unsent for an hour are dropped with a notice. Because the device id is stable, a batch that reached the hub before the connection dropped is answered `duplicate` on resend. The organizer page refetches `GET /v1/stats?since=<local midnight>` after each order patch and every 30 s. A `401` from the API reloads the page, which shows the PIN form.
 
 The staff app's web view identifies itself with `BoothStaffApp/1` in its user agent; pages then hide sign-out and the page switcher, play the alert chime and show *Exit staff mode*. After its confirmation the page posts `{ "type": "exitStaffMode" }` to the app's `boothApp` script message handler (`window.webkit.messageHandlers.boothApp`), and the app goes back to its role picker. In a browser the pages never play sound and have no exit control.
 
-The iPad pages and the organizer display list every kiosk in a *Kiosks* section: name, open or closed, online or last heard, and a short health line. On the iPads a kiosk opens a sheet to rename it, close or reopen it, switch its debug tools, see its full health and remove it once it's offline; *Close all kiosks* and *Open all kiosks* act on every kiosk. Closing, reopening and removing ask first; renaming and debug tools don't.
+The iPad pages and the organizer display list every kiosk in a *Kiosks* section: name, open or closed, online or last heard, and a short health line. On the iPads a kiosk opens a sheet to rename it, close or reopen it, switch its debug tools, see its full health and remove it once it's offline; *Close all kiosks* and *Open all kiosks* act on every kiosk. Closing, reopening and removing ask first; renaming and debug tools don't. While cups and cones are both sold out every open kiosk is listed as *Closed* with "No cups or cones left".
+
+Sold out is split by role. The scooper page switches flavors and *Cups and cones*; the toppings page switches *Toppings*. Each shows the other role's items read-only in a compact list of what is sold out ("All available" otherwise), headed with the page that sets them. Every switch, either direction, asks for confirmation first. The organizer display lists all three groups read-only. The split is in the pages (`owns` in `src/staff-roles.ts`); the hub accepts `setSupply` for any kind from any staff client.
 
 ## Other routes
 
 - `GET /v1/state` (any role): the current `BoothState`.
-- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "features": [...], "time": ... }`. `features` *(added)* lists additions a client can rely on (`square-oauth`, `square-credentials`, `checkout`, `receipt-tokens`, `order-feed`, `stats`, `staff-session`, `kiosk-registry`). With a token, `?deep=1` also checks D1 and the hub.
+- `GET /v1/health` (no auth): `{ "ok": true, "service": "techclub-icecream", "protocol": 1, "features": [...], "time": ... }`. `features` *(added)* lists additions a client can rely on (`square-oauth`, `square-credentials`, `checkout`, `receipt-tokens`, `order-feed`, `stats`, `staff-session`, `kiosk-registry`, `supplies`). With a token, `?deep=1` also checks D1 and the hub.

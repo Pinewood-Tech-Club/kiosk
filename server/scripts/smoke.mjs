@@ -193,6 +193,23 @@ await step("sold out", async () => {
   check("setSoldOut over HTTP", viaHttp.json?.results?.[0]?.status === "ok");
 });
 
+await step("supplies", async () => {
+  const supply = (state, kind, item) => state?.supplies?.find((s) => s.kind === kind && s.id === item);
+  const listed = await http("/v1/state", { token: staffToken, device: staffDevice });
+  check("state lists cups, cones and toppings", !!supply(listed.json, "vessel", "cone") && !!supply(listed.json, "topping", "gummies"));
+  for (const [kind, item] of [["vessel", "cone"], ["topping", "gummies"]]) {
+    for (const soldOut of [true, false]) {
+      const id = randomUUID();
+      staff.send({ type: "action", action: { id, type: "setSupply", kind, item, soldOut, by: "Smoke test" } });
+      check(`setSupply ${kind} ${item} ${soldOut} result`, (await staff.next("result", (m) => m.id === id)).status === "ok");
+      const patch = await kiosk.next("patch", (m) => m.change.kind === "supplies" && m.change.supplies.find((s) => s.kind === kind && s.id === item)?.soldOut === soldOut);
+      check(`kiosk saw ${item} soldOut=${soldOut}`, !!patch);
+    }
+  }
+  const bad = await http("/v1/actions", { token: staffToken, device: staffDevice, body: { actions: [{ id: randomUUID(), type: "setSupply", kind: "topping", item: "pistachio", soldOut: true }] } });
+  check("unknown topping rejected", bad.json?.results?.[0]?.error?.code === "not_found");
+});
+
 await step("logs", async () => {
   const lines = [
     { id: `smoke-${run}-0`, ts: new Date().toISOString(), level: "info", message: "Smoke test log line" },

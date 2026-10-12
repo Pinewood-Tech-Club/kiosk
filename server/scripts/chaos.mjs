@@ -39,8 +39,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (line) => console.log(`${((Date.now() - started) / 1000).toFixed(1).padStart(6)}s  ${line}`);
 const jitter = (ms) => ms * (0.5 + Math.random());
 
+const SUPPLY_KEYS = ["flavor:vanilla", "flavor:chocolate", "flavor:cookies", "vessel:cup", "vessel:cone", "topping:whip", "topping:chocolate", "topping:gummies", "topping:mms", "topping:sprinkles"];
+
 function applyChange(state, change) {
   if (change.kind === "flavors") state.flavors = change.flavors;
+  if (change.kind === "supplies") state.supplies = change.supplies;
   if (change.kind === "kiosks") state.kiosks = change.kiosks;
   if (change.kind === "alert") {
     const index = state.alerts.findIndex((a) => a.id === change.alert.id);
@@ -55,6 +58,7 @@ function comparable(state) {
   return {
     rev: state.rev,
     flavors: state.flavors,
+    supplies: state.supplies,
     alerts: [...state.alerts].sort((a, b) => a.id.localeCompare(b.id)),
     health: ownKiosk(state)?.health ?? null,
     online: ownKiosk(state)?.online ?? null,
@@ -290,13 +294,16 @@ class Staff {
     this.stats = { actions: 0, viaHttp: 0, rejected: 0 };
   }
 
-  setSoldOut(flavor, soldOut) {
-    const action = { id: randomUUID(), type: "setSoldOut", flavor, soldOut, by: "Chaos" };
+  setSupply(key, soldOut) {
+    const [kind, item] = key.split(":");
+    const action = kind === "flavor" && Math.random() < 0.5
+      ? { id: randomUUID(), type: "setSoldOut", flavor: item, soldOut, by: "Chaos" }
+      : { id: randomUUID(), type: "setSupply", kind, item, soldOut, by: "Chaos" };
     for (const [id, entry] of this.pending) {
-      if (entry.action.flavor === flavor && !this.hub.results.has(id)) this.pending.delete(id);
+      if (entry.key === key && !this.hub.results.has(id)) this.pending.delete(id);
     }
-    this.intended[flavor] = soldOut;
-    this.pending.set(action.id, { action, sentAt: 0 });
+    this.intended[key] = soldOut;
+    this.pending.set(action.id, { action, key, sentAt: 0 });
     this.stats.actions++;
     this.retry();
   }
@@ -357,8 +364,8 @@ async function steady(seconds, kiosk, staff, { orderEvery = 500, helpEvery = 500
     }
     if (staff && Date.now() - lastToggle > toggleEvery) {
       lastToggle = Date.now();
-      const flavor = ["vanilla", "chocolate", "cookies"][Math.floor(Math.random() * 3)];
-      staff.setSoldOut(flavor, !staff.intended[flavor]);
+      const key = SUPPLY_KEYS[Math.floor(Math.random() * SUPPLY_KEYS.length)];
+      staff.setSupply(key, !staff.intended[key]);
     }
     await sleep(orderEvery);
   }
@@ -503,7 +510,8 @@ async function main() {
   const truth = (await api("/v1/state", { token: STAFF_TOKEN, device: "chaos-verify", base: UPSTREAM })).json;
   const kioskConverged = JSON.stringify(comparable(kiosk.current.hub.state)) === JSON.stringify(comparable(truth));
   const staffConverged = JSON.stringify(comparable(staff.hub.state)) === JSON.stringify(comparable(truth));
-  const soldOutMatches = Object.entries(staff.intended).every(([flavor, value]) => truth.flavors.find((f) => f.id === flavor)?.soldOut === value);
+  const soldOutMatches = Object.entries(staff.intended).every(([key, value]) => truth.supplies.find((s) => `${s.kind}:${s.id}` === key)?.soldOut === value)
+    && truth.flavors.every((f) => truth.supplies.find((s) => s.kind === "flavor" && s.id === f.id)?.soldOut === f.soldOut);
   const lastHealth = ledger.lastHealth;
 
   const report = {
@@ -531,7 +539,11 @@ async function main() {
   writeFileSync(join(DIR, "report.json"), JSON.stringify({ ...report, pass }, null, 2));
   kiosk.current.stop();
   staff.stop();
-  await api("/v1/actions", { token: STAFF_TOKEN, device: "chaos-verify", base: UPSTREAM, body: { actions: [{ id: randomUUID(), type: "removeKiosk", kiosk: device, by: "Chaos test" }] } });
+  const restock = Object.entries(staff.intended).filter(([, out]) => out).map(([key]) => {
+    const [kind, item] = key.split(":");
+    return { id: randomUUID(), type: "setSupply", kind, item, soldOut: false, by: "Chaos test" };
+  });
+  await api("/v1/actions", { token: STAFF_TOKEN, device: "chaos-verify", base: UPSTREAM, body: { actions: [...restock, { id: randomUUID(), type: "removeKiosk", kiosk: device, by: "Chaos test" }] } });
   await proxy.close();
   process.exit(pass ? 0 : 1);
 }
