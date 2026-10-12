@@ -87,6 +87,7 @@
 		E21404B759B7FBEE10853958 /* ToppingStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5406E8E764595F07AE47CDAC /* ToppingStack.swift */; };
 		E4F831145DF772EE0B60DCBF /* BoothConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C430771D6BEE6DF3E2F669E /* BoothConnection.swift */; };
 		E6F75105196B73C5CB554BE7 /* CandyMeshes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */; };
+		E914998623BE51ECE8266AF6 /* GiftCardUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = 9E6A9AC65579D36CEE73A675 /* GiftCardUITests.m */; };
 		EEE905EC1942EFD25A5F0730 /* PlaceholderScatterKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */; };
 		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
 		F32A1F960D465605BA61261A /* BoothRoleUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = 90EDD9F598341794544137E8 /* BoothRoleUITests.m */; };
@@ -176,6 +177,7 @@
 		984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandyMeshes.swift; sourceTree = "<group>"; };
 		989E4F9F6FFDC723DDD4BEA7 /* LogShipper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogShipper.swift; sourceTree = "<group>"; };
 		98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopMesh.swift; sourceTree = "<group>"; };
+		9E6A9AC65579D36CEE73A675 /* GiftCardUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GiftCardUITests.m; sourceTree = "<group>"; };
 		9F3619142C4733C7703955AD /* GiftCardScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiftCardScanner.swift; sourceTree = "<group>"; };
 		A139DF4E55E9D8BECF628BF5 /* NotoSerif-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-Bold.ttf"; sourceTree = "<group>"; };
 		A313CBED428256A71A858FEA /* BuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuilderView.swift; sourceTree = "<group>"; };
@@ -247,6 +249,7 @@
 			isa = PBXGroup;
 			children = (
 				90EDD9F598341794544137E8 /* BoothRoleUITests.m */,
+				9E6A9AC65579D36CEE73A675 /* GiftCardUITests.m */,
 				D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */,
 				F0CE12E28F22640FFC1536E0 /* StaffUITests.m */,
 				65AEE9793DCD1AC18473D23F /* ToppingsCarouselUITests.m */,
@@ -626,6 +629,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F32A1F960D465605BA61261A /* BoothRoleUITests.m in Sources */,
+				E914998623BE51ECE8266AF6 /* GiftCardUITests.m in Sources */,
 				DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */,
 				889FBA9E995438D871E6B1AB /* StaffUITests.m in Sources */,
 				A770C4061162B9B02DA70B45 /* ToppingsCarouselUITests.m in Sources */,

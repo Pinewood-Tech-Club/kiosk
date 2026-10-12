@@ -159,19 +159,19 @@ struct GiftCardView: View {
 
     private var numberField: some View {
         let digits = Array(checkout.digits)
-        return HStack(spacing: 26) {
+        return HStack(spacing: 24) {
             ForEach(0..<4, id: \.self) { group in
-                HStack(spacing: 4) {
+                HStack(spacing: 2) {
                     ForEach(0..<4, id: \.self) { offset in
                         let index = group * 4 + offset
                         Text(index < digits.count ? String(digits[index]) : "•")
                             .foregroundStyle(index < digits.count ? Theme.text : Theme.text.opacity(0.25))
-                            .frame(width: 30)
+                            .frame(width: 28)
                     }
                 }
             }
         }
-        .font(Theme.sans(46, .medium))
+        .font(Theme.sans(42, .medium))
         .monospacedDigit()
         .frame(width: 660, height: 112)
         .glassField(isFocused: true, cornerRadius: 56)

@@ -43,11 +43,14 @@ struct NameEntryView: View {
             // Glass only morphs between shapes inside an explicit animation transaction.
             withAnimation(.bouncy(duration: 0.6, extraBounce: 0.08)) { revealsContinue = shows }
         }
+        .onChange(of: app.giftCard == nil) { _, nameShown in
+            if !nameShown { focused = false }
+        }
         .onAppear {
             Task {
                 try? await Task.sleep(for: .seconds(0.45))
                 app.square.record("Name field focus: \(Self.controllerContext())")
-                focused = true
+                if app.giftCard == nil { focused = true }
             }
         }
     }
