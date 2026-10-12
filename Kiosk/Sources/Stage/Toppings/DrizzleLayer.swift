@@ -137,19 +137,14 @@ final class DrizzleLayer: ToppingLayer {
         model.name = "drizzle-\(style.name)"
     }
 
-    /// A settled drizzle tipped toward the viewer so its pattern reads on the topping card's icon. The caller still
-    /// applies the stage's lighting to it.
+    /// A settled drizzle for the topping card's icon. The caller still applies the stage's lighting to it.
     static func makeIcon(style: DrizzleStyle = .chocolate, seed: UInt64 = 11) -> Entity {
-        let pool = IconPool(radius: 0.02, depth: 0.0022, seed: seed)
+        let layer = DrizzleLayer(style: style)
+        layer.apply(onto: IconPool(radius: 0.02, depth: 0.0022, seed: seed), seed: seed, animated: false, now: 0)
         let root = Entity()
         root.name = "drizzle-icon"
-        let layer = DrizzleLayer(style: style)
-        layer.apply(onto: pool, seed: seed, animated: false, now: 0)
         root.addChild(layer.entity)
-        root.orientation = simd_quatf(angle: -0.35, axis: [1, 0, 0])
-        let icon = Entity()
-        icon.addChild(root)
-        return icon
+        return root
     }
 
     func apply(onto surface: ToppingSurface, seed: UInt64, animated: Bool, now: Double) {

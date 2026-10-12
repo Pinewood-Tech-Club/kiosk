@@ -128,6 +128,7 @@ extension Stage {
     func makeToppingIcons() {
         for topping in Topping.allCases {
             let icon = ToppingCardIcon(topping: topping, candy: assets?.candy)
+            if topping == .chocolate { icon.restOrientation = simd_quatf(angle: 1.0, axis: [1, 0, 0]) }
             applyLighting(icon.holder)
             toppingIcons[topping] = icon
             root.addChild(icon.holder)
