@@ -267,6 +267,7 @@ final class BoothLink {
     }
 
     private func applyState(_ state: BoothState) {
+        if let epoch = state.epoch { adopt(epoch: epoch) }
         if let kiosks = state.kiosks {
             if let mine = kiosks.first(where: { $0.id == deviceID }) { applyOwnEntry(mine) }
         } else {
@@ -294,6 +295,44 @@ final class BoothLink {
         let all = snapshot.soldOut + (snapshot.vessels ?? []) + (snapshot.toppings ?? []).map { "\($0) topping" }
         log("Booth: sold out is now " + (all.isEmpty ? "none" : all.joined(separator: ", ")))
         if vesselsChanged { app?.vesselsChanged() }
+    }
+
+    private func adopt(epoch: Int) {
+        let known = BoothEpoch.known
+        guard epoch > (known ?? 0) else {
+            if known == nil { UserDefaults.standard.set(epoch, forKey: BoothEpoch.key) }
+            return
+        }
+        let logEnd = LogShipper.size(of: SquareService.logFileURL)
+        UserDefaults.standard.set(epoch, forKey: BoothEpoch.key)
+        app?.resetOrderCounter()
+        clearCachedFlags()
+        handledCommands = [:]
+        handledOrder = []
+        assistResults = []
+        lastSession = nil
+        forceHealth = true
+        let outbox = outbox
+        let shipper = shipper
+        Task {
+            await shipper?.skip(to: logEnd)
+            await outbox.purge(before: epoch)
+        }
+        log("Booth: reset to epoch \(epoch) by the booth")
+    }
+
+    private func clearCachedFlags() {
+        let hadVessels = !soldOutVessels.isEmpty
+        kioskOpen = true
+        debugEnabled = false
+        kioskName = nil
+        soldOut = []
+        soldOutVessels = []
+        soldOutToppings = []
+        for key in [Self.kioskOpenKey, Self.debugKey, Self.nameKey, Self.soldOutKey] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        if hadVessels { app?.vesselsChanged() }
     }
 
     private func applyOwnEntry(_ entry: KioskEntry) {

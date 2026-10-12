@@ -642,11 +642,17 @@ final class AppModel {
         withAnimation(.easeInOut(duration: 0.4)) { screen = .builder }
     }
 
+    private static let orderCounterKey = "orderCounter"
+
     func nextOrderNumber() -> Int {
         let defaults = UserDefaults.standard
-        let number = defaults.integer(forKey: "orderCounter") + 1
-        defaults.set(number, forKey: "orderCounter")
+        let number = defaults.integer(forKey: Self.orderCounterKey) + 1
+        defaults.set(number, forKey: Self.orderCounterKey)
         return number
+    }
+
+    func resetOrderCounter() {
+        UserDefaults.standard.set(0, forKey: Self.orderCounterKey)
     }
 
     func submitName() {

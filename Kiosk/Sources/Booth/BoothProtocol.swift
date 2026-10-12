@@ -10,6 +10,12 @@ extension KeyedDecodingContainer {
     }
 }
 
+enum BoothEpoch {
+    static let key = "boothEpoch"
+
+    static var known: Int? { UserDefaults.standard.object(forKey: key) as? Int }
+}
+
 struct AnyKey: CodingKey {
     let stringValue: String
     var intValue: Int? { nil }
@@ -368,10 +374,12 @@ struct BoothState: Codable, Equatable, Sendable {
     var alerts: [BoothAlert]
     var orders: [BoothOrderSummary]
     var serverTime: Double
+    var epoch: Int?
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
         rev = c.lenient(AnyKey("rev"), 0)
+        epoch = c.lenientOptional(AnyKey("epoch"))
         kiosks = c.lenientOptional(AnyKey("kiosks"))
         flavors = c.lenient(AnyKey("flavors"), [])
         supplies = c.lenientOptional(AnyKey("supplies"))
@@ -544,6 +552,7 @@ struct BoothEvent: Codable, Equatable, Sendable {
     var reason: String?
     var message: String?
     var health: KioskHealth?
+    var epoch: Int?
 }
 
 struct BoothAction: Codable, Equatable, Sendable {
@@ -589,6 +598,7 @@ struct BoothOrder: Codable, Equatable, Sendable {
     let giftCardPaymentId: String?
     let giftCardCents: Int?
     let giftCardLast4: String?
+    var epoch: Int?
 
     init(receipt: Receipt, quote: OrderQuote) {
         id = receipt.checkoutID
