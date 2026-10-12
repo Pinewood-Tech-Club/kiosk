@@ -92,6 +92,8 @@ final class Stage {
     let trayTiles = TrayTileModel()
     var step: BuilderStep = .vessel
     var controlsVisible = true
+    var staging = Staging.builder
+    var attract: AttractShow?
 
     var warmup: Entity?
     var warmupFrames = 0
@@ -554,19 +556,20 @@ final class Stage {
     /// hero scale. While a new scoop is arriving, the band also has to hold the ball waiting above its slot, so
     /// the item eases back a little and settles in again once the scoop has landed.
     func heroFraming(_ vessel: Vessel, count: Int, arriving: Bool = false, headroom: Float = 0) -> Framing {
-        let band = Layout.heroBand
+        let band = staging.band
+        let maxScale = Self.maxHeroScale(vessel) * staging.scaleBoost
         guard var e = contentExtents["\(vessel.rawValue)\(min(count, 3))"] else {
-            return Framing(position: world(CGPoint(x: band.midX, y: band.midY)), scale: Self.maxHeroScale(vessel))
+            return Framing(position: world(CGPoint(x: band.midX, y: band.midY)), scale: maxScale)
         }
         e.yMax += headroom * cos(Self.preferredPitch)
-        let tightScale = min(Self.maxHeroScale(vessel), Float(band.height) * 0.001 / (e.yMax - e.yMin),
+        let tightScale = min(maxScale, Float(band.height) * 0.001 / (e.yMax - e.yMin),
                              Float(band.width) * 0.001 / (2 * e.xHalf))
         var position = world(CGPoint(x: band.midX, y: band.midY))
         position.y -= (e.yMin + e.yMax) / 2 * tightScale
         guard arriving, e.yApproach > e.yMax else { return Framing(position: position, scale: tightScale) }
         // Keep the vessel's base where it is when there's room; only pull back as far as the ball needs.
         let bottom = world(CGPoint(x: band.midX, y: band.maxY)).y
-        let top = world(CGPoint(x: band.midX, y: Self.flightCeilingY)).y
+        let top = world(CGPoint(x: band.midX, y: staging.ceilingY)).y
         let base = position.y + e.yMin * tightScale
         let scale = min(tightScale, (top - base) / (e.yApproach - e.yMin), (top - bottom) / (e.yApproach - e.yMin))
         let lowest = max(bottom, base)

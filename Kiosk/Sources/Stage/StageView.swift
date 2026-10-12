@@ -4,6 +4,7 @@ import SwiftUI
 
 struct StageView: View {
     let stage: Stage
+    var clipsTray = true
 
     var body: some View {
         RealityView { content in
@@ -11,7 +12,7 @@ struct StageView: View {
             content.renderingEffects.antialiasing = .multisample4X
             stage.attach(to: &content)
         }
-        .mask { TrayClip().fill(style: FillStyle(eoFill: true)) }
+        .mask { TrayClip(isActive: clipsTray).fill(style: FillStyle(eoFill: true)) }
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .onAppear { HighFrameRate.shared.start() }
@@ -21,6 +22,8 @@ struct StageView: View {
 /// Clips the tray's 3D minis to the tray's item area the way a scroll view clips its content. Only the
 /// tray's horizontal band is clipped, so items fly into and out of the tray from above unclipped.
 struct TrayClip: Shape {
+    var isActive = true
+
     static var itemsArea: CGRect {
         let glass = Layout.trayGlassRect
         return CGRect(x: Layout.trayItemsRect.minX, y: glass.minY, width: glass.maxX - Layout.trayItemsRect.minX, height: glass.height)
@@ -30,6 +33,7 @@ struct TrayClip: Shape {
 
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
+        guard isActive else { return path }
         let glass = Layout.trayGlassRect
         path.addRect(CGRect(x: rect.minX, y: glass.minY, width: rect.width, height: rect.maxY - glass.minY))
         path.addPath(Self.itemsShape.path(in: Self.itemsArea))

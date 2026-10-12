@@ -8,6 +8,8 @@ struct RootView: View {
 
     private func shows(_ screen: AppModel.Screen) -> Bool { app.screen == screen || app.leavingScreen == screen }
     private var builderShown: Bool { shows(.builder) || shows(.name) }
+    /// The stage plays the attract scene over the photos only once nothing else is still drawn beneath them.
+    private var attractBehindStage: Bool { app.attractLive && app.screen == .attract && app.leavingScreen == nil }
     private var showsAssistBadge: Bool {
         app.booth.assistActive && [.attract, .builder, .name, .confirmation].contains(app.screen)
     }
@@ -51,9 +53,13 @@ struct RootView: View {
                     .transition(.identity)
             }
 
+            AttractBackdrop(isActive: app.screen == .attract)
+                .opacity(app.screen == .attract ? 1 : 0)
+                .zIndex(attractBehindStage ? 0 : 2)
+
             // Never hidden: a RealityView left hidden for a while doesn't render again. The opaque screens
             // above it cover it instead.
-            StageView(stage: app.stage)
+            StageView(stage: app.stage, clipsTray: !attractBehindStage)
 
             if builderShown, app.screen != .confirmation {
                 BuilderForeground(app: app)
@@ -88,7 +94,7 @@ struct RootView: View {
                     .zIndex(1.5)
             }
 
-            AttractView(app: app, isActive: app.screen == .attract)
+            AttractView(app: app)
                 .opacity(app.screen == .attract ? 1 : 0)
                 .allowsHitTesting(app.screen == .attract)
                 .zIndex(2)

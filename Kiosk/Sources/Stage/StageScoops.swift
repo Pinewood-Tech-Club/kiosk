@@ -363,8 +363,8 @@ extension Stage {
         let slot = scoops.count + 1
         let actor = ScoopActor(flavor: flavor, slot: slot, model: makeScoopModel(slot: slot, flavor: flavor, pose: "icon"), pose: "icon")
         liveScoops[ObjectIdentifier(actor)] = actor
-        let start = flavorIconModelTransform(flavor, slot: slot)
-        let appear = flavorIcons[flavor]?.appear ?? 1
+        let start = flavorPort(flavor, slot: slot)
+        let appear = staging.offscreenCards ? 1 : flavorIcons[flavor]?.appear ?? 1
         actor.root.transform = Transform(scale: start.scale * appear, rotation: start.rotation, translation: start.translation)
         root.addChild(actor.root)
         scoops.append(actor)
@@ -647,7 +647,7 @@ extension Stage {
                 / Float(Self.pressDuration) * rigScale
             let key = liveKey(actor, on: rig)
             let height = max(rimClearHeight(rig.vessel, key: key) - approachHeight(actor, on: rig, squish: squish), Self.minimumCrossing)
-            let ceiling = world(CGPoint(x: 0, y: Self.flightCeilingY)).y - 0.0438 * rigScale
+            let ceiling = world(CGPoint(x: 0, y: staging.ceilingY)).y - 0.0438 * rigScale
             let room = (ceiling - pa.y) / max(up.y, 0.3) / rigScale - height
             let hump = min(Self.humpHeight(height), max(room / 0.75, 0.002))
             let top = pa + up * height * rigScale
@@ -656,7 +656,7 @@ extension Stage {
             let inOpening = local.y > 0 && simd_length(SIMD2(local.x, local.z)) < (assets?.vesselRadius(rig.vessel, atHeight: local.y) ?? 0.044)
             let overRim = local.y >= (assets?.vesselTop(rig.vessel) ?? 0.05)
             let lead: ColumnFlight.Lead
-            if case .fromIcon(let cardSide) = route {
+            if case .fromIcon(let cardSide) = route, !staging.offscreenCards {
                 lead = aroundLead(from: p0, approach: pa, top: top, scale: rigScale, beside: beside, preferredSide: cardSide)
             } else if inOpening || overRim {
                 lead = .direct(heading: (top - p0) / 3)
@@ -836,7 +836,7 @@ extension Stage {
             start = actor.root.transform
             toBall = actor.staticPose != "ball" || actor.morpher != nil
             if toBall { beginMorph(actor, to: "ball") }
-            let goal = flavorIconModelTransform(flavor).translation
+            let goal = flavorPort(flavor).translation
             let p0 = start.translation
             // Not in or over a vessel (still on its way up from the card): straight back down.
             path = FlightPath(points: [p0, goal], startDirection: goal - p0, endDirection: [0, -1, -0.1])
@@ -844,7 +844,7 @@ extension Stage {
                 outward = columnExit(from: p0, slot: actor.slot, rig: rig, to: goal, side: side, sideways: sideways)
             }
         }) { [unowned self] p in
-            let goal = flavorIconModelTransform(flavor)
+            let goal = flavorPort(flavor)
             path.points[path.points.count - 1] = goal.translation
             let e = TimingCurve.flight(p)
             var position = path.position(e)
@@ -908,7 +908,9 @@ extension Stage {
         let radius = max(-ball.min.x, ball.max.x, -ball.min.z, ball.max.z)
         let beside = assets.vesselHalfWidth(rig.vessel) + radius + offset + 0.003
         let top = p0 + up * height * scale
-        let lead = aroundLead(from: goal, approach: p0, top: top, scale: scale, beside: beside, preferredSide: cardSide)
+        let lead = staging.offscreenCards
+            ? .direct(heading: (top - goal) / 3)
+            : aroundLead(from: goal, approach: p0, top: top, scale: scale, beside: beside, preferredSide: cardSide)
         let hump = sideways ? min(Self.humpHeight(height), 0.003) : Self.humpHeight(height)
         let flight = ColumnFlight(lead: lead, from: goal,
                                   approach: p0, up: up, scale: scale, height: height, hump: hump, endSpeed: 0)

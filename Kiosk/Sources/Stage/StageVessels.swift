@@ -176,6 +176,7 @@ extension Stage {
         setVesselIconAppear(vessel, to: 0, duration: 0.2, delay: delay, curve: .swiftUIEaseIn)
         let side: Float = Layout.vesselIconCenter(vessel).x > Layout.midX ? 1 : -1
         let axisOut = 1.6 * axialClearance(vessel, count: leavingScoops, scale: rig.pose.scale * rig.scaleMultiplier)
+        let exitScale = rig.pose.scale
         flyRig(rig, duration: duration, delay: delay, minSpin: 1.5 * .pi, dip: false, timing: .flight,
                axisOut: axisOut, attitude: fromUnderScoops ? 0.3...1 : 0...1,
                control: { p0, p1 in
@@ -183,7 +184,7 @@ extension Stage {
                        ? SIMD3<Float>(p0.x, lerp(p0.y, p1.y, 0.75), -1.0)
                        : (p0 + p1) / 2 + SIMD3<Float>(side * 0.17, 0.02, -0.1)
                },
-               target: { [unowned self] in iconPose(vessel) }) { [weak self] in
+               target: { [unowned self] in vesselPort(vessel, count: 0, scale: exitScale) }) { [weak self] in
             guard let self else { return }
             if heroes[vessel] === rig { heroes[vessel] = nil }
             setVesselIconAppear(vessel, to: 1, duration: 0)
@@ -263,7 +264,7 @@ extension Stage {
     private func heroRig(_ vessel: Vessel) -> (ItemRig, isNew: Bool) {
         if let existing = heroes[vessel] { return (existing, false) }
         let rig = makeRig(vessel)
-        rig.pose = iconPose(vessel)
+        rig.pose = vesselPort(vessel, count: 0, scale: heroFraming(vessel, count: scoops.count).scale)
         rig.apply()
         rig.root.isEnabled = false
         heroes[vessel] = rig
@@ -279,8 +280,8 @@ extension Stage {
             return
         }
         let takeOver = { [unowned self] in
-            rig.pose = iconPose(vessel)
-            rig.scaleMultiplier = vesselIconAppear[vessel] ?? 1
+            rig.pose = vesselPort(vessel, count: 0, scale: rig.framing?.scale ?? rig.pose.scale)
+            rig.scaleMultiplier = staging.offscreenCards ? 1 : vesselIconAppear[vessel] ?? 1
             rig.root.isEnabled = true
             rig.apply()
             setVesselIconAppear(vessel, to: 0, duration: 0)

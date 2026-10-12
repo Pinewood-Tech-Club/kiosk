@@ -46,7 +46,7 @@ final class AppModel {
     var screen: Screen = .roleSetup {
         didSet {
             guard screen != oldValue else { return }
-            if screen == .attract { square.reauthorizeIfIdle() }
+            if screen == .attract { square.reauthorizeIfIdle() } else { attractLive = false }
             leavingScreen = oldValue
             leavingTask?.cancel()
             leavingTask = Task { [weak self] in
@@ -58,6 +58,8 @@ final class AppModel {
     /// The screen just left, kept for the length of a crossfade so it stays drawn until covered.
     private(set) var leavingScreen: Screen?
     @ObservationIgnored private var leavingTask: Task<Void, Never>?
+    /// The stage is playing the attract scene.
+    private(set) var attractLive = false
     var builderVisible = false
     private(set) var mode: BuilderMode = .customize
     private(set) var step: BuilderStep = .vessel
@@ -193,6 +195,7 @@ final class AppModel {
                 stageDrawsToppingIcons = true
                 assets.checkContacts { [weak self] in self?.square.record($0) }
                 stageReady = true
+                startAttractShow()
                 try? await Task.sleep(for: .seconds(0.4))
                 applyLaunchOptions()
             } else {
@@ -231,6 +234,7 @@ final class AppModel {
         } else {
             screen = .attract
         }
+        startAttractShow()
     }
 
     func chooseStaffRole() {
@@ -313,7 +317,14 @@ final class AppModel {
             try? await Task.sleep(for: .seconds(0.6))
             guard !Task.isCancelled, screen == .attract else { return }
             resetEverything()
+            startAttractShow()
         }
+    }
+
+    private func startAttractShow() {
+        guard screen == .attract, stageReady, !assetsFailed, !stage.isAttractRunning else { return }
+        stage.startAttract()
+        attractLive = true
     }
 
     func setPressed(_ card: CardKey, _ pressed: Bool) {
@@ -725,6 +736,7 @@ final class AppModel {
                 screen = .confirmation
             default:
                 screen = .attract
+                startAttractShow()
             }
         }
         if let script = options.script {

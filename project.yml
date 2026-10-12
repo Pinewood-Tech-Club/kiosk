@@ -22,7 +22,12 @@ targets:
         excludes:
           - "Resources/3D"
           - "Resources/3D/**"
+          - "Resources/AttractPhotos"
+          - "Resources/AttractPhotos/**"
       - path: Kiosk/Resources/3D
+        type: folder
+        buildPhase: resources
+      - path: Kiosk/Resources/AttractPhotos
         type: folder
         buildPhase: resources
     dependencies:
