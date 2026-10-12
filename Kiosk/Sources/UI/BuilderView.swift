@@ -162,7 +162,9 @@ struct BuilderBackdrop: View {
                     let card = Layout.toppingCardFrame(topping)
                     let icon = Layout.toppingIconFrame(topping)
                     ZStack {
-                        CardBackground(filled: app.hasTopping(topping), cornerRadius: Layout.toppingCardRadius)
+                        CardBackground(filled: app.hasTopping(topping),
+                                       dimmed: app.booth.isSoldOut(topping) && !app.hasTopping(topping),
+                                       cornerRadius: Layout.toppingCardRadius)
                             .frame(width: card.width, height: card.height)
                         if !app.stageDrawsToppingIcons {
                             ToppingGlyph(topping: topping, size: icon.height)
@@ -458,6 +460,7 @@ struct BuilderForeground: View {
             ForEach(Topping.allCases) { topping in
                 let frame = Layout.toppingCardFrame(topping)
                 let selected = app.hasTopping(topping)
+                let soldOut = app.booth.isSoldOut(topping) && !selected
                 Button { app.toggleTopping(topping) } label: {
                     VStack(spacing: 3) {
                         Spacer()
@@ -467,10 +470,10 @@ struct BuilderForeground: View {
                             .minimumScaleFactor(0.8)
                             .foregroundStyle(selected ? Theme.onText : Theme.text)
                         ZStack {
-                            Text("+\(topping.priceCents.formattedAsUSD)")
-                                .font(Theme.sans(15, .medium))
+                            Text(soldOut ? "Sold out" : "+\(topping.priceCents.formattedAsUSD)")
+                                .font(Theme.sans(15, soldOut ? .semibold : .medium))
                                 .monospacedDigit()
-                                .foregroundStyle(Theme.textSecondary)
+                                .foregroundStyle(soldOut ? Theme.text : Theme.textSecondary)
                                 .opacity(selected ? 0 : 1)
                             HStack(spacing: 4) {
                                 LucideIcon(name: "check", size: 15)
@@ -484,13 +487,19 @@ struct BuilderForeground: View {
                     .padding(.horizontal, 10)
                     .padding(.bottom, 16)
                     .frame(width: frame.width, height: frame.height)
+                    .background {
+                        RoundedRectangle(cornerRadius: Layout.toppingCardRadius, style: .continuous)
+                            .fill(Theme.background.opacity(soldOut ? 0.7 : 0))
+                    }
                     .contentShape(.rect(cornerRadius: Layout.toppingCardRadius))
                     .animation(.easeInOut(duration: 0.2), value: selected)
+                    .animation(.easeInOut(duration: 0.25), value: soldOut)
                 }
+                .disabled(soldOut)
                 .buttonStyle(CardPressStyle { app.setPressed(.topping(topping), $0) })
                 .modifier(PressEffect(pressed: app.pressedCards.contains(.topping(topping))))
                 .accessibilityLabel(topping.title)
-                .accessibilityValue(selected ? "Added" : "+\(topping.priceCents.formattedAsUSD)")
+                .accessibilityValue(selected ? "Added" : soldOut ? "Sold out" : "+\(topping.priceCents.formattedAsUSD)")
                 .accessibilityAddTraits(selected ? .isSelected : [])
                 .position(x: frame.midX, y: frame.midY)
             }

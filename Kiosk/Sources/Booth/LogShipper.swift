@@ -9,6 +9,7 @@ actor LogShipper {
 
     private struct Request: Encodable {
         let appVersion: String
+        let epoch: Int?
         let lines: [Line]
     }
 
@@ -32,6 +33,7 @@ actor LogShipper {
     private var failures = 0
     private var nextAttempt = Date.distantPast
     private var lastFailure: String?
+    private var skips = 0
 
     init(api: BoothAPI, fileURL: URL, log: @escaping @Sendable (String) -> Void) {
         self.api = api
@@ -44,14 +46,28 @@ actor LogShipper {
         nextAttempt = .distantPast
     }
 
+    nonisolated static func size(of fileURL: URL) -> UInt64 {
+        ((try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.size] as? NSNumber)?.uint64Value ?? 0
+    }
+
+    func skip(to offset: UInt64) {
+        skips += 1
+        guard let file = fileStatus() else { return }
+        let current = loadState()
+        let epoch = current?.identity == file.identity ? current?.epoch ?? 0 : 0
+        saveState(State(identity: file.identity, epoch: epoch, offset: min(offset, file.size)))
+    }
+
     func ship() async {
         guard !running, Date() >= nextAttempt else { return }
         running = true
         defer { running = false }
         while let batch = nextBatch() {
+            let skipsBefore = skips
             if let lines = batch.lines {
                 do {
-                    let _: BoothLogsResponse = try await api.post("/v1/logs", Request(appVersion: BoothIdentity.appVersion, lines: lines))
+                    let _: BoothLogsResponse = try await api.post("/v1/logs", Request(appVersion: BoothIdentity.appVersion,
+                                                                                        epoch: BoothEpoch.known, lines: lines))
                 } catch let error as BoothError {
                     if error.isItemFault {
                         log("Booth: server refused a log batch (\(error.summary)); skipped it")
@@ -64,6 +80,7 @@ actor LogShipper {
                     return
                 }
             }
+            guard skips == skipsBefore else { continue }
             var state = loadState()
             state?.offset = batch.endOffset
             saveState(state)
@@ -95,12 +112,16 @@ actor LogShipper {
         UserDefaults.standard.set(state.flatMap { try? JSONEncoder().encode($0) }, forKey: Self.stateKey)
     }
 
-    private func nextBatch() -> (lines: [Line]?, endOffset: UInt64)? {
+    private func fileStatus() -> (size: UInt64, identity: String)? {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
               let size = (attributes[.size] as? NSNumber)?.uint64Value else { return nil }
         let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
         let created = (attributes[.creationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        let identity = "\(inode)-\(Int(created))"
+        return (size, "\(inode)-\(Int(created))")
+    }
+
+    private func nextBatch() -> (lines: [Line]?, endOffset: UInt64)? {
+        guard let (size, identity) = fileStatus() else { return nil }
 
         var state = loadState()
         if state?.identity != identity {

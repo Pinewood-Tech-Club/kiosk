@@ -32,6 +32,7 @@ final class BoothConnection {
     @ObservationIgnored var onConnectionChange: ((ConnectionState) -> Void)?
     @ObservationIgnored var onAssist: ((Bool, TimeInterval) -> Void)?
     @ObservationIgnored var onCommand: ((AssistCommand) -> Void)?
+    @ObservationIgnored var onControl: ((BoothControl) -> Void)?
 
     @ObservationIgnored private let api: BoothAPI
     @ObservationIgnored private let log: (String) -> Void
@@ -84,10 +85,10 @@ final class BoothConnection {
         suspend()
     }
 
-    func requestSync() {
+    func requestSync(force: Bool = false) {
         needsSync = true
         let now = Date()
-        guard now.timeIntervalSince(lastSync) >= Self.syncSpacing else { return }
+        guard force || now.timeIntervalSince(lastSync) >= Self.syncSpacing else { return }
         lastSync = now
         send(["type": "sync"])
     }
@@ -341,6 +342,8 @@ final class BoothConnection {
             onAssist?(active, expiresIn)
         case .command(let command):
             onCommand?(command)
+        case .control(let control):
+            onControl?(control)
         case .unknown:
             break
         }

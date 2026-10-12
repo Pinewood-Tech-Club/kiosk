@@ -4,42 +4,55 @@ import { base64url, clientIp, fromBase64url, HttpError, json, readBody, safeEqua
 export const STAFF_COOKIE = "booth_staff";
 export const SESSION_TTL_MS = 72 * 60 * 60_000;
 const PREFIX = "st1";
+const STAFF_LABEL = "booth-staff-session";
 
-interface SessionPayload {
+export interface SessionPayload {
   sid: string;
   iat: number;
   exp: number;
 }
 
-async function sessionKey(env: Env): Promise<CryptoKey | null> {
+async function sessionKey(env: Env, label: string): Promise<CryptoKey | null> {
   if (!env.STAFF_TOKEN) return null;
-  const material = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`booth-staff-session\n${env.STAFF_TOKEN}`));
+  const material = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${label}\n${env.STAFF_TOKEN}`));
   return crypto.subtle.importKey("raw", material, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
-export async function createStaffSession(env: Env, now = Date.now()): Promise<{ token: string; expiresAt: number }> {
-  const key = await sessionKey(env);
+export async function signSession(env: Env, prefix: string, label: string, payload: SessionPayload): Promise<string> {
+  const key = await sessionKey(env, label);
   if (!key) throw new HttpError(503, "not_configured", "STAFF_TOKEN isn't set", {}, false);
-  const payload: SessionPayload = { sid: base64url(crypto.getRandomValues(new Uint8Array(9))), iat: now, exp: now + SESSION_TTL_MS };
   const body = base64url(new TextEncoder().encode(JSON.stringify(payload)));
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${PREFIX}.${body}`));
-  return { token: `${PREFIX}.${body}.${base64url(signature)}`, expiresAt: payload.exp };
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${prefix}.${body}`));
+  return `${prefix}.${body}.${base64url(signature)}`;
 }
 
-export async function readStaffSession(token: string, env: Env, now = Date.now()): Promise<SessionPayload | null> {
+export async function verifySession(token: string, env: Env, prefix: string, label: string, now = Date.now()): Promise<SessionPayload | null> {
   const parts = token.split(".");
-  if (parts.length !== 3 || parts[0] !== PREFIX) return null;
-  const key = await sessionKey(env);
+  if (parts.length !== 3 || parts[0] !== prefix) return null;
+  const key = await sessionKey(env, label);
   if (!key) return null;
   try {
-    const valid = await crypto.subtle.verify("HMAC", key, fromBase64url(parts[2]), new TextEncoder().encode(`${PREFIX}.${parts[1]}`));
+    const valid = await crypto.subtle.verify("HMAC", key, fromBase64url(parts[2]), new TextEncoder().encode(`${prefix}.${parts[1]}`));
     if (!valid) return null;
     const payload = JSON.parse(new TextDecoder().decode(fromBase64url(parts[1]))) as SessionPayload;
-    if (typeof payload.exp !== "number" || payload.exp <= now || typeof payload.sid !== "string") return null;
+    if (typeof payload.exp !== "number" || payload.exp <= now || typeof payload.sid !== "string" || typeof payload.iat !== "number") return null;
     return payload;
   } catch {
     return null;
   }
+}
+
+export function newSessionId(): string {
+  return base64url(crypto.getRandomValues(new Uint8Array(9)));
+}
+
+export async function createStaffSession(env: Env, now = Date.now()): Promise<{ token: string; expiresAt: number }> {
+  const payload: SessionPayload = { sid: newSessionId(), iat: now, exp: now + SESSION_TTL_MS };
+  return { token: await signSession(env, PREFIX, STAFF_LABEL, payload), expiresAt: payload.exp };
+}
+
+export async function readStaffSession(token: string, env: Env, now = Date.now()): Promise<SessionPayload | null> {
+  return verifySession(token, env, PREFIX, STAFF_LABEL, now);
 }
 
 /** The staff PIN (`STAFF_PIN`) or the staff token itself. Attempts are rate limited per IP. */

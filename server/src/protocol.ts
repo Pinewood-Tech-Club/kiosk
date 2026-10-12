@@ -1,5 +1,5 @@
 import { TOPPING_TITLES } from "./pricing";
-import type { AssistCommand, HelpReason, KioskHealth, KioskSession, OrderStatus, SupplyKind } from "./schema";
+import type { AssistCommand, ControlOp, HelpReason, KioskHealth, KioskSession, OrderStatus, SupplyKind } from "./schema";
 
 export type Role = "kiosk" | "staff";
 
@@ -95,6 +95,8 @@ export type KioskSessionState = KioskSession & { kiosk: string; updatedAt: numbe
 
 export interface BoothState {
   rev: number;
+  epoch: number;
+  resetAt: number | null;
   sessions?: KioskSessionState[];
   kiosks: KioskEntry[];
   kioskOpen: KioskOpen;
@@ -138,7 +140,14 @@ export type ServerMessage =
   | { type: "error"; error: ApiError }
   | { type: "session"; kiosk: string; session: KioskSessionState | null }
   | { type: "assist"; active: boolean; by: string | null; expiresIn: number }
-  | { type: "command"; command: AssistCommand };
+  | { type: "command"; command: AssistCommand }
+  | { type: "control"; control: KioskControl };
+
+export interface KioskControl {
+  id: string;
+  op: ControlOp;
+  by: string | null;
+}
 
 const HELP_TITLES: Record<HelpReason, string> = {
   button: "Customer needs help",

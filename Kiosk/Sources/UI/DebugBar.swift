@@ -29,12 +29,16 @@ struct DebugBar: View {
                     .disabled(!square.isAuthorized)
                 Button("Log") { app.showsLog = true }
                 Menu("Debug") {
-                    Toggle("Simulate payment success", isOn: $app.simulatePayment)
-                    Picker("Simulate error", selection: $app.forcedError) {
-                        Text("None").tag(ForcedError?.none)
-                        ForEach(ForcedError.allCases) { Text($0.label).tag(ForcedError?.some($0)) }
+                    if !square.isProduction || app.simulatePayment {
+                        Toggle("Simulate payment success", isOn: $app.simulatePayment)
                     }
-                    .pickerStyle(.menu)
+                    if !square.isProduction || app.forcedError != nil {
+                        Picker("Simulate error", selection: $app.forcedError) {
+                            Text("None").tag(ForcedError?.none)
+                            ForEach(ForcedError.allCases) { Text($0.label).tag(ForcedError?.some($0)) }
+                        }
+                        .pickerStyle(.menu)
+                    }
                     Picker("Animation speed", selection: $app.slowMotion) {
                         Text("Normal").tag(1.0)
                         Text("0.5× slow-mo").tag(0.5)

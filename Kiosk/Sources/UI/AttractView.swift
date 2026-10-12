@@ -20,6 +20,9 @@ struct AttractBackdrop: View {
 struct AttractView: View {
     let app: AppModel
     @State private var showsButton = false
+    @State private var asksForPin = false
+    @State private var pin = ""
+    @State private var pinRejected = false
 
     var body: some View {
         ZStack {
@@ -44,12 +47,42 @@ struct AttractView: View {
             .animation(.smooth(duration: 0.5), value: app.orderingOpen)
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
+        .overlay(alignment: .topLeading) {
+            if app.canUnlockDebugBar {
+                Color.clear
+                    .frame(width: 110, height: 110)
+                    .contentShape(Rectangle())
+                    .onLongPressGesture(minimumDuration: 3) { askForPin(rejected: false) }
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture { app.beginOrder() }
         .ignoresSafeArea()
+        .alert("Staff tools", isPresented: $asksForPin) {
+            SecureField("PIN", text: $pin)
+                .keyboardType(.numberPad)
+            Button("Unlock") {
+                guard !app.unlockDebugBar(pin: pin) else { return }
+                Task {
+                    try? await Task.sleep(for: .seconds(0.5))
+                    askForPin(rejected: true)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(pinRejected ? "That PIN didn't match. Try again." : "Enter the staff PIN to show the debug bar.")
+        }
         .onChange(of: app.stageReady, initial: true) { _, ready in
             withAnimation(.smooth(duration: 0.8)) { showsButton = ready }
         }
+    }
+}
+
+private extension AttractView {
+    func askForPin(rejected: Bool) {
+        pin = ""
+        pinRejected = rejected
+        asksForPin = true
     }
 }
 

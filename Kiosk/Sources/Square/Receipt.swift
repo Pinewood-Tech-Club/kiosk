@@ -46,12 +46,11 @@ struct Receipt: Sendable {
 
     static func chargedLines(for quote: OrderQuote) -> [Line] {
         var lines: [Line] = []
-        var position = 0
         for (index, line) in quote.lines.enumerated() {
             let label = "#\(index + 1) \(line.item.vessel.title)"
-            for flavor in line.item.flavors {
-                position += 1
-                let cents = Pricing.scoopsTotal(position) - Pricing.scoopsTotal(position - 1)
+            for (scoop, flavor) in line.item.flavors.enumerated() {
+                let position = scoop + 1
+                let cents = Pricing.scoopCents(atPosition: position)
                 lines.append(Line(title: scoopName(position), detail: "\(label): \(flavor.title)", quantity: 1, baseCents: cents, cents: cents))
             }
             if line.item.vessel == .cone {
