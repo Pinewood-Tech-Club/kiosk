@@ -141,6 +141,69 @@
     [self act:@{@"type": @"removeKiosk", @"kiosk": kioskID}];
 }
 
+- (void)setSupply:(NSString *)kind item:(NSString *)item soldOut:(BOOL)soldOut {
+    [self act:@{@"type": @"setSupply", @"kind": kind, @"item": item, @"soldOut": @(soldOut)}];
+}
+
+- (XCUIElement *)card:(XCUIApplication *)app titled:(NSString *)title {
+    return [app.buttons elementMatchingPredicate:[NSPredicate predicateWithFormat:@"label BEGINSWITH %@", title]];
+}
+
+- (void)testSoldOutCupsAndConesOnTheKiosk {
+    XCTSkipUnless([self hasBooth], @"Set TEST_RUNNER_BOOTH_TEST_URL, _STAFF_TOKEN and _KIOSK_TOKEN to run against a booth");
+    NSString *name = [@"UI supplies " stringByAppendingString:[NSUUID.UUID.UUIDString substringToIndex:6]];
+    for (NSString *vessel in @[@"cup", @"cone"]) [self setSupply:@"vessel" item:vessel soldOut:NO];
+    XCUIApplication *app = [[XCUIApplication alloc] init];
+    app.launchArguments = @[@"-kioskRole", @"kiosk", @"-boothURL", self.boothURL, @"-boothToken", self.kioskToken,
+                            @"-kioskNoSquare", @"YES", @"-kioskName", name, @"-kioskItems", @"cone:vanilla", @"-kioskStep", @"vessel"];
+    [app launch];
+    NSDictionary *kiosk = [self waitForKioskNamed:name matching:^BOOL(NSDictionary *k) { return [k[@"online"] boolValue]; }];
+    XCTAssertNotNil(kiosk);
+    NSString *kioskID = kiosk[@"id"];
+    if (![kiosk[@"open"] boolValue]) [self act:@{@"type": @"setKioskOpen", @"kiosk": kioskID, @"open": @YES}];
+
+    XCUIElement *cone = [self card:app titled:@"Waffle Cone"];
+    XCUIElement *cup = [self card:app titled:@"Cup"];
+    XCTAssertTrue([cone waitForExistenceWithTimeout:60]);
+    XCTAssertTrue(cone.isEnabled);
+    [self setSupply:@"vessel" item:@"cone" soldOut:YES];
+    XCTAssertTrue([app.staticTexts[@"Sold out"] waitForExistenceWithTimeout:20]);
+    XCTAssertFalse(cone.isEnabled, @"a sold-out cone can't be chosen");
+    XCTAssertTrue(cup.isEnabled);
+    XCUIElement *total = [app.buttons elementMatchingPredicate:[NSPredicate predicateWithFormat:@"label CONTAINS '$5.50'"]];
+    XCTAssertTrue(total.exists, @"the cone already in the cart stays and is still charged");
+    [self keepScreenshot:@"cone-sold-out-in-builder"];
+
+    [self setSupply:@"vessel" item:@"cup" soldOut:YES];
+    XCTAssertTrue([self waitForPredicate:@"enabled == NO" on:cup timeout:20]);
+    [app.buttons[@"Start over"] tap];
+    XCUIElement *confirm = app.alerts.buttons[@"Start Over"];
+    XCTAssertTrue([confirm waitForExistenceWithTimeout:10]);
+    [confirm tap];
+    XCTAssertTrue([app.buttons[@"Closed"] waitForExistenceWithTimeout:20]);
+    XCTAssertTrue(app.staticTexts[@"We're out of cups and cones for now. Please see a staff member."].exists);
+    [self keepScreenshot:@"no-cups-or-cones-closed"];
+
+    [self setSupply:@"vessel" item:@"cone" soldOut:NO];
+    XCUIElement *begin = app.buttons[@"Begin Order"];
+    XCTAssertTrue([begin waitForExistenceWithTimeout:20]);
+    [begin tap];
+    XCTAssertTrue([cone waitForExistenceWithTimeout:20]);
+    XCTAssertTrue([self waitForPredicate:@"selected == YES" on:cone timeout:10], @"with cups out a new item starts as a cone");
+    XCTAssertFalse(cup.isEnabled);
+    [self keepScreenshot:@"cups-sold-out-new-item-is-a-cone"];
+
+    [self setSupply:@"vessel" item:@"cup" soldOut:NO];
+    XCTAssertTrue([self waitForPredicate:@"enabled == YES" on:cup timeout:20]);
+    [app terminate];
+    [self act:@{@"type": @"removeKiosk", @"kiosk": kioskID}];
+}
+
+- (BOOL)waitForPredicate:(NSString *)format on:(XCUIElement *)element timeout:(NSTimeInterval)timeout {
+    XCTNSPredicateExpectation *match = [[XCTNSPredicateExpectation alloc] initWithPredicate:[NSPredicate predicateWithFormat:format] object:element];
+    return [XCTWaiter waitForExpectations:@[match] timeout:timeout] == XCTWaiterResultCompleted;
+}
+
 - (void)keepScreenshot:(NSString *)name {
     XCTAttachment *attachment = [XCTAttachment attachmentWithScreenshot:XCUIScreen.mainScreen.screenshot];
     attachment.name = name;
