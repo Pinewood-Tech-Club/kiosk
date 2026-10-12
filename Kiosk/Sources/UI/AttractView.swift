@@ -34,7 +34,7 @@ struct AttractView: View {
                         .glassEffectTransition(.materialize)
                 } else if showsButton {
                     if app.orderingOpen {
-                        BeginOrderButton { app.beginOrder() }
+                        BeginOrderButton { Task { await app.beginOrder() } }
                             .glassEffectTransition(.materialize)
                     } else {
                         ClosedNotice(reason: app.closedReason)
@@ -54,7 +54,7 @@ struct AttractView: View {
                 .onTapGesture {}
         }
         .contentShape(Rectangle())
-        .onTapGesture { app.beginOrder() }
+        .onTapGesture { Task { await app.beginOrder() } }
         .onReceive(NotificationCenter.default.publisher(for: CornerHold.held)) { _ in
             guard app.screen == .attract, app.canUnlockDebugBar, !asksForPin else { return }
             askForPin(rejected: false)

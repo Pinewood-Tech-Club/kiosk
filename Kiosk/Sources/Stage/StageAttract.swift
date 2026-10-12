@@ -21,7 +21,7 @@ struct Staging {
 @MainActor
 final class AttractShow {
     static let enterDelay = 0.8
-    static let dwell = 7.0
+    static let dwell = 3.5
 
     /// What the stage shows right now, scoop by scoop and topping by topping.
     var item = AttractShow.opening
@@ -38,7 +38,7 @@ final class AttractShow {
             // Candy can't be shown on a lone scoop in a cup: the scoop's top is below that surface's floor, so ScatterLayer
             // finds no spot and traps. Every build spends part of its time in a cup.
             let choices = flavors.count == 1 ? Topping.allCases.filter(\.isLayered) : Topping.allCases
-            let toppings = Topping.stacked(Array(choices.shuffled(using: &rng).prefix(Int.random(in: 1...3, using: &rng))))
+            let toppings = Topping.stacked(Array(choices.shuffled(using: &rng).prefix(Int.random(in: 2...4, using: &rng))))
             if flavors != finished.flavors || Set(toppings) != Set(finished.toppings) {
                 return IceCreamItem(vessel: vessel, flavors: flavors, toppings: toppings)
             }
@@ -76,7 +76,7 @@ extension Stage {
     func vesselPort(_ vessel: Vessel, count: Int, scale: Float) -> RigPose {
         guard staging.offscreenCards else { return iconPose(vessel) }
         let reach = (contentExtents["\(vessel.rawValue)\(min(count, 3))"]?.yMax ?? 0.15) + (count > 0 ? 0.04 : 0)
-        var position = world(CGPoint(x: staging.band.midX, y: Layout.screen.height + 360))
+        var position = world(CGPoint(x: staging.band.midX + (vessel == .cup ? -200 : 200), y: Layout.screen.height + 360))
         position.y -= reach * scale
         return RigPose(position: position, scale: scale, pitch: Self.preferredPitch, yaw: 0)
     }
@@ -128,77 +128,60 @@ extension Stage {
 
     private func attractStripToppings() {
         guard let show = attract, let top = show.item.toppings.last else {
-            attractWhen({ [unowned self] in attractHero?.toppings?.isIdle ?? true }) { [unowned self] in attractRemoveScoops() }
+            attractWhen({ [unowned self] in attractHero?.toppings?.isIdle ?? true }) { [unowned self] in attractChange() }
             return
         }
         show.item.toppings.removeLast()
         setToppings(show.item.toppings, itemID: show.item.id)
-        attractAfter(top.isLayered ? 0.8 : 1.0) { [unowned self] in attractStripToppings() }
+        attractAfter(top.isLayered ? 0.45 : 0.35) { [unowned self] in attractStripToppings() }
     }
 
-    private func attractRemoveScoops() {
+    private func attractChange() {
+        guard let show = attract else { return }
+        attractRemoveScoops(then: show.nextItem())
+    }
+
+    private func attractRemoveScoops(then target: IceCreamItem) {
         guard let show = attract else { return }
         guard !scoops.isEmpty else {
-            let next = show.nextItem()
-            let swapLate = Bool.random(using: &show.rng)
-            show.item = IceCreamItem(vessel: show.item.vessel)
-            attractAfter(0.5) { [unowned self] in attractAddScoops(next, swapLate: swapLate) }
+            show.item = IceCreamItem(vessel: target.vessel)
+            attractAfter(0.15) { [unowned self] in
+                swapVessel(to: target.vessel)
+                attractAfter(0.3) { [unowned self] in attractAddScoops(target) }
+            }
             return
         }
         removeScoop(at: scoops.count - 1)
         show.item.flavors.removeLast()
-        attractAfter(0.75) { [unowned self] in attractRemoveScoops() }
+        attractAfter(0.35) { [unowned self] in attractRemoveScoops(then: target) }
     }
 
-    private func attractAddScoops(_ target: IceCreamItem, swapLate: Bool) {
+    private func attractAddScoops(_ target: IceCreamItem) {
         guard let show = attract else { return }
         guard show.item.flavors.count < target.flavors.count else {
-            attractWhen({ [unowned self] in attractSettled(target.flavors.count) }) { [unowned self] in
-                if swapLate {
-                    attractAddToppings(target, swapAfter: true)
-                } else {
-                    attractSwap(to: target.vessel) { [unowned self] in attractAddToppings(target, swapAfter: false) }
-                }
-            }
+            attractWhen({ [unowned self] in attractSettled(target.flavors.count) }) { [unowned self] in attractAddToppings(target) }
             return
         }
         let flavor = target.flavors[show.item.flavors.count]
         addScoop(flavor)
         show.item.flavors.append(flavor)
-        attractAfter(0.7) { [unowned self] in attractAddScoops(target, swapLate: swapLate) }
+        attractAfter(0.45) { [unowned self] in attractAddScoops(target) }
     }
 
-    private func attractAddToppings(_ target: IceCreamItem, swapAfter: Bool) {
+    private func attractAddToppings(_ target: IceCreamItem) {
         guard let show = attract else { return }
         guard show.item.toppings.count < target.toppings.count else {
-            attractWhen({ [unowned self] in attractSettled(target.flavors.count) }) { [unowned self] in
-                if swapAfter {
-                    attractSwap(to: target.vessel) { [unowned self] in attractDwell() }
-                } else {
-                    attractDwell()
-                }
-            }
+            attractWhen({ [unowned self] in attractSettled(target.flavors.count) }) { [unowned self] in attractDwell() }
             return
         }
         let topping = target.toppings[show.item.toppings.count]
         show.item.toppings.append(topping)
         setToppings(show.item.toppings, itemID: show.item.id)
         let duration = switch topping {
-        case .whip: 1.8
-        case .chocolate, .caramel: 2.6
-        case .gummies, .mms, .sprinkles: 1.4
+        case .whip: 1.2
+        case .chocolate, .caramel: 1.6
+        case .gummies, .mms, .sprinkles: 0.8
         }
-        attractAfter(duration) { [unowned self] in attractAddToppings(target, swapAfter: swapAfter) }
-    }
-
-    private func attractSwap(to vessel: Vessel, then next: @escaping () -> Void) {
-        guard let show = attract else { return }
-        show.item.vessel = vessel
-        swapVessel(to: vessel)
-        attractAfter(0.9) { [unowned self] in
-            attractWhen({ [unowned self] in attractSettled(show.item.flavors.count) }) { [unowned self] in
-                attractAfter(0.4, next)
-            }
-        }
+        attractAfter(duration) { [unowned self] in attractAddToppings(target) }
     }
 }

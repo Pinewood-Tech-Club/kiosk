@@ -578,7 +578,7 @@ struct ScriptRunner {
         case "demo":
             if app.screen == .attract {
                 await wait(1.0)
-                app.beginOrder(ignoringClosure: true)
+                await app.beginOrder(ignoringClosure: true)
                 await wait(2.2)
             }
             await select(.cone)
@@ -1230,7 +1230,7 @@ struct AttractInterruptRunner {
             }
             let delay = Double.random(in: 0.3...30, using: &rng)
             await sleep(delay)
-            app.beginOrder(ignoringClosure: true)
+            await app.beginOrder(ignoringClosure: true)
             var issues = stage.consistencyIssues(current: app.current, items: app.items, editingID: nil, showsCards: true)
             if stage.isAttractRunning { issues.append("attract still running") }
             if !stage.detachedToppings.isEmpty { issues.append("\(stage.detachedToppings.count) detached topping layer(s)") }

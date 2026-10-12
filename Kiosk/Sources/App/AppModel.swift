@@ -61,6 +61,9 @@ final class AppModel {
     @ObservationIgnored private var leavingTask: Task<Void, Never>?
     /// The stage is playing the attract scene.
     private(set) var attractLive = false
+    private(set) var blackout = false
+    static let blackoutIn = 0.3
+    static let blackoutOut = 0.4
     var builderVisible = false
     private(set) var mode: BuilderMode = .customize
     private(set) var step: BuilderStep = .vessel
@@ -320,12 +323,19 @@ final class AppModel {
         stage.swapVessel(to: startVessel)
     }
 
-    func beginOrder(ignoringClosure: Bool = false) {
-        guard stageReady, !assetsFailed, screen == .attract, ignoringClosure || orderingOpen else { return }
-        resetEverything()
-        stage.restore(current: current, items: [], step: .vessel)
-        builderVisible = true
-        withAnimation(.easeInOut(duration: 0.5)) { screen = .builder }
+    func beginOrder(ignoringClosure: Bool = false) async {
+        guard stageReady, !assetsFailed, screen == .attract, ignoringClosure || orderingOpen, !blackout else { return }
+        withAnimation(.easeIn(duration: Self.blackoutIn)) { blackout = true }
+        try? await Task.sleep(for: .seconds(Self.blackoutIn))
+        if screen == .attract {
+            resetEverything()
+            stage.restore(current: current, items: [], step: .vessel)
+            builderVisible = true
+            screen = .builder
+            try? await Task.sleep(for: .seconds(0.15))
+        }
+        withAnimation(.easeOut(duration: Self.blackoutOut)) { blackout = false }
+        try? await Task.sleep(for: .seconds(Self.blackoutOut))
     }
 
     private func resetEverything() {

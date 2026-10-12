@@ -99,6 +99,12 @@ struct RootView: View {
                 .allowsHitTesting(app.screen == .attract)
                 .zIndex(2)
 
+            Color.black
+                .opacity(app.blackout ? 1 : 0)
+                .allowsHitTesting(app.blackout)
+                .ignoresSafeArea()
+                .zIndex(2.5)
+
             if app.show3DDebug, app.screen == .builder {
                 StageDebugOverlay(stage: app.stage).zIndex(3)
             }

@@ -126,7 +126,7 @@ extension AppModel {
             if screen == .attract {
                 guard orderingOpen else { return .rejected("This kiosk is closed") }
                 guard stageReady, !assetsFailed else { return .rejected("The kiosk isn't ready yet") }
-                beginOrder()
+                await beginOrder()
                 return screen == .builder ? .applied : .rejected("Couldn't start an order")
             }
             if screen == .name {
