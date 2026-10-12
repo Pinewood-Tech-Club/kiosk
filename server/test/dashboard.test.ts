@@ -94,7 +94,8 @@ describe("dashboard page", () => {
     expect(scooper).toContain("Set on the Toppings iPad");
     expect(toppings).toContain('data-supply="topping" data-mode="edit"');
     expect(toppings).toContain('data-supply="flavor,vessel" data-mode="compact"');
-    expect(toppings).toContain("<h2>Flavors, cups and cones</h2><span>Set on the Scooper iPad</span>");
+    expect(toppings).toContain("<h2>Flavors, cups and cones</h2>");
+    expect(toppings).toContain("Set on the Scooper iPad.");
     expect(toppings).not.toContain('data-supply="flavor" data-mode="edit"');
     for (const kind of ["flavor", "vessel", "topping"]) expect(organizer).toContain(`data-supply="${kind}" data-mode="list"`);
     expect(organizer).not.toContain('data-mode="edit"');

@@ -358,7 +358,7 @@ function suppliesSection(display: boolean, role: StaffRole): string {
   if (!others.length) return html;
   const owner = Object.values(STAFF_ROLES as Record<string, StaffRole>).find((r) => r.kind === "ipad" && others.every((kind) => r.owns.includes(kind)));
   const title = others.map((kind, i) => (i === 0 ? SUPPLY_TITLES[kind] : SUPPLY_TITLES[kind].toLowerCase())).join(", ");
-  return html + `<div class="section-head"><h2>${title}</h2>${owner ? `<span>Set on the ${escapeHtml(owner.title)} iPad</span>` : ""}</div>${supplyGroup(others, "compact")}`;
+  return html + `<div class="section-head"><h2>${title}</h2></div>${supplyGroup(others, "compact")}${owner ? `<p class="footnote">Set on the ${escapeHtml(owner.title)} iPad.</p>` : ""}`;
 }
 
 const SECTIONS: Record<StaffSection, (display: boolean, role: StaffRole) => string> = {
