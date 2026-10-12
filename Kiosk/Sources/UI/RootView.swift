@@ -64,7 +64,7 @@ struct RootView: View {
             }
 
             if shows(.staff) {
-                StaffWebView().transition(.identity)
+                StaffWebView { app.exitStaffMode() }.transition(.identity)
             }
 
             if shows(.name) {
@@ -86,19 +86,7 @@ struct RootView: View {
             }
 
             VStack {
-                if app.screen == .staff {
-                    EmptyView()
-                } else if app.debugBarHidden {
-                    HStack {
-                        Color.clear
-                            .frame(width: 96, height: 96)
-                            .contentShape(Rectangle())
-                            .onTapGesture(count: 3) {
-                                withAnimation(.easeInOut(duration: 0.25)) { app.debugBarHidden = false }
-                            }
-                        Spacer()
-                    }
-                } else {
+                if app.screen != .staff, app.showsDebugBar {
                     DebugBar(app: app)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }

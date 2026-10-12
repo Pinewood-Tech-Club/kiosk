@@ -105,7 +105,7 @@ struct IceCreamItem: Identifiable, Equatable, Sendable {
         "\(vessel.title) · \(scoopCount) scoop\(scoopCount == 1 ? "" : "s")"
     }
 
-    var hasChoices: Bool { !flavors.isEmpty || vessel != .cup || !toppings.isEmpty }
+    func hasChoices(startingFrom start: Vessel) -> Bool { !flavors.isEmpty || vessel != start || !toppings.isEmpty }
 
     var flavorSummary: String {
         Self.describe(flavors)

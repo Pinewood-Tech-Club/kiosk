@@ -354,6 +354,16 @@ describe("checkout", () => {
     expect(changed.body.error.code).toBe("conflict");
   });
 
+  it("uses the kiosk's order reference so orders from different kiosks never share one", async () => {
+    mockSquare();
+    await connectSquare();
+    const a = await call("/v1/checkout", { token: KIOSK, json: cart({ orderRef: "3F2A-12" }) });
+    const b = await call("/v1/checkout", { token: KIOSK, json: cart({ orderRef: "9C01-12" }) });
+    expect([a.body.referenceId, b.body.referenceId]).toEqual(["kiosk-3F2A-12", "kiosk-9C01-12"]);
+    expect(callsTo("/v2/orders").map((c) => c.body.order.reference_id)).toEqual(["kiosk-3F2A-12", "kiosk-9C01-12"]);
+    expect((await call("/v1/checkout", { token: KIOSK, json: cart({ orderRef: "bad ref!" }) })).status).toBe(400);
+  });
+
   it("reuses the catalog between checkouts", async () => {
     mockSquare();
     await connectSquare();
@@ -390,6 +400,24 @@ describe("checkout", () => {
     const unauthorized = await call("/v1/checkout", { token: KIOSK, json: cart() });
     expect(unauthorized.status).toBe(502);
     expect(unauthorized.body.error).toMatchObject({ code: "square_unauthorized", retryable: false });
+  });
+
+  it("takes a cart whose flavor, cone and topping sold out after they were added", async () => {
+    mockSquare();
+    await connectSquare();
+    const out = (soldOut: boolean) => [
+      { id: crypto.randomUUID(), type: "setSupply", kind: "flavor", item: "vanilla", soldOut },
+      { id: crypto.randomUUID(), type: "setSupply", kind: "vessel", item: "cone", soldOut },
+      { id: crypto.randomUUID(), type: "setSupply", kind: "vessel", item: "cup", soldOut },
+      { id: crypto.randomUUID(), type: "setSupply", kind: "topping", item: "gummies", soldOut },
+    ];
+    const marked = await call("/v1/actions", { token: STAFF, json: { actions: out(true) } });
+    expect(marked.body.results.every((r: { status: string }) => r.status === "ok")).toBe(true);
+    const body = cart({ items: [{ vessel: "cone", flavors: ["vanilla"], toppings: ["gummies"] }, { vessel: "cup", flavors: ["vanilla"] }] });
+    const result = await call("/v1/checkout", { token: KIOSK, json: body });
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ status: "created", priceMatches: true });
+    await call("/v1/actions", { token: STAFF, json: { actions: out(false) } });
   });
 
   it("validates the cart", async () => {
@@ -438,7 +466,7 @@ describe("receipts", () => {
       json: {
         orders: [{
           id: body.id, orderNumber: 12, customerName: "Alex <b>", totalCents: 1100, subtotalCents: 1100, taxCents: 0,
-          squarePaymentId: "PAY1abcdefghij", card: "Visa 4242", receiptToken: body.receiptToken, items: body.items,
+          squarePaymentId: "PAY1abcdefghij", card: "Visa 4242", receiptToken: body.receiptToken, items: body.items, orderRef: "3F2A-12",
           paidAt: new Date(paidAt).toISOString(),
         }],
       },
@@ -448,7 +476,7 @@ describe("receipts", () => {
     expect(paid.headers.get("X-Robots-Tag")).toContain("noindex");
     expect(paid.body).not.toContain('http-equiv="refresh"');
     expect(paid.body).toContain("Tech Club Ice Cream");
-    expect(paid.body).toContain("Order 12");
+    expect(paid.body).toContain("Order 3F2A-12");
     expect(paid.body).toContain("Alex &lt;b&gt;");
     expect(paid.body).toContain("Waffle Cone");
     expect(paid.body).toContain("Vanilla, Chocolate");
@@ -566,15 +594,16 @@ describe("order feed and stats", () => {
 
     const id = `feed-${crypto.randomUUID()}`;
     const order = {
-      id, orderNumber: 7, customerName: "Sam", totalCents: 950, paidAt: new Date().toISOString(),
+      id, orderNumber: 7, orderRef: "FEED-7", customerName: "Sam", totalCents: 950, paidAt: new Date().toISOString(),
       items: [{ vessel: "cone", flavors: ["vanilla", "chocolate"], toppings: ["sprinkles"] }],
     };
     const posted = await call("/v1/orders", { token: KIOSK, device: "feed-kiosk", json: { orders: [order] } });
     expect(posted.body.results[0].status).toBe("ok");
     const patch = await waitFor((m) => m.type === "patch" && m.change.kind === "order" && m.change.order.id === id);
     expect(patch.type === "patch" && patch.change.kind === "order" && patch.change.order).toMatchObject({
-      id, orderNumber: 7, customerName: "Sam", status: "paid", items: [{ vessel: "cone", toppings: ["sprinkles"] }],
+      id, orderNumber: 7, orderRef: "FEED-7", kioskId: "feed-kiosk", customerName: "Sam", status: "paid", items: [{ vessel: "cone", toppings: ["sprinkles"] }],
     });
+    expect(await env.DB.prepare("SELECT order_ref, device FROM orders WHERE id = ?").bind(id).first()).toEqual({ order_ref: "FEED-7", device: "feed-kiosk" });
 
     await call("/v1/orders", { token: KIOSK, device: "feed-kiosk", json: { orders: [order] } });
     const actions = await call("/v1/actions", { token: STAFF, json: { actions: [{ id: `a-${id}`, type: "setOrderStatus", orderId: id, status: "ready", by: "Maya" }] } });

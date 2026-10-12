@@ -63,6 +63,8 @@ final class AppModel {
     private(set) var current = IceCreamItem() {
         didSet { if current.toppings != oldValue.toppings { stage.setToppings(current.toppings, itemID: current.id) } }
     }
+    /// What a new item started as; a different vessel counts as the customer's choice.
+    private var startVessel: Vessel = .cup
     private(set) var items: [IceCreamItem] = []
     private(set) var editingID: UUID?
     private(set) var stageReady = false
@@ -78,9 +80,8 @@ final class AppModel {
     var customerName = ""
     private(set) var isPaying = false
 
-    var debugBarHidden: Bool {
-        didSet { UserDefaults.standard.set(debugBarHidden, forKey: "debugBarHidden") }
-    }
+    private var debugBarOverride: Bool?
+    private var debugBarDismissed = false
     var simulatePayment: Bool
     var slowMotion: Double = 1 {
         didSet { stage.timeScale = slowMotion }
@@ -103,7 +104,7 @@ final class AppModel {
 
     init() {
         let defaults = UserDefaults.standard
-        debugBarHidden = defaults.bool(forKey: "debugBarHidden")
+        debugBarOverride = LaunchOptions.current.hideDebugBar.map { !$0 }
         simulatePayment = false
         forcedError = defaults.string(forKey: "kioskForceError").flatMap(ForcedError.init(rawValue:))
     }
@@ -114,13 +115,22 @@ final class AppModel {
         var basket = items
         if let editingID, let index = basket.firstIndex(where: { $0.id == editingID }) {
             basket[index] = current
-        } else if current.hasChoices {
+        } else if currentHasChoices {
             basket.append(current)
         }
         return Pricing.quote(basket)
     }
 
     var orderQuote: OrderQuote { Pricing.quote(items) }
+
+    var currentHasChoices: Bool { current.hasChoices(startingFrom: startVessel) }
+
+    var defaultVessel: Vessel { booth.isSoldOut(.cup) && !booth.isSoldOut(.cone) ? .cone : .cup }
+
+    private func freshItem() -> IceCreamItem {
+        startVessel = defaultVessel
+        return IceCreamItem(vessel: startVessel)
+    }
 
     var canViewOrder: Bool { !items.isEmpty || current.scoopCount > 0 }
 
@@ -230,7 +240,39 @@ final class AppModel {
         withAnimation(.easeInOut(duration: 0.35)) { screen = .roleSetup }
     }
 
-    var orderingOpen: Bool { booth.kioskOpen }
+    var showsDebugBar: Bool {
+        debugBarOverride ?? (booth.debugEnabled && !debugBarDismissed)
+    }
+
+    func hideDebugBar() {
+        debugBarOverride = nil
+        debugBarDismissed = true
+    }
+
+    func debugToolsTurnedOn() {
+        debugBarDismissed = false
+    }
+
+    func exitStaffMode() {
+        guard screen == .staff else { return }
+        role = nil
+        withAnimation(.easeInOut(duration: 0.5)) { screen = .roleSetup }
+    }
+
+    var orderingOpen: Bool { booth.kioskOpen && !booth.outOfVessels }
+
+    var closedReason: String {
+        booth.kioskOpen ? "We're out of cups and cones for now. Please see a staff member." : "Ordering is paused. Please see a staff member."
+    }
+
+    func vesselsChanged() {
+        guard screen == .builder, mode == .customize, step == .vessel, !isEditing,
+              current.flavors.isEmpty, current.toppings.isEmpty, current.vessel == startVessel,
+              booth.isSoldOut(current.vessel), defaultVessel != current.vessel else { return }
+        startVessel = defaultVessel
+        current.vessel = startVessel
+        stage.swapVessel(to: startVessel)
+    }
 
     func beginOrder(ignoringClosure: Bool = false) {
         guard stageReady, !assetsFailed, screen == .attract, ignoringClosure || orderingOpen else { return }
@@ -244,7 +286,7 @@ final class AppModel {
         transitionTask?.cancel()
         builderResetPending = false
         items = []
-        current = IceCreamItem()
+        current = freshItem()
         editingID = nil
         mode = .customize
         step = .vessel
@@ -280,7 +322,7 @@ final class AppModel {
     }
 
     func selectVessel(_ vessel: Vessel) {
-        guard screen == .builder, mode == .customize, step == .vessel, vessel != current.vessel else { return }
+        guard screen == .builder, mode == .customize, step == .vessel, vessel != current.vessel, !booth.isSoldOut(vessel) else { return }
         current.vessel = vessel
         stage.swapVessel(to: vessel)
     }
@@ -376,7 +418,7 @@ final class AppModel {
         items[index] = current
         stage.returnHeroToEntry(editingID, item: current)
         self.editingID = nil
-        current = IceCreamItem()
+        current = freshItem()
         proceed(to: next)
     }
 
@@ -400,9 +442,9 @@ final class AppModel {
     /// Already on Vessel, the controls stay put and only the 3D hero changes; from a later step it's an
     /// ordinary step change back to Vessel.
     private func startNextItem() {
-        current = IceCreamItem()
+        current = freshItem()
         setStep(.vessel)
-        stage.presentNewItem(vessel: .cup, delay: 0.3)
+        stage.presentNewItem(vessel: current.vessel, delay: 0.3)
     }
 
     /// Editing another item never throws work away: an edit in progress is saved, and an item being
@@ -417,7 +459,7 @@ final class AppModel {
             let item = current
             items.append(item)
             stage.sendCurrentToTray(item)
-            current = IceCreamItem()
+            current = freshItem()
         }
         edit(id)
     }
@@ -448,9 +490,9 @@ final class AppModel {
             editingID = nil
             stage.dismissCurrentHero()
             stage.removeTrayItem(id)
-            current = IceCreamItem()
+            current = freshItem()
             setStep(.vessel)
-            if presentNewItem { stage.presentNewItem(vessel: .cup, delay: 0.3) }
+            if presentNewItem { stage.presentNewItem(vessel: current.vessel, delay: 0.3) }
         } else {
             stage.removeTrayItem(id)
         }
@@ -501,10 +543,10 @@ final class AppModel {
     private func resetBuilderUnderSheet() {
         guard builderResetPending, mode == .summary else { return }
         builderResetPending = false
-        current = IceCreamItem()
+        current = freshItem()
         step = .vessel
         pressedCards = []
-        stage.resetBuilderUnderSheet()
+        stage.resetBuilderUnderSheet(vessel: current.vessel)
     }
 
     /// `velocity` (points per second, downward) carries a pull-down's fling into the sheet's spring.
@@ -580,7 +622,7 @@ final class AppModel {
         booth.checkReaderBeforePayment()
         let quote = orderQuote
         let number = nextOrderNumber()
-        let checkout = CheckoutIdentity.make()
+        let checkout = CheckoutIdentity.make(orderNumber: number)
         Task {
             let result: PaymentResult
             if let forcedError, forcedError != .assets {
@@ -616,12 +658,11 @@ final class AppModel {
         if let slowmo = options.slowMotion { slowMotion = slowmo }
         if options.debug3D { show3DDebug = true }
         if let simulate = options.simulatePayment { simulatePayment = simulate }
-        if let hide = options.hideDebugBar { debugBarHidden = hide }
         if options.role == DeviceRole.kiosk.rawValue, screen == .roleSetup { enterKioskRole(animated: false) }
 
         if let screenName = options.screen {
             items = options.items
-            current = options.current ?? IceCreamItem()
+            current = options.current ?? freshItem()
             step = options.step ?? .vessel
             customerName = options.name ?? ""
             switch screenName {
@@ -633,11 +674,11 @@ final class AppModel {
                 screen = .builder
                 builderVisible = true
                 mode = .summary
-                current = IceCreamItem()
+                current = freshItem()
                 step = .vessel
                 stage.restore(current: current, items: items, step: .vessel, summary: true)
             case "name":
-                current = IceCreamItem()
+                current = freshItem()
                 step = .vessel
                 stage.restore(current: current, items: items, step: .vessel, summary: true)
                 mode = .summary

@@ -2,7 +2,7 @@
 
 # kiosk
 
-Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + RealityKit on a single 13" iPad Pro (M4), portrait only, taking card payments with the [Square Mobile Payments SDK](https://developer.squareup.com/docs/mobile-payments-sdk) (2.6.0).
+Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + RealityKit on 13" iPad Pros (M4), portrait only, one or more kiosks side by side (planned for up to 3), taking card payments with the [Square Mobile Payments SDK](https://developer.squareup.com/docs/mobile-payments-sdk) (2.6.0).
 
 ## Setup
 
@@ -14,6 +14,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
    - `SQUARE_CATEGORY_NAME`: the catalog category holding the *1 Scoop*, *2nd Scoop*, *3rd+ Scoop*, *Waffle Cone* and *Topping* items (one fixed-price variation each). If it's missing or its prices don't match the kiosk's, orders fall back to ad-hoc line items and the debug bar shows the error.
    - `KIOSK_EVENT_NAME`, shown on the receipt screen.
    - `BOOTH_URL` and `BOOTH_TOKEN` for the [backend](#backend). `BOOTH_URL` is a bare host (`kiosk.jamboree.techclub.pw`) because `//` starts a comment in an xcconfig. Leave them empty to run without the backend; the kiosk works the same either way (with the bundled Square token).
+   - Kiosk iPads, optional: `KIOSK_NAME`, the name staff see for this kiosk (for example `Front table`). iOS doesn't let apps read the iPad's own name, so without it a new kiosk shows up as *Kiosk 3F2A* (from its device id) until staff rename it on the [staff pages](#staff-pages); a staff rename wins over `KIOSK_NAME`.
    - Staff iPads only: `KIOSK_ROLE = staff` skips role setup and opens the [staff page](#staff-pages) `STAFF_PAGE` (`scooper` or `toppings`; empty means `scooper`). With `BOOTH_STAFF_TOKEN` set it signs in by itself; without it the page asks for the staff PIN.
 3. `xcodegen generate` (the project is generated from `project.yml`; rerun after adding source files), open `Kiosk.xcodeproj`, pick the iPad, Run. Debug builds are compiled optimized (`-O`): the topping simulation is about 40 times slower without it.
 
@@ -21,22 +22,25 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
 
 ## Flow
 
-1. **Role setup** (every launch, unless `KIOSK_ROLE` or `-kioskRole` picks one): *Start Kiosk* or *Staff*. Square and the kiosk's backend link start only when the kiosk role is chosen, so a staff iPad never reports itself as the kiosk; once the kiosk has started, switching this iPad to staff needs a relaunch. *Staff* opens the [staff page](#staff-pages).
-2. **Attract**: looping `loop.mp4`. *Begin Order* appears once every 3D asset is preloaded; tapping anywhere starts an order. While staff have closed the kiosk, the video keeps looping but *Begin Order* is a dimmed *Closed* button and taps do nothing; a customer already ordering is never interrupted. The last known open/closed state is kept across relaunches and while the backend is unreachable.
+1. **Role setup** (every launch, unless `KIOSK_ROLE` or `-kioskRole` picks one): *Start Kiosk* or *Staff*. Square and the kiosk's backend link start only when the kiosk role is chosen, so a staff iPad never reports itself as a kiosk. *Staff* opens the [staff page](#staff-pages); its *Exit staff mode* (after a confirmation) comes back here, and *Start Kiosk* then starts Square and the backend link without a relaunch. Once the kiosk has started, switching this iPad to staff needs a relaunch.
+2. **Attract**: looping `loop.mp4`. *Begin Order* appears once every 3D asset is preloaded; tapping anywhere starts an order. While staff have closed this kiosk (each kiosk opens and closes on its own, or all together), the video keeps looping but *Begin Order* is a dimmed *Closed* button and taps do nothing; a customer already ordering is never interrupted. While cups and waffle cones are both sold out it shows *Closed* the same way, with "We're out of cups and cones for now". The last known open/closed and sold-out state is kept across relaunches and while the backend is unreachable.
 3. **Builder** (one RealityView behind the SwiftUI controls holds every 3D object):
-   - *Vessel*: Cup (included) or Waffle Cone (+$1.50). Selecting flies the new vessel out of its icon while the old one spins back into its slot. Drag the item to orbit it; it eases back and resumes spinning.
+   - *Vessel*: Cup (included) or Waffle Cone (+$1.50). A new item starts as a cup, or as a cone while cups are sold out. Selecting flies the new vessel out of its icon while the old one spins back into its slot. Drag the item to orbit it; it eases back and resumes spinning.
    - *Flavors*: tap a flavor to fling a scoop onto the item (up to 3); each card shows what the next scoop costs. The card's minus button takes one of that flavor back off.
+   - Sold out (set by staff for every kiosk at once): that flavor or vessel card is dimmed, says *Sold out* and can't be tapped. Anything already in the order stays and is paid for as usual. Toppings carry the same flag (`booth.isSoldOut(topping)`), which the topping cards don't show yet.
    - *Toppings*: smaller cards in labeled groups (*Cream & Sauces*, *Candy & Sprinkles*; a topping's group comes from `Topping.group`), +$0.50 each. Each card shows a live 3D icon of its topping (a flat glyph from `ToppingGlyph` if the 3D scene isn't up). Tapping a card puts that topping on the item, fills the card in cream and marks it *Added*; tapping it again takes it off. The item keeps its toppings in the order they were added, while the 3D toppings always stack in a fixed layer order (`Topping.stacked`: whip and sauce under the pieces) over a height map of the settled scoops, and the item is framed lower to leave room for them. Gummy bears, M&M's and sprinkles (`CandyKinds.swift`, real size) are tossed from their card and settled by a small rigid-body simulation (`ScatterLayer`, `ScatterPhysics`): each kind lands on the ice cream and on the candy already there, always as the full serving (8 gummy bears, 8 M&M's, 72 sprinkles; `ScatterLayer.serving` can switch back to a serving that shrinks to fit the top in one loose layer). Pieces that find no room where they're tossed are laid flat on the scoops' shoulders down to about the cup's rim, or rest on lying pieces, but never up a heap, standing on end or on edge. Each layer logs how its pieces landed as a `Scatter:` line (`placed 8/8 (lies …, laid …, perches …, pressed …, lost …)`). Whipped cream (`WhipLayer`) is sprayed on as a fluffy rosette and chocolate syrup (`DrizzleLayer`) is poured over the top in a zigzag with drips, both from an invisible dispenser while their card gives a squish; pieces and syrup above the cream ride it up as it grows and down as it deflates, candy sinks into whipped cream a little and stays where it lands on it, and tossed pieces stay under the step's title. Toppings stay on an item when its scoops are taken off (the step is blocked until it has a scoop again) and are restored when the item is lifted back out of the tray to edit. Then *Add to Order* flies the item into the tray.
    - The step selector at the top jumps between steps that are already reachable.
    - Tray: a pinned *New item* slot, live 3D minis (drag to scroll), *View Order* with the live total, and start-over (with confirmation). Tapping a mini lifts it back out to edit. Leaving an edit keeps the changes: *Done*, *New item*, tapping another mini or *View Order* return the item to its slot. The minus badge on its empty slot removes it (after a confirmation); an item edited down to no scoops asks to be removed. *New item* outside an edit adds the item being built to the order and starts a fresh cup.
 4. **Your order**: *View Order* grows the tray's glass into a sheet over the builder; each item's 3D model rides up from its tray slot into its row, with edit (pencil) and remove (trash) buttons. Below are the total and *Check Out*. *Keep ordering*, or pulling the sheet down, folds it back into the tray with the items riding back into their slots, revealing a fresh builder that was set up while the sheet covered it.
 5. **Name**: the name becomes the Square order's ticket name and pickup recipient.
 6. **Payment**: generates a checkout id and an unguessable receipt token on the kiosk, asks the backend to create the Square order (3.5 s budget, then the kiosk does it itself, and skips the backend for a minute), or creates a Square order from the catalog on the device (one line per scoop, priced by its position in the whole order, plus one line per waffle cone and one per topping; taxes auto-applied by Square), then `startPayment` for Square's total with Square's default payment screen. Once a card touches the reader, Square's own screens take over (PIN, processing, declines, low gift card balances, card read errors, with retry or cancel). On failure the customer returns to their order and an alert explains in plain words what happened and what to do (copy lives in `PaymentProblem.swift`; the technical error goes to the log); a cancel just returns them to it.
-7. **Confirmation**: an itemized receipt of what Square charged, a QR code to the digital receipt page ("Scan for your receipt"), and *New Order*. Returns to the attract screen after 30 s without a touch (10 s when there is no QR code because BOOTH_URL is unset).
+7. **Confirmation**: an itemized receipt of what Square charged (the customer's name, with the order reference such as *Order 3F2A-12* in small type: order numbers count per kiosk, so the reference starts with the kiosk's tag), a QR code to the digital receipt page ("Scan for your receipt"), and *New Order*. Returns to the attract screen after 30 s without a touch (10 s when there is no QR code because BOOTH_URL is unset).
 
 Pricing: scoops are priced by their position in the whole order: the first is $4, the second $3, and every one after that $2 (so 1 → $4, 2 → $7, 3 → $9). Waffle cones are $1.50 each, and toppings $0.50 each.
 
 ## Debug bar
+
+Off on every kiosk by default. Staff turn it on per kiosk with the *Debug tools* switch in that kiosk's sheet on the [staff pages](#staff-pages); the kiosk shows or hides it live and keeps the last setting across relaunches. Customers have no way to reveal it. For development, `-kioskHideDebugBar NO` shows it regardless.
 
 Top of the screen: Square environment, authorization, readers, *Mock Reader* (sandbox), *Readers* settings, *Log*, and a *Debug* menu:
 
@@ -44,7 +48,7 @@ Top of the screen: Square environment, authorization, readers, *Mock Reader* (sa
 - *Simulate error*: makes the next payment fail in a chosen way (declined, timeout, offline, no reader, screen shared, not authorized, and so on), or shows the attract screen's not-ready notice, so staff can see and demo each message. A red *Forcing* badge shows while one is set.
 - *Animation speed*: 0.5×, 0.25×, 0.1× slow motion for the 3D timeline.
 - *Show 3D debug info*: frame-time stats (p50/p99/max frame time, CPU time of the per-frame update), alignment markers for the icons, and frame stats and hitches written to the log every 5 s.
-- *Change role*, *Hide debug bar*. Triple-tap the top-left corner to bring the bar back.
+- *Change role*, *Hide debug bar* (until staff switch Debug tools on again, or a relaunch).
 
 The log is also written to `Documents/kiosk.log`.
 
@@ -62,7 +66,8 @@ Pass in the scheme or with `xcrun simctl launch <udid> com.adamxu.kiosk -kioskSc
 | `-kioskCurrent "cone:vanilla,chocolate+whip"` | Item being customized, in the item syntax below. |
 | `-kioskItems "cup:cookies;cone:vanilla"` | Items already in the tray. Items are separated by `;`. Each is `vessel:flavor,flavor` followed by any toppings, each after a `+`, in the order they were added: `"cone:vanilla,chocolate+whip+gummies;cup:cookies+sprinkles"`. Toppings are `whip`, `chocolate`, `gummies`, `mms`, `sprinkles`. `-kioskCurrent` takes the same syntax for one item. |
 | `-kioskToppings "whip+gummies"` | Toppings on the item being customized (on `-kioskCurrent`'s item, replacing its toppings, or on an empty cup). |
-| `-kioskName Alex` | Prefill the name. |
+| `-kioskName "Front table"` | Override `KIOSK_NAME`, the kiosk's name on the staff pages. |
+| `-kioskCustomerName Alex` | Prefill the customer's name. |
 | `-kioskScript <name>` | Scripted taps: `vessel-to-cone`, `vessel-pingpong`, `bounce`, `scoops`, `scoops-rapid`, `back-swap`, `add-to-order`, `drag`, `tray-remove`, `remove-middle`, `vessel-new`, `edit`, `edit-scroll`, `edit-done`, `edit-new`, `edit-switch`, `edit-empty`, `fresh`, `summary`, `pay`, `pull-down`, `press-hold`, `swap-continue`, `vessel-spam`, `demo`. |
 | `-kioskScript toppings\|toppings-tour\|toppings-candy` | `toppings` taps topping cards on and off, adds the item to the order and lifts it back out, logging `toppings after edit ... restored` (or `MISMATCH`). `toppings-tour` (adds a vanilla scoop if the item has none) puts whip and syrup on and off under pieces, adds and removes a scoop under the toppings, swaps the vessel, adds the item to the order, edits it and opens the order sheet. Pair with `-kioskCurrent "cone:vanilla,chocolate,cookies"` to tour a 3-scoop cone. `toppings-candy` tosses gummy bears, M&M's and sprinkles on one after another, takes the M&M's back off, adds the item to the order and opens the order sheet. |
 | `-kioskScript stress\|stress-tray` | Rapid random taps (cup/cone, flavors, minus, steps; `stress-tray` adds New item, tray edits, deletes and the order sheet), then a check that the settled 3D scene matches the order. Results go to the log as `Stress:` lines. `-kioskSeed N` and `-kioskStressRounds N` make a run repeatable. |
@@ -72,7 +77,7 @@ Pass in the scheme or with `xcrun simctl launch <udid> com.adamxu.kiosk -kioskSc
 | `-kioskSlowmo 0.25` | Slow motion. |
 | `-kioskDebug3D YES` | 3D debug overlay and frame-stat logging. |
 | `-kioskSimulatePayment YES\|NO` | Override simulated payments. |
-| `-kioskHideDebugBar YES\|NO` | Override debug bar visibility. |
+| `-kioskHideDebugBar YES\|NO` | Hide or show the debug bar whatever the staff pages say. |
 | `-kioskForceError <name>` | Same as *Simulate error*: `declined`, `timeout`, `offline`, `paymentOffline`, `notConfigured`, `notAuthorized`, `noReader`, `readerFailedToStart`, `screenShared`, `notFullScreen`, `unsupportedMode`, `locationPermission`, `orderRejected`, `alreadyInProgress`, `paidWithoutOrder`, `canceled`, `assets`. Pair with `-kioskScreen name -kioskScript pay` to fail a payment hands-free. |
 | `-kioskNoSquare YES` | Don't start Square at all (no permission prompts; useful for screenshots). |
 
@@ -88,29 +93,41 @@ xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk -destination 'platform=iO
 
 `StaffUITests` launches the staff role against an unreachable booth and checks the native *Can't reach the booth* screen. The staff pages themselves are web pages, tested in `server/test` and in a browser (see [Staff pages](#staff-pages)).
 
+`BoothRoleUITests` runs against a real booth (staging) and is skipped unless it gets one: exit staff mode, then *Start Kiosk*, and check the kiosk reaches the booth without a relaunch; switch a kiosk's debug tools and open/closed from the API and check the kiosk follows live and remembers both while the booth is unreachable; mark waffle cones sold out mid-order (the card says *Sold out* and can't be tapped, the cone already in the order stays in the total), then cups too (the attract screen shows *Closed* with the reason), then cones back (a new item starts as a cone). Each run removes its kiosk from the registry and leaves cups and cones available.
+
+```sh
+TEST_RUNNER_BOOTH_TEST_URL=https://kiosk-staging.jamboree.techclub.pw TEST_RUNNER_BOOTH_TEST_STAFF_TOKEN=$STAGING_STAFF_TOKEN \
+  TEST_RUNNER_BOOTH_TEST_KIOSK_TOKEN=$STAGING_BOOTH_TOKEN xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -only-testing:KioskUITests/BoothRoleUITests
+```
+
 ## Staff pages
 
 All staff tooling is the web dashboard served by the backend. Two people work the booth, each with an iPad, and laptops show read-only status displays. Each role has its own page at `/staff/<role>`; `/staff` (and the old `/dashboard`) is a picker. Pages are listed in `server/src/staff-roles.ts`: a role is a title, whether it is an iPad or a read-only display, how prominent alerts are, and its columns of sections, so adding one is a single entry there.
 
 | Page | For | Shows |
 | --- | --- | --- |
-| `/staff/scooper` | Scooper + supplies iPad | Make list (oldest first; customer name and each cup or cone with its flavors in large type, toppings in small type) with *Start* (paid to preparing) and *Done* (to ready); open/close the kiosk; flavor sold-out toggles; alerts in a compact list without sound. |
-| `/staff/toppings` | Toppings + customer service iPad | Help and other urgent alerts front and center with *Acknowledge* and a chime; orders ready to hand off and coming up, each item's toppings in large type; *Handed off* (to collected), *Cancel*, *Reopen* for finished ones; open/close the kiosk; kiosk health; sold-out toggles. |
-| `/staff/organizer` | Laptop display | Read-only: today's stats, the order feed, whether the kiosk is open, kiosk health, sold-out state and open alerts. |
-| `/staff/board` | Laptop display | Read-only: orders being made and ready for pickup in large type. |
+| `/staff/scooper` | Scooper + supplies iPad | Make list (oldest first; customer name and each cup or cone with its flavors in large type, toppings in small type) with *Start* (paid to preparing) and *Done* (to ready); the kiosks; sold-out switches for flavors, cups and waffle cones, with the toppings page's sold-out toppings read-only; alerts in a compact list without sound. |
+| `/staff/toppings` | Toppings + customer service iPad | Help and other urgent alerts front and center with *Acknowledge* and a chime; orders ready to hand off and coming up, each item's toppings in large type; *Handed off* (to collected), *Cancel*, *Reopen* for finished ones; the kiosks; sold-out switches for toppings, with the scooper's sold-out flavors, cups and cones read-only. |
+| `/staff/organizer` | Laptop display | Read-only: today's stats, the order feed, each kiosk's status, sold-out flavors, cups and cones and toppings, and open alerts. |
+| `/staff/board` | Laptop display | Read-only: customer names of orders being made and ready for pickup, in large type, without order numbers. |
 
-On the iPads the app's staff role is a full-screen web view of `BOOTH_URL/staff/STAFF_PAGE` (no browser chrome, zoom or pull-to-refresh, screen kept awake, sound allowed without a tap). With `BOOTH_STAFF_TOKEN` configured it trades the token for a staff session (`POST /v1/staff/session`) and puts it in the web view's cookie store as `booth_staff`, so nobody types the PIN. If the page can't load it shows a native *Can't reach the booth* screen with *Retry now* and retries with backoff. In a browser the pages ask for the staff PIN once.
+Customers are called by name, so every page leads with the name; the per-kiosk order number is fine print, followed by the kiosk's name when there is more than one kiosk.
+
+**Kiosks** (both iPads and the organizer display): one row per kiosk with its name, open or closed, online or when it was last heard, and a short health line (card reader, battery, *Debug tools on*). On the iPads a row opens the kiosk's sheet: rename it (a new kiosk is *Kiosk 3F2A* until renamed or given `KIOSK_NAME`), *Taking orders* to close or reopen it, *Debug tools* to show its debug bar, its full health, and *Remove kiosk* for an offline one that isn't a kiosk any more. Below the rows, *Close all kiosks* and *Open all kiosks*. Alerts name the kiosk they're about (*Customer needs help at Front table*, *Front table is offline*).
+
+On the iPads the app's staff role is a full-screen web view of `BOOTH_URL/staff/STAFF_PAGE` (no browser chrome, zoom or pull-to-refresh, screen kept awake, sound allowed without a tap). *Exit staff mode* in its navigation bar (only in the app) asks for confirmation and returns the iPad to the role picker, so it can become a kiosk. With `BOOTH_STAFF_TOKEN` configured it trades the token for a staff session (`POST /v1/staff/session`) and puts it in the web view's cookie store as `booth_staff`, so nobody types the PIN. If the page can't load it shows a native *Can't reach the booth* screen with *Retry now* and retries with backoff. In a browser the pages ask for the staff PIN once.
 
 Behavior shared by every page:
 
-- **Confirmations**: anything customers can see asks first in a large in-page dialog that says what will happen: marking a flavor sold out or available again, closing or reopening the kiosk, and cancelling an order. Acknowledging an alert and moving an order along don't.
-- **Offline-proof actions**: every change goes into a queue in `localStorage` with its own id and a per-browser device id (`X-Booth-Device`), shows at once, and is sent oldest first as soon as the booth is reachable, including after a reload or relaunch. A newer change to the same flavor, order or open state replaces an unsent older one. Unsent changes older than an hour are dropped with a notice.
+- **Confirmations**: anything customers can see asks first in a large in-page dialog that says what will happen: marking a flavor, cups, waffle cones or a topping sold out or available again (including that the kiosks show Closed once cups and cones are both out), closing or reopening a kiosk or all of them, removing a kiosk, and cancelling an order. Exit staff mode asks too. Acknowledging an alert, moving an order along, renaming a kiosk and its debug tools don't.
+- **Offline-proof actions**: every change goes into a queue in `localStorage` with its own id and a per-browser device id (`X-Booth-Device`), shows at once, and is sent oldest first as soon as the booth is reachable, including after a reload or relaunch. A newer change to the same sold-out item, order, kiosk flag or kiosk name replaces an unsent older one. Unsent changes older than an hour are dropped with a notice.
 - **Connection**: *Live*, *Connecting* or *Offline since 2:41 PM*, with a banner saying how many changes are waiting.
 - **Sound**: new urgent alerts chime on the toppings page and repeat every 30 s until acknowledged, only in the app's web view. In a browser the pages are silent.
 - **Undo**: status changes show a toast with *Undo* for a few seconds.
 - **Unattended displays**: pages renew their session cookie (`POST /dashboard/renew`) every 30 minutes, so a display left running never falls back to the PIN prompt.
 
-Not modeled yet: cups, cones and toppings can't be marked out of stock (only flavors), because the kiosk has no way to hide them.
+**Sold out** is split by who notices: the scooper switches flavors and cups and cones, the toppings iPad switches toppings, and each page shows the other's sold-out items read-only. It is booth-wide, so every kiosk follows it. With cups and cones both out the kiosks list as *Closed* (No cups or cones left) until one is back.
 
 ## Testing payments
 
@@ -129,7 +146,7 @@ Each feature lives in its own module and exports its routes; `src/index.ts` only
 | Module | Routes |
 | --- | --- |
 | `index.ts` | `/v1/health`, `/v1/ws`, `/v1/state`, `/v1/events`, `/v1/actions`; the cron |
-| `booth.ts` | The hub Durable Object: alerts, sold out, kiosk open/closed, kiosk health, order feed |
+| `booth.ts` | The hub Durable Object: alerts, sold out, the kiosk registry (each kiosk's name, open/closed, debug tools, health), order feed |
 | `orders.ts`, `logs.ts` | `/v1/orders`, `/v1/logs` |
 | `oauth.ts`, `square.ts`, `catalog.ts` | `/v1/square/*`: OAuth, status, refresh, revoke, kiosk credentials; Square HTTP; catalog cache |
 | `checkout.ts`, `pricing.ts` | `/v1/checkout`: server-priced Square order creation |
@@ -148,11 +165,12 @@ Each feature lives in its own module and exports its routes; `src/index.ts` only
  scripts ────Bearer STAFF_TOKEN───┘       │               └── Square: OAuth, catalog, CreateOrder
                                           ▼
                      Booth Durable Object (one instance, WebSocket Hibernation, SQLite):
-                     open/closed flag, sold-out map, flavors, kiosk health, alerts, order feed, revision counter, processed ids
+                     kiosk registry, sold-out map, flavors, alerts, order feed, revision counter, processed ids
 ```
 
-- **Hub**: on connect a client gets a snapshot with the hub's revision, then one patch per change carrying the next revision. Clients ignore stale patches and resync when they see a gap, so every client converges after drops and reconnects. Everything lives in SQLite, so eviction or a redeploy loses nothing; a Durable Object alarm raises *Kiosk offline* after 30 s without kiosk contact.
-- **Alerts for staff**: customer needs help (urgent), *Kiosk offline* (urgent, clears itself), kiosk health problems lasting 45 s (warning, clear themselves), sold-out changes (info). New paid orders are stored, not alerted; they go to staff as an order feed (`paid`, `preparing`, `ready`, `collected`, `canceled`).
+- **Hub**: on connect a client gets a snapshot with the hub's revision, then one patch per change carrying the next revision. Clients ignore stale patches and resync when they see a gap, so every client converges after drops and reconnects. Everything lives in SQLite, so eviction or a redeploy loses nothing; a Durable Object alarm raises *<kiosk> is offline* after 30 s without contact from that kiosk.
+- **Kiosks**: each kiosk iPad (told apart by its `X-Booth-Device` id) has its own entry, created on first contact: name, open/closed, debug tools, online, screen and health. Staff remove an entry for an iPad that isn't a kiosk any more; entries silent for 7 days go by themselves.
+- **Alerts for staff**, per kiosk and naming it: customer needs help (urgent), *<kiosk> is offline* (urgent, a warning while that kiosk is closed, clears itself), kiosk health problems lasting 45 s (warning, clear themselves); plus sold-out changes to flavors, cups and cones and toppings (info; a warning when cups and cones are both out). New paid orders are stored, not alerted; they go to staff as an order feed (`paid`, `preparing`, `ready`, `collected`, `canceled`).
 - **Kiosk side** (`Kiosk/Sources/Booth/`): help requests, health snapshots, orders and log lines are written to a durable outbox on the iPad before any send, retried with backoff and jitter, and flushed in order when the network comes back. Every item has a client-generated id and the server dedupes, so retries never double-count. Ordering and Square payments never wait on the backend.
 
 ### Square OAuth and checkout

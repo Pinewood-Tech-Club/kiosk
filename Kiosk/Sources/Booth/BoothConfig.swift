@@ -14,6 +14,10 @@ struct BoothConfig: Sendable {
         clean(UserDefaults.standard.string(forKey: "boothStaffToken")) ?? plistValue("BoothStaffToken")
     }
 
+    static var kioskName: String? {
+        (clean(UserDefaults.standard.string(forKey: "kioskName")) ?? plistValue("KioskName")).map { String($0.prefix(40)) }
+    }
+
     static var staffPage: String {
         let page = clean(UserDefaults.standard.string(forKey: "staffPage")) ?? plistValue("StaffPage") ?? "scooper"
         return page.range(of: "^[A-Za-z0-9_-]{1,40}$", options: .regularExpression) != nil ? page : "scooper"

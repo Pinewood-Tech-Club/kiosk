@@ -239,12 +239,14 @@ private struct ReceiptView: View {
             Text(receipt.date.formatted(.dateTime.month(.wide).day().year().hour().minute()))
                 .font(Theme.sans(14))
                 .foregroundStyle(Theme.textSecondary)
-            HStack {
-                Text("Order \(receipt.orderNumber)")
-                Spacer()
+            HStack(alignment: .firstTextBaseline) {
                 Text(receipt.customerName)
+                    .font(Theme.serif(20))
+                Spacer()
+                Text("Order \(receipt.orderRef)")
+                    .font(Theme.sans(13))
+                    .foregroundStyle(Theme.textSecondary)
             }
-            .font(Theme.serif(20))
             .padding(.top, 16)
         }
     }

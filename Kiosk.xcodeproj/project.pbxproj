@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0DB3FAFF3FEE7F0C6F1B9A36 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5701FD802D3A088526716CC8 /* Keychain.swift */; };
 		0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */; };
+		10B70562C5C44F3F048EB7A7 /* KioskIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49DFEEF7AAC0DEB3EF85D86 /* KioskIdentity.swift */; };
 		13BA8C20840B4FEE6E0C80E2 /* StageScoops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */; };
 		1673ECA689F29B1FA803C815 /* ScatterLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D65867471778683C1CB36618 /* ScatterLayer.swift */; };
 		1BB0562605F01093714A5FD4 /* BoothCheckout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DBF1469A678F767112B34C4 /* BoothCheckout.swift */; };
@@ -76,6 +77,7 @@
 		E6F75105196B73C5CB554BE7 /* CandyMeshes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984CDF37CD3EB331E4C3C8AB /* CandyMeshes.swift */; };
 		EEE905EC1942EFD25A5F0730 /* PlaceholderScatterKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D0028E9680429288C52E6E /* PlaceholderScatterKind.swift */; };
 		F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A26E074420B8AC97F15E75 /* FrameStats.swift */; };
+		F32A1F960D465605BA61261A /* BoothRoleUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = 90EDD9F598341794544137E8 /* BoothRoleUITests.m */; };
 		F33FD48A4B7F07D6B639671D /* StageVessels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B353824019534A970B3D1DE6 /* StageVessels.swift */; };
 		F346DF14280B5329EFF72A73 /* Animation.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB286FAB60CDB38CF35280B /* Animation.swift */; };
 		F624DAFD3093814DE01B3C39 /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */; };
@@ -138,6 +140,7 @@
 		8B362FE7742C73DA7798FF13 /* SquareCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareCredentials.swift; sourceTree = "<group>"; };
 		8B8B17032539D12086EC034E /* DrizzleLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrizzleLayer.swift; sourceTree = "<group>"; };
 		8D34F4BD4B9F7575E500977E /* PaymentProblem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentProblem.swift; sourceTree = "<group>"; };
+		90EDD9F598341794544137E8 /* BoothRoleUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BoothRoleUITests.m; sourceTree = "<group>"; };
 		94D96DB54BCDC2006C377D8F /* SquareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareService.swift; sourceTree = "<group>"; };
 		955D9B0FEA00CB8CCA27E91D /* Stage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stage.swift; sourceTree = "<group>"; };
 		96A26E074420B8AC97F15E75 /* FrameStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameStats.swift; sourceTree = "<group>"; };
@@ -162,6 +165,7 @@
 		CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-SemiBold.ttf"; sourceTree = "<group>"; };
 		CF19FBBFF9063473EF2C011F /* loop.mp4 */ = {isa = PBXFileReference; path = loop.mp4; sourceTree = "<group>"; };
+		D49DFEEF7AAC0DEB3EF85D86 /* KioskIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KioskIdentity.swift; sourceTree = "<group>"; };
 		D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SheetDragUITests.m; sourceTree = "<group>"; };
 		D65867471778683C1CB36618 /* ScatterLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScatterLayer.swift; sourceTree = "<group>"; };
 		D6974443317A2D4E0CE83F79 /* Kiosk.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kiosk.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -209,6 +213,7 @@
 		2B5940CF87051748A5C5B710 /* KioskUITests */ = {
 			isa = PBXGroup;
 			children = (
+				90EDD9F598341794544137E8 /* BoothRoleUITests.m */,
 				D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */,
 				F0CE12E28F22640FFC1536E0 /* StaffUITests.m */,
 			);
@@ -307,6 +312,7 @@
 				C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */,
 				48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */,
 				E3D9A0CFAC70BA8E576B608E /* HelpButton.swift */,
+				D49DFEEF7AAC0DEB3EF85D86 /* KioskIdentity.swift */,
 				989E4F9F6FFDC723DDD4BEA7 /* LogShipper.swift */,
 			);
 			path = Booth;
@@ -535,6 +541,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F32A1F960D465605BA61261A /* BoothRoleUITests.m in Sources */,
 				DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */,
 				889FBA9E995438D871E6B1AB /* StaffUITests.m in Sources */,
 			);
@@ -569,6 +576,7 @@
 				536DCDE99FE4949A7CD2BFC7 /* HelpButton.swift in Sources */,
 				0DB3FAFF3FEE7F0C6F1B9A36 /* Keychain.swift in Sources */,
 				1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */,
+				10B70562C5C44F3F048EB7A7 /* KioskIdentity.swift in Sources */,
 				565858834D2F23FCC9892AE8 /* LaunchOptions.swift in Sources */,
 				BC87549B0A11F97F418AB61F /* Layout.swift in Sources */,
 				6788115AD2F9F28D7D442445 /* LogShipper.swift in Sources */,

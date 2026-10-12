@@ -27,6 +27,7 @@ final class BoothConnection {
     private(set) var refusedStatus: Int?
 
     @ObservationIgnored var screen: () -> String = { "" }
+    @ObservationIgnored var name: () -> String? = { nil }
     @ObservationIgnored var onState: ((BoothState) -> Void)?
     @ObservationIgnored var onConnectionChange: ((ConnectionState) -> Void)?
 
@@ -292,7 +293,9 @@ final class BoothConnection {
     private func beat(_ now: Date) {
         lastBeat = now
         let millis = Int(now.timeIntervalSince1970 * 1000)
-        send(["type": "heartbeat", "t": millis, "screen": screen()])
+        var message: [String: Any] = ["type": "heartbeat", "t": millis, "screen": screen()]
+        if let name = name() { message["name"] = name }
+        send(message)
     }
 
     private func send(_ object: [String: Any]) {
@@ -338,6 +341,8 @@ final class BoothConnection {
         switch change {
         case .flavors(let flavors):
             current.flavors = flavors
+        case .supplies(let supplies):
+            current.supplies = supplies
         case .alert(let alert):
             if let index = current.alerts.firstIndex(where: { $0.id == alert.id }) {
                 current.alerts[index] = alert
@@ -349,6 +354,8 @@ final class BoothConnection {
             current.kiosk = kiosk
         case .kioskOpen(let kioskOpen):
             current.kioskOpen = kioskOpen
+        case .kiosks(let kiosks):
+            current.kiosks = kiosks
         case .order(let order):
             if let index = current.orders.firstIndex(where: { $0.id == order.id }) {
                 current.orders[index] = order

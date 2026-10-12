@@ -3,9 +3,10 @@ import Foundation
 struct CheckoutIdentity: Sendable {
     let id: String
     let receiptToken: String
+    let orderRef: String
 
-    static func make() -> CheckoutIdentity {
-        CheckoutIdentity(id: UUID().uuidString, receiptToken: ReceiptToken.make())
+    static func make(orderNumber: Int) -> CheckoutIdentity {
+        CheckoutIdentity(id: UUID().uuidString, receiptToken: ReceiptToken.make(), orderRef: KioskIdentity.orderRef(orderNumber))
     }
 }
 
@@ -32,6 +33,7 @@ private struct CheckoutRequest: Encodable {
     let id: String
     let receiptToken: String
     let orderNumber: Int
+    let orderRef: String
     let customerName: String
     let sourceName: String
     let locationId: String
@@ -80,7 +82,8 @@ final class BoothCheckoutClient {
                      sourceName: String) async -> SquareAPI.CreatedOrder? {
         guard Date() >= skipUntil else { return nil }
         let request = CheckoutRequest(
-            id: checkout.id, receiptToken: checkout.receiptToken, orderNumber: orderNumber, customerName: customerName,
+            id: checkout.id, receiptToken: checkout.receiptToken, orderNumber: orderNumber, orderRef: checkout.orderRef,
+            customerName: customerName,
             sourceName: sourceName, locationId: locationID, quotedCents: quote.totalCents,
             items: quote.lines.map {
                 CheckoutRequest.Item(vessel: $0.item.vessel.rawValue, flavors: $0.item.flavors.map(\.rawValue),

@@ -9,6 +9,7 @@ BOOTH_URL =
 BOOTH_TOKEN =
 BOOTH_STAFF_TOKEN =
 KIOSK_ROLE =
+KIOSK_NAME =
 STAFF_PAGE =
 
 #include? "Local.xcconfig"
