@@ -278,6 +278,20 @@ await step("staff session and dashboard", async () => {
     const response = await fetch(`${base}/staff/${page}`, { headers: { Cookie: `booth_staff=${session.json?.token}` } });
     check(`staff page ${page} served`, response.status === 200 && (await response.text()).includes("new WebSocket"));
   }
+  const refused = await http("/v1/admin/state", { token: session.json?.token });
+  check("admin tools refuse a staff session", refused.status === 401 && refused.json?.error?.code === "admin_required");
+  check("admin tools refuse the staff token", (await http("/v1/admin/state", { token: staffToken })).status === 401);
+  const admin = await http("/v1/admin/session", { body: { pin: staffToken } });
+  check("admin session issued", admin.status === 200 && admin.json?.token?.startsWith("ad1."));
+  const adminState = await http("/v1/admin/state", { token: admin.json?.token });
+  check("admin state", adminState.status === 200 && typeof adminState.json?.epoch === "number", `epoch ${adminState.json?.epoch}`);
+  const adminLogs = await http("/v1/admin/logs?limit=5", { token: admin.json?.token });
+  check("admin logs", adminLogs.status === 200 && Array.isArray(adminLogs.json?.lines));
+  const selftest = await http("/v1/admin/selftest", { token: admin.json?.token, method: "POST" });
+  const checks = Object.fromEntries((selftest.json?.checks ?? []).map((c) => [c.id, c.ok]));
+  check("admin self-test reaches D1 and the hub", checks.d1 === true && checks.hub === true, (selftest.json?.checks ?? []).map((c) => `${c.id} ${c.ok ? "ok" : "FAILED: " + c.detail}`).join(", "));
+  const adminPage = await fetch(`${base}/staff/admin`);
+  check("admin page served", adminPage.status === 200 && (await adminPage.text()).includes("/v1/admin/session"));
   const cookieSocket = (origin) => new Promise((resolve) => {
     const ws = new WebSocket(base.replace(/^http/, "ws") + "/v1/ws", { headers: { Cookie: `booth_staff=${session.json?.token}`, Origin: origin } });
     ws.once("open", () => { ws.close(); resolve(101); });
