@@ -119,11 +119,17 @@ final class DrizzleLayer: ToppingLayer {
     private var settledRings = 0
     /// Once the pour has finished, resurfacing and draining only move vertices, so they blend two prebuilt meshes.
     private var blend: Blend?
+    /// Set before `apply` when toppings already sit where the syrup will go: the pour waits a beat so they can lift
+    /// clear first.
+    var underToppings = false
+    /// Set when the item has a second syrup: each ribbon is drawn a little thinner so both read as drizzles.
+    var partnered = false
+    private var pourDelay: Double = 0
 
     private static let ringSides = 10
     private static let floatsPerVertex = 8
     private static let capRings = 4
-    private static let dripRings = 15
+    private static let dripRings = 22
     private static let dripPathPoints = 28
     private static let strandRings = 22
     private static let streamLead: Double = 0.12
@@ -135,6 +141,9 @@ final class DrizzleLayer: ToppingLayer {
     /// World meters past the top edge of the screen that the strand starts, so its end is never seen.
     private static let skyMargin: Float = 0.03
     private static let removeDuration: Double = 0.5
+    /// How long toppings above take to lift onto a syrup poured under them; the pour starts as they finish.
+    static let liftDuration: Double = 0.3
+    private static let liftLead: Double = 0.16
     private static let nozzleHeight: Float = 0.017
     nonisolated private static let crown: Float = 0.6
     /// Per vertex of the ribbon's cross-section: x across the width, height, its slope, and 1 on the top face.
@@ -156,7 +165,9 @@ final class DrizzleLayer: ToppingLayer {
         return table
     }()
 
-    var growDuration: Double { Self.streamLead + pourDuration }
+    var growDuration: Double { pourDelay + Self.streamLead + pourDuration }
+    /// How long layers above take to settle onto this one as it goes on.
+    var coverDuration: Double { underToppings ? Self.liftDuration : growDuration }
     var removeDuration: Double { Self.removeDuration }
     private var pourDuration: Double { 0.86 + 0.16 * Double(style.viscosity) }
     private var settleDuration: Float { 0.14 + 0.16 * style.viscosity }
@@ -186,15 +197,17 @@ final class DrizzleLayer: ToppingLayer {
 
     func apply(onto surface: ToppingSurface, seed: UInt64, animated: Bool, now: Double) {
         var rng = ToppingRandom(seed: seed)
-        (path, angle) = Self.makePath(radius: max(surface.radius, 0.01), across: (surface as? DrizzleCoverSurface)?.angle, rng: &rng)
-        drips = makeDrips(rng: &rng)
+        let across = (surface as? DrizzleCoverSurface)?.angle
+        (path, angle) = Self.makePath(radius: max(surface.radius, 0.01), across: across, rng: &rng)
+        drips = makeDrips(second: across != nil, rng: &rng)
         resting = project(onto: surface)
         shift = nil
         removeStart = nil
         blend = nil
         isFinished = false
         settledRings = 0
-        pourStart = animated ? now : now - 100
+        pourDelay = animated && underToppings ? Self.liftLead : 0
+        pourStart = animated ? now + pourDelay : now - 100
         let lead = Self.streamLead, pour = pourDuration
         animationEnd = drips.reduce(pourStart + lead + pour + max(Self.streamCut, Double(settleDuration))) { end, drip in
             max(end, pourStart + lead + Double(path[drip.origin].time) * pour + Double(drip.delay + drip.duration))
@@ -554,8 +567,9 @@ private extension DrizzleLayer {
     static func makePath(radius: Float, across: Float?, rng: inout ToppingRandom) -> ([PathSample], Float) {
         var angle = Float.random(in: 0..<(2 * .pi), using: &rng)
         if let across { angle = across + .pi / 2 + (angle / (2 * .pi) - 0.5) * 0.5 }
-        let countA = Int.random(in: 4...5, using: &rng)
-        var passes = transformed(sweep(count: countA, span: countA == 5 ? 0.72 : 0.62, rng: &rng),
+        let countA = across == nil ? Int.random(in: 4...5, using: &rng) : Int.random(in: 3...4, using: &rng)
+        let spanA: Float = countA == 5 ? 0.72 : countA == 4 ? 0.62 : 0.5
+        var passes = transformed(sweep(count: countA, span: spanA, rng: &rng),
                                  flip: [Bool.random(using: &rng) ? 1 : -1, 1], angle: angle)
         let countB = Int.random(in: 2...3, using: &rng)
         let local = sweep(count: countB, span: countB == 3 ? 0.46 : 0.32, rng: &rng)
@@ -640,8 +654,9 @@ private extension DrizzleLayer {
         return (samples, angle)
     }
 
-    /// Drips start where the hand turned past the rim, favoring the side that faces the camera at rest.
-    func makeDrips(rng: inout ToppingRandom) -> [DripSpec] {
+    /// A few long, thin drips start where the hand turned past the rim, favoring the side that faces the camera at
+    /// rest; a second syrup over the first adds only one or two.
+    func makeDrips(second: Bool, rng: inout ToppingRandom) -> [DripSpec] {
         let window = 10
         guard path.count > 2 * window + 1 else { return [] }
         var tips: [(index: Int, score: Float, angle: Float)] = []
@@ -658,7 +673,7 @@ private extension DrizzleLayer {
             tips.append((i, r + 0.35 * front + Float.random(in: 0...0.3, using: &rng), atan2(path[i].q.y, path[i].q.x)))
         }
         tips.sort { $0.score > $1.score }
-        let wanted = 3 + Int(Float.random(in: 0...0.999, using: &rng) * 4 * style.dripTendency)
+        let wanted = (second ? 1 : 2) + Int(Float.random(in: 0...0.999, using: &rng) * (second ? 2 : 3) * style.dripTendency)
         var chosen: [(index: Int, score: Float, angle: Float)] = []
         for tip in tips where chosen.count < wanted {
             let apart = chosen.allSatisfy { other in
@@ -672,13 +687,13 @@ private extension DrizzleLayer {
         let slow = 0.25 + 0.3 * style.viscosity
         let lead = Float(Self.streamLead), pour = Float(pourDuration)
         return chosen.map { tip in
-            let length = Float.random(in: 0.009...0.022, using: &rng) * reach
+            let length = Float.random(in: 0.017...0.03, using: &rng) * reach
             let delay = Float.random(in: 0.02...0.1, using: &rng)
             let left = lead + pour + Self.dripTail - (lead + path[tip.index].time * pour + delay)
-            let duration = slow * Float.random(in: 0.8...1.1, using: &rng) + length * 12
+            let duration = slow * Float.random(in: 0.8...1.1, using: &rng) + length * 8
             return DripSpec(origin: tip.index, length: length, delay: delay,
                             duration: max(0.22, min(duration, left)),
-                            halfWidth: style.width * Float.random(in: 0.36...0.42, using: &rng),
+                            halfWidth: style.width * Float.random(in: 0.17...0.21, using: &rng),
                             meander: Float.random(in: -0.2...0.2, using: &rng),
                             phase: Float.random(in: 0..<(2 * .pi), using: &rng))
         }
@@ -882,7 +897,7 @@ private extension DrizzleLayer {
             dir += SIMD2(-dir.y, dir.x) * drip.meander * sin(drip.phase + arc / 0.004)
             dir = simd_normalize(dir)
             let next = xz + dir * step * max(n.y, 0.12)
-            guard simd_length(next - center) < radius * 1.6, let hit = surface.sample(x: next.x, z: next.y),
+            guard simd_length(next - center) < radius * 2.6, let hit = surface.sample(x: next.x, z: next.y),
                   p.y - hit.height < 0.002 else { break }
             let q = SIMD3<Float>(next.x, hit.height, next.y)
             arc += simd_length(q - p)
@@ -936,7 +951,7 @@ private extension DrizzleLayer {
         let upright = smoothstep(0.1, 0.65, n.y)
         let fresh = 1 - smoothstep(0, settleDuration, age)
         let spread = (1 + 0.15 * flat + 0.3 * pool) * (0.62 + 0.38 * upright)
-        let a = min(halfWidth * path[i].flow * spread, halfWidth * 1.6) * (1 - 0.32 * fresh)
+        let a = min(halfWidth * path[i].flow * spread, halfWidth * 1.6) * (1 - 0.32 * fresh) * (partnered ? 0.78 : 1)
         let settled = 0.32 + 0.16 * style.viscosity
         let ratio = (settled + (0.85 - settled) * fresh) * (1 + 0.1 * pool) * (0.85 + 0.15 * upright)
         return (a, a * ratio)
@@ -1211,15 +1226,20 @@ private extension DrizzleLayer {
             let grow = 1 - pow(1 - x, 2.2)
             let length = route.length * grow
             let base = profile(drip.origin, normal: geometry.normals[drip.origin], pool: 0, age: .infinity).0
-            var bulb = drip.halfWidth * (1.15 + 0.3 * grow)
-            bulb = min(bulb, length / 2)
-            let bulbCenter = length - bulb
+            let neckLength = max(0.35 * length, 0.004)
+            let bead = min(drip.halfWidth * (1.12 + 0.14 * grow), 0.25 * length)
+            let beadCenter = length - 1.15 * bead
+            func core(_ s: Float) -> Float {
+                let neck = drip.halfWidth + (base * 0.85 - drip.halfWidth) * (1 - smoothstep(0, neckLength, s))
+                return neck * (1 - 0.3 * s / max(length, 1e-4))
+            }
+            let coreAtBead = core(beadCenter)
             func width(_ s: Float) -> Float {
-                if s >= bulbCenter { return (max(0, bulb * bulb - (s - bulbCenter) * (s - bulbCenter))).squareRoot() }
-                let neck = base * 0.85 + (drip.halfWidth - base * 0.85) * smoothstep(0, 0.006, s)
-                let taper = neck * (1 - 0.15 * s / max(length, 1e-4))
-                let rise = s - bulbCenter
-                return max(taper, (max(0, bulb * bulb - rise * rise)).squareRoot())
+                if s >= beadCenter {
+                    let x = (s - beadCenter) / (1.15 * bead)
+                    return bead * max(0, 1 - x * x).squareRoot()
+                }
+                return core(s) + (bead - coreAtBead) * smoothstep(beadCenter - 3.5 * bead, beadCenter, s)
             }
             for j in 0...Self.dripRings {
                 let u = Float(j) / Float(Self.dripRings)
@@ -1231,7 +1251,8 @@ private extension DrizzleLayer {
                 let n = simd_normalize(route.normals[k] + (route.normals[k + 1] - route.normals[k]) * x)
                 let f = frame(route.points[k + 1] - route.points[k], n)
                 let a = width(s)
-                let h = a * (0.45 + 0.4 * smoothstep(0, 0.004, s))
+                let fullness = smoothstep(beadCenter - 2 * bead, beadCenter, s)
+                let h = a * (0.45 + 0.12 * smoothstep(0, 0.004, s) + 0.15 * fullness)
                 let epsilon: Float = 0.0001
                 let slope = (width(s + epsilon) - width(max(s - epsilon, 0))) / (2 * epsilon)
                 let center = p + n * (-(0.1 * h + 0.00012) - drain * h * 1.1)

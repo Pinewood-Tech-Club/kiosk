@@ -207,6 +207,7 @@ final class ToppingStack {
         var scatteredBeneath: [Topping] = []
         var scattered: [ScatterLayer] = []
         let crowd = wanted.filter { !$0.isLayered }.count
+        let partnered = wanted.filter { $0.drizzleStyle != nil }.count > 1
         var result: [Placed] = []
         for topping in wanted {
             let layer: any ToppingLayer
@@ -216,10 +217,16 @@ final class ToppingStack {
                 scatter = layer as? ScatterLayer
                 let baseChanged = existing.baseVersion != baseVersion
                 let scatteredChanged = existing.scatteredBeneath != scatteredBeneath
-                if baseChanged || existing.beneath != beneath || scatteredChanged {
+                var partnerChanged = false
+                if let drizzle = layer as? DrizzleLayer, drizzle.partnered != partnered {
+                    drizzle.partnered = partnered
+                    partnerChanged = true
+                }
+                if baseChanged || existing.beneath != beneath || scatteredChanged || partnerChanged {
                     scatter?.beneath = scattered
                     let duration = animated
-                        ? max(changeDuration, baseChanged ? baseDuration : 0, scatteredChanged ? scatterChangeDuration : 0) : 0
+                        ? max(changeDuration, baseChanged ? baseDuration : 0, scatteredChanged ? scatterChangeDuration : 0,
+                              partnerChanged ? DrizzleLayer.liftDuration : 0) : 0
                     layer.resurface(to: surface, duration: duration, now: now)
                 }
             } else {
@@ -227,7 +234,12 @@ final class ToppingStack {
                 scatter = layer as? ScatterLayer
                 scatter?.beneath = scattered
                 scatter?.crowd = crowd
-                (layer as? WhipLayer)?.underToppings = animated && staying.contains { $0.topping.stackRank > topping.stackRank }
+                let underToppings = animated && staying.contains { $0.topping.stackRank > topping.stackRank }
+                (layer as? WhipLayer)?.underToppings = underToppings
+                if let drizzle = layer as? DrizzleLayer {
+                    drizzle.underToppings = underToppings
+                    drizzle.partnered = partnered
+                }
                 let tap = animated ? launch?(topping) : nil
                 if let tap {
                     layer.launchPoint = tap.point
@@ -239,7 +251,7 @@ final class ToppingStack {
                 light(layer.entity)
                 if let icon = tap?.icon, layer.cardIcon == nil { icon.playTap(for: topping, layer: layer) }
                 if animated, topping.isLayered {
-                    changeDuration = max(changeDuration, layer.growDuration)
+                    changeDuration = max(changeDuration, (layer as? DrizzleLayer)?.coverDuration ?? layer.growDuration)
                 }
             }
             result.append(Placed(topping: topping, layer: layer, beneath: beneath, scatteredBeneath: scatteredBeneath,
