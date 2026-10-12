@@ -16,6 +16,7 @@ struct LaunchOptions {
     var debug3D = false
     var simulatePayment: Bool?
     var hideDebugBar: Bool?
+    var toppingsScroll: Topping?
 
     static var current: LaunchOptions {
         let defaults = UserDefaults.standard
@@ -42,6 +43,7 @@ struct LaunchOptions {
             options.current = item
             if options.screen == nil { options.screen = "builder" }
         }
+        options.toppingsScroll = defaults.string(forKey: "kioskToppingsScroll").flatMap(Topping.init(rawValue:))
         options.name = defaults.string(forKey: "kioskName")
         if defaults.object(forKey: "kioskSlowmo") != nil {
             options.slowMotion = defaults.double(forKey: "kioskSlowmo")
@@ -134,8 +136,18 @@ struct ScriptRunner {
     }
 
     private func toggle(_ topping: Topping) async {
+        let card = app.stage.toppingCardFrame(topping)
+        let margin = Layout.toppingCarouselMargin - 1
+        if app.step == .toppings, card.minX < margin || card.maxX > Layout.screen.width - margin {
+            await scrollToppings(to: topping)
+        }
         await tap(.topping(topping)) { app.toggleTopping(topping) }
         log("toppings \(app.current.toppings.map(\.rawValue).joined(separator: ","))")
+    }
+
+    private func scrollToppings(to topping: Topping) async {
+        withAnimation(.smooth(duration: 0.5)) { app.scrollToppings(to: topping) }
+        await wait(0.8)
     }
 
     private func openToppings() async {
@@ -253,6 +265,23 @@ struct ScriptRunner {
             await clipInterrupts()
         case "toppings-tour":
             await toppingsTour()
+        case "toppings-carousel":
+            await openToppings()
+            await wait(1.5)
+            await scrollToppings(to: .chocolate)
+            log("carousel middle")
+            await wait(2.0)
+            await scrollToppings(to: .sprinkles)
+            log("carousel end")
+            await wait(2.0)
+            log("carousel toss")
+            await toggle(.sprinkles)
+            await wait(3.0)
+            await toggle(.gummies)
+            await wait(3.0)
+            await scrollToppings(to: .whip)
+            log("carousel start")
+            await wait(2.0)
         case "toppings-candy":
             await openToppings()
             for topping in [Topping.gummies, .mms, .sprinkles] {

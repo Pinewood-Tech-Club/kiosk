@@ -73,7 +73,8 @@ final class Stage {
     var iconShownTargets: [CardKey: Float] = [:]
     var flavorIcons: [Flavor: FlavorIcon] = [:]
     var toppingIcons: [Topping: ToppingCardIcon] = [:]
-    var toppingIconFrames: [Topping: CGRect] = [:]
+    var toppingScrollReported: CGFloat = 0
+    let toppingScroll = CarouselScrollModel()
     var toppingStacks: [ToppingStack] = []
     var detachedToppings: [DetachedToppings] = []
     /// Height fields of the settled scoops per vessel and count ("cup2"), built once in the background.
@@ -320,6 +321,7 @@ final class Stage {
             }
         }
         tweens.removeAll { $0.isFinished }
+        latchToppingScroll()
         updateIcons()
         updateTray(dt: Float(dt))
         updateToppings()

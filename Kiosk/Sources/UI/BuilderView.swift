@@ -5,30 +5,6 @@ private let stepFade = AnyTransition.asymmetric(
     removal: .opacity.animation(.easeIn(duration: 0.18))
 )
 
-/// Same spring as the 3D press (`Stage.pressResponse` / `Stage.pressDamping`), so card and model move as one.
-private let pressSpring = Animation.spring(response: Double(Stage.pressResponse), dampingFraction: Double(Stage.pressDamping))
-
-private struct PressEffect: ViewModifier {
-    let pressed: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(pressed ? CGFloat(Stage.pressScale) : 1)
-            .offset(y: pressed ? CGFloat(Stage.pressDepth) : 0)
-            .animation(pressSpring, value: pressed)
-    }
-}
-
-/// Reports press state to the app (which also drives the 3D model) instead of styling the label itself.
-private struct CardPressStyle: ButtonStyle {
-    let onPressChange: (Bool) -> Void
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .onChange(of: configuration.isPressed) { _, pressed in onPressChange(pressed) }
-    }
-}
-
 /// Tray tiles share the glass's inner radius (40 − 14 pt inset), so they read as concentric with it.
 private let slotRadius: CGFloat = 26
 private let slotSize = CGSize(width: 100, height: 106)
@@ -113,7 +89,7 @@ private struct SlotPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.94 : 1)
-            .animation(pressSpring, value: configuration.isPressed)
+            .animation(cardPressSpring, value: configuration.isPressed)
     }
 }
 
@@ -157,32 +133,9 @@ struct BuilderBackdrop: View {
             }
             .transition(stepFade)
         case .toppings:
-            ZStack {
-                ForEach(Topping.allCases) { topping in
-                    let card = Layout.toppingCardFrame(topping)
-                    let icon = Layout.toppingIconFrame(topping)
-                    ZStack {
-                        CardBackground(filled: app.hasTopping(topping), cornerRadius: Layout.toppingCardRadius)
-                            .frame(width: card.width, height: card.height)
-                        if !app.stageDrawsToppingIcons {
-                            ToppingGlyph(topping: topping, size: icon.height)
-                                .shadow(color: .black.opacity(app.hasTopping(topping) ? 0.22 : 0), radius: 4, y: 2)
-                                .offset(x: icon.midX - card.midX, y: icon.midY - card.midY)
-                        }
-                    }
-                    .modifier(PressEffect(pressed: app.pressedCards.contains(.topping(topping))))
-                    .position(x: card.midX, y: card.midY)
-
-                    Color.clear
-                        .frame(width: icon.width, height: icon.height)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                            app.setToppingIconFrame(topping, frame)
-                        }
-                        .position(x: icon.midX, y: icon.midY)
-                        .allowsHitTesting(false)
-                }
-            }
-            .transition(stepFade)
+            ToppingCarousel(app: app)
+                .allowsHitTesting(app.screen == .builder && app.builderVisible && app.mode == .customize)
+                .transition(stepFade)
         }
     }
 }
@@ -293,7 +246,7 @@ struct BuilderForeground: View {
             switch app.step {
             case .vessel: vesselCards.transition(stepFade)
             case .flavors: flavorCards.transition(stepFade)
-            case .toppings: toppingCards.transition(stepFade)
+            case .toppings: EmptyView()
             }
 
             previousStepButton
@@ -366,16 +319,7 @@ struct BuilderForeground: View {
         ZStack {
             ForEach(Vessel.allCases) { vessel in
                 card(.vessel(vessel), center: Layout.vesselCardCenter(vessel), action: { app.selectVessel(vessel) }) {
-                    VStack(spacing: 4) {
-                        Spacer()
-                        Text(vessel.title)
-                            .font(Theme.serif(26))
-                            .foregroundStyle(Theme.text)
-                        Text(vessel.priceLabel)
-                            .font(Theme.sans(18, .medium))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    .padding(.bottom, 22)
+                    CardCaption(title: vessel.title) { Text(vessel.priceLabel) }
                 }
             }
         }
@@ -388,19 +332,13 @@ struct BuilderForeground: View {
                 let count = app.count(of: flavor)
                 let soldOut = app.booth.isSoldOut(flavor)
                 card(.flavor(flavor), center: Layout.flavorCardCenter(flavor), action: { app.addScoop(flavor) }) {
-                    VStack(spacing: 4) {
-                        Spacer()
-                        Text(flavor.title)
-                            .font(Theme.serif(25))
-                            .foregroundStyle(Theme.text)
+                    CardCaption(title: flavor.title, titleSize: 25) {
                         Text(soldOut ? "Sold out" : full ? "3 scoops max" : "+\(app.nextScoopCents.formattedAsUSD)")
                             .font(Theme.sans(18, soldOut ? .semibold : .medium))
                             .monospacedDigit()
                             .foregroundStyle(soldOut ? Theme.text : Theme.textSecondary)
                             .contentTransition(.numericText(value: Double(app.nextScoopCents)))
                     }
-                    .padding(.bottom, 22)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background {
                         RoundedRectangle(cornerRadius: Layout.cardCornerRadius, style: .continuous)
                             .fill(Theme.background.opacity(soldOut ? 0.7 : full ? 0.55 : 0))
@@ -432,61 +370,6 @@ struct BuilderForeground: View {
         }
         .animation(.easeInOut(duration: 0.25), value: full)
         .animation(.easeInOut(duration: 0.25), value: app.nextScoopCents)
-    }
-
-    private var toppingCards: some View {
-        ZStack {
-            ForEach(ToppingGroup.allCases) { group in
-                let header = Layout.toppingGroupHeader(group)
-                Text(group.title)
-                    .font(Theme.serif(18, .medium))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.leading, 8)
-                    .padding(.bottom, 10)
-                    .frame(width: header.width, height: header.height, alignment: .bottomLeading)
-                    .position(x: header.midX, y: header.midY)
-            }
-
-            ForEach(Topping.allCases) { topping in
-                let frame = Layout.toppingCardFrame(topping)
-                let selected = app.hasTopping(topping)
-                Button { app.toggleTopping(topping) } label: {
-                    VStack(spacing: 3) {
-                        Spacer()
-                        Text(topping.title)
-                            .font(Theme.serif(19))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .foregroundStyle(selected ? Theme.onText : Theme.text)
-                        ZStack {
-                            Text("+\(topping.priceCents.formattedAsUSD)")
-                                .font(Theme.sans(15, .medium))
-                                .monospacedDigit()
-                                .foregroundStyle(Theme.textSecondary)
-                                .opacity(selected ? 0 : 1)
-                            HStack(spacing: 4) {
-                                LucideIcon(name: "check", size: 15)
-                                Text("Added")
-                                    .font(Theme.sans(15, .semibold))
-                            }
-                            .foregroundStyle(Theme.onText.opacity(0.7))
-                            .opacity(selected ? 1 : 0)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 16)
-                    .frame(width: frame.width, height: frame.height)
-                    .contentShape(.rect(cornerRadius: Layout.toppingCardRadius))
-                    .animation(.easeInOut(duration: 0.2), value: selected)
-                }
-                .buttonStyle(CardPressStyle { app.setPressed(.topping(topping), $0) })
-                .modifier(PressEffect(pressed: app.pressedCards.contains(.topping(topping))))
-                .accessibilityLabel(topping.title)
-                .accessibilityValue(selected ? "Added" : "+\(topping.priceCents.formattedAsUSD)")
-                .accessibilityAddTraits(selected ? .isSelected : [])
-                .position(x: frame.midX, y: frame.midY)
-            }
-        }
     }
 
     private var primaryButton: some View {

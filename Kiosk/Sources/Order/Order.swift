@@ -57,28 +57,6 @@ enum Topping: String, CaseIterable, Identifiable, Sendable {
     }
 
     var priceCents: Int { Pricing.toppingCents }
-
-    var group: ToppingGroup {
-        switch self {
-        case .whip, .chocolate: .creamAndSauces
-        case .gummies, .mms, .sprinkles: .candyAndSprinkles
-        }
-    }
-}
-
-enum ToppingGroup: String, CaseIterable, Identifiable, Sendable {
-    case creamAndSauces, candyAndSprinkles
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .creamAndSauces: "Cream & Sauces"
-        case .candyAndSprinkles: "Candy & Sprinkles"
-        }
-    }
-
-    var toppings: [Topping] { Topping.allCases.filter { $0.group == self } }
 }
 
 struct IceCreamItem: Identifiable, Equatable, Sendable {

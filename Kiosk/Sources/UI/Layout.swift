@@ -30,23 +30,31 @@ enum Layout {
         return CGPoint(x: midX + offsets[flavor, default: 0], y: cardsCenterY)
     }
 
-    static let toppingCardSize = CGSize(width: 170, height: 164)
-    static let toppingIconSize = CGSize(width: 92, height: 84)
-    static let toppingCardRadius: CGFloat = 28
+    static let cardSpacing: CGFloat = 16
+
+    static let toppingCarouselMargin: CGFloat = 24
+    static let toppingCarouselFade: CGFloat = 32
+    static let toppingCarouselRect = CGRect(x: 0, y: cardsCenterY - cardSize.height / 2 - 12,
+                                            width: screen.width, height: cardSize.height + 24)
+    static let toppingIconSize = CGSize(width: 136, height: 136)
+    static let toppingIconOffsetY: CGFloat = -40
 
     static func toppingCardFrame(_ topping: Topping) -> CGRect {
-        ToppingGrid.shared.cards[topping] ?? .zero
+        let index = CGFloat(Topping.allCases.firstIndex(of: topping) ?? 0)
+        return CGRect(x: toppingCarouselMargin + index * (cardSize.width + cardSpacing), y: cardsCenterY - cardSize.height / 2,
+                      width: cardSize.width, height: cardSize.height)
     }
 
-    /// Where the card's icon goes: the stage draws a 3D preview here, as it does for the flavor icons.
-    static func toppingIconFrame(_ topping: Topping) -> CGRect {
-        let card = toppingCardFrame(topping)
-        return CGRect(x: card.midX - toppingIconSize.width / 2, y: card.minY + 16,
-                      width: toppingIconSize.width, height: toppingIconSize.height)
+    static func toppingCarouselOffset(_ topping: Topping) -> CGFloat {
+        let pitch = cardSize.width + cardSpacing
+        let index = CGFloat(Topping.allCases.firstIndex(of: topping) ?? 0)
+        let content = CGFloat(Topping.allCases.count) * pitch - cardSpacing + 2 * toppingCarouselMargin
+        return max(0, min(index * pitch, content - toppingCarouselRect.width))
     }
 
-    static func toppingGroupHeader(_ group: ToppingGroup) -> CGRect {
-        ToppingGrid.shared.headers[group] ?? .zero
+    static func toppingIconFrame(inCard card: CGRect) -> CGRect {
+        CGRect(x: card.midX - toppingIconSize.width / 2, y: card.midY + toppingIconOffsetY - toppingIconSize.height / 2,
+               width: toppingIconSize.width, height: toppingIconSize.height)
     }
 
     static func vesselIconCenter(_ vessel: Vessel) -> CGPoint {
@@ -166,64 +174,5 @@ struct SheetShape: Shape {
         path.addRoundedRect(in: geometry.rect, cornerSize: CGSize(width: geometry.cornerRadius, height: geometry.cornerRadius),
                             style: .continuous)
         return path
-    }
-}
-
-/// Topping cards in labeled groups. Groups sit side by side in a band while their columns fit and wrap
-/// into a new band above when they don't, so the grid grows upward away from the primary button.
-struct ToppingGrid: Sendable {
-    static let shared = ToppingGrid()
-
-    static let maxColumns = 5
-    static let columnGap: CGFloat = 12
-    static let groupGap: CGFloat = 32
-    static let rowGap: CGFloat = 12
-    static let headerHeight: CGFloat = 40
-    static let bandGap: CGFloat = 20
-    static let bottomY: CGFloat = 1082
-
-    let cards: [Topping: CGRect]
-    let headers: [ToppingGroup: CGRect]
-
-    private init() {
-        let card = Layout.toppingCardSize
-        typealias Entry = (group: ToppingGroup, toppings: [Topping], columns: Int)
-        var bands: [[Entry]] = [[]]
-        var used = 0
-        for group in ToppingGroup.allCases {
-            let toppings = group.toppings
-            guard !toppings.isEmpty else { continue }
-            let columns = min(toppings.count, Self.maxColumns)
-            if used + columns > Self.maxColumns, !(bands[bands.count - 1].isEmpty) {
-                bands.append([])
-                used = 0
-            }
-            bands[bands.count - 1].append((group, toppings, columns))
-            used += columns
-        }
-
-        var cards: [Topping: CGRect] = [:]
-        var headers: [ToppingGroup: CGRect] = [:]
-        var bottom = Self.bottomY
-        for band in bands.reversed() where !band.isEmpty {
-            let rows = band.map { ($0.toppings.count + $0.columns - 1) / $0.columns }.max() ?? 1
-            let cardsHeight = CGFloat(rows) * card.height + CGFloat(rows - 1) * Self.rowGap
-            let top = bottom - cardsHeight - Self.headerHeight
-            let widths = band.map { CGFloat($0.columns) * card.width + CGFloat($0.columns - 1) * Self.columnGap }
-            var x = Layout.midX - (widths.reduce(0, +) + CGFloat(band.count - 1) * Self.groupGap) / 2
-            for (entry, width) in zip(band, widths) {
-                headers[entry.group] = CGRect(x: x, y: top, width: width, height: Self.headerHeight)
-                for (index, topping) in entry.toppings.enumerated() {
-                    let column = CGFloat(index % entry.columns), row = CGFloat(index / entry.columns)
-                    cards[topping] = CGRect(x: x + column * (card.width + Self.columnGap),
-                                            y: top + Self.headerHeight + row * (card.height + Self.rowGap),
-                                            width: card.width, height: card.height)
-                }
-                x += width + Self.groupGap
-            }
-            bottom = top - Self.bandGap
-        }
-        self.cards = cards
-        self.headers = headers
     }
 }
