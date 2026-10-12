@@ -67,6 +67,11 @@ actor BoothOutbox {
 
     var pendingOrderCount: Int { orders.count }
 
+    func counts() -> KioskHealth.OutboxCounts {
+        ensureLoaded()
+        return KioskHealth.OutboxCounts(orders: orders.count, events: events.filter { !$0.isHealth }.count)
+    }
+
     func device() -> String {
         ensureLoaded()
         return deviceID

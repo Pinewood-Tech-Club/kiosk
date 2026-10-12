@@ -12,6 +12,18 @@ enum HelpReason: String, Sendable {
 @Observable
 @MainActor
 final class BoothLink {
+    private enum Work {
+        case assist(AssistCommand)
+        case control(BoothControl)
+
+        var id: String {
+            switch self {
+            case .assist(let command): command.id
+            case .control(let control): control.id
+            }
+        }
+    }
+
     private struct SoldOutSnapshot: Codable {
         var rev: Int
         var soldOut: [String]
@@ -61,12 +73,13 @@ final class BoothLink {
     @ObservationIgnored private var deviceID: String?
     @ObservationIgnored private var assistExpiry = Date.distantPast
     @ObservationIgnored private var lastSession: AssistSession?
-    @ObservationIgnored private var commandQueue: [AssistCommand] = []
+    @ObservationIgnored private var commandQueue: [Work] = []
     @ObservationIgnored private var runningCommands = false
     @ObservationIgnored private var runningCommandID: String?
     @ObservationIgnored private var handledCommands: [String: AssistSession.Result] = [:]
     @ObservationIgnored private var handledOrder: [String] = []
     @ObservationIgnored private var assistResults: [AssistSession.Result] = []
+    @ObservationIgnored private var outboxCounts: KioskHealth.OutboxCounts?
 
     init() {
         let stored = UserDefaults.standard.data(forKey: Self.soldOutKey).flatMap { try? JSONDecoder().decode(SoldOutSnapshot.self, from: $0) }
@@ -160,7 +173,8 @@ final class BoothLink {
         connection.onState = { [weak self] state in self?.applyState(state) }
         connection.onConnectionChange = { [weak self] state in self?.connectionChanged(state) }
         connection.onAssist = { [weak self] active, expiresIn in self?.assistChanged(active, expiresIn: expiresIn) }
-        connection.onCommand = { [weak self] command in self?.receive(command) }
+        connection.onCommand = { [weak self] command in self?.enqueue(.assist(command)) }
+        connection.onControl = { [weak self] control in self?.receive(control) }
         self.connection = connection
 
         shipper = LogShipper(api: api, fileURL: SquareService.logFileURL) { [weak self] message in
@@ -196,14 +210,23 @@ final class BoothLink {
         log("Booth: staff assist " + (active ? "started" : "ended"))
     }
 
-    private func receive(_ command: AssistCommand) {
-        guard !command.id.isEmpty else { return }
-        if let done = handledCommands[command.id] {
-            record(AssistSession.Result(id: command.id, status: done.status == "applied" ? "duplicate" : done.status, message: done.message))
+    private func receive(_ control: BoothControl) {
+        if case .unknown(let name) = control.op {
+            log("Booth: ignored unknown control \(name.isEmpty ? "(no op)" : name)")
             return
         }
-        guard command.id != runningCommandID, !commandQueue.contains(where: { $0.id == command.id }) else { return }
-        commandQueue.append(command)
+        enqueue(.control(control))
+    }
+
+    private func enqueue(_ work: Work) {
+        let id = work.id
+        guard !id.isEmpty else { return }
+        if let done = handledCommands[id] {
+            record(AssistSession.Result(id: id, status: done.status == "applied" ? "duplicate" : done.status, message: done.message))
+            return
+        }
+        guard id != runningCommandID, !commandQueue.contains(where: { $0.id == id }) else { return }
+        commandQueue.append(work)
         guard !runningCommands else { return }
         runningCommands = true
         Task { [weak self] in await self?.runCommands() }
@@ -211,19 +234,28 @@ final class BoothLink {
 
     private func runCommands() async {
         while !commandQueue.isEmpty, let app {
-            let command = commandQueue.removeFirst()
-            runningCommandID = command.id
-            lastTouch = Date()
-            idleSent = false
-            let outcome = await app.applyAssist(command.op)
+            let work = commandQueue.removeFirst()
+            runningCommandID = work.id
+            let outcome: AppModel.AssistOutcome
+            let label: String
+            switch work {
+            case .assist(let command):
+                lastTouch = Date()
+                idleSent = false
+                outcome = await app.applyAssist(command.op)
+                label = "assist \(command.op) from \(command.by ?? "staff")"
+            case .control(let control):
+                outcome = await apply(control.op, app: app)
+                label = "control \(control.op.name) from \(control.by ?? "admin")"
+            }
             let result: AssistSession.Result
             switch outcome {
-            case .applied: result = AssistSession.Result(id: command.id, status: "applied", message: nil)
-            case .rejected(let reason): result = AssistSession.Result(id: command.id, status: "rejected", message: reason)
+            case .applied: result = AssistSession.Result(id: work.id, status: "applied", message: nil)
+            case .rejected(let reason): result = AssistSession.Result(id: work.id, status: "rejected", message: reason)
             }
-            log("Booth: assist \(command.op) from \(command.by ?? "staff"): \(result.status)" + (result.message.map { " (\($0))" } ?? ""))
-            handledCommands[command.id] = result
-            handledOrder.append(command.id)
+            log("Booth: \(label): \(result.status)" + (result.message.map { " (\($0))" } ?? ""))
+            handledCommands[work.id] = result
+            handledOrder.append(work.id)
             if handledOrder.count > Self.rememberedCommands {
                 handledCommands[handledOrder.removeFirst()] = nil
             }
@@ -233,9 +265,38 @@ final class BoothLink {
         runningCommands = false
     }
 
+    private func apply(_ op: BoothControl.Op, app: AppModel) async -> AppModel.AssistOutcome {
+        switch op {
+        case .attract:
+            return await app.applyAssist(.startOver)
+        case .reloadCatalog:
+            guard let square else { return .rejected("Square isn't running on this kiosk") }
+            return square.reloadCatalog().map(AppModel.AssistOutcome.rejected) ?? .applied
+        case .resync:
+            resync()
+            return .applied
+        case .unknown(let name):
+            return .rejected("This kiosk's app doesn't know \(name)")
+        }
+    }
+
+    private func resync() {
+        connection?.requestSync(force: true)
+        forceHealth = true
+        lastSession = nil
+        let outbox = outbox
+        let shipper = shipper
+        Task {
+            await outbox.kick(resetBackoff: true)
+            await shipper?.resetBackoff()
+            await shipper?.ship()
+        }
+    }
+
     private func record(_ result: AssistSession.Result) {
         assistResults.append(result)
         if assistResults.count > Self.keptResults { assistResults.removeFirst(assistResults.count - Self.keptResults) }
+        lastSession = nil
     }
 
     private func connectionChanged(_ state: BoothConnection.ConnectionState) {
@@ -381,6 +442,7 @@ final class BoothLink {
         let now = Date()
         if assistActive, now >= assistExpiry { assistChanged(false, expiresIn: 0) }
         checkIdle(now)
+        refreshOutboxCounts()
         queueHealth(now)
         if connectionState == .connected, now.timeIntervalSince(lastUpload) >= Self.uploadInterval, let shipper {
             lastUpload = now
@@ -388,9 +450,19 @@ final class BoothLink {
         }
     }
 
+    private func refreshOutboxCounts() {
+        let outbox = outbox
+        Task { [weak self] in
+            let counts = await outbox.counts()
+            self?.outboxCounts = counts
+        }
+    }
+
     private func queueHealth(_ now: Date) {
         guard let app, let square else { return }
-        let snapshot = BoothHealth.snapshot(square: square, screen: app.screen.boothName, simulatePayment: app.simulatePayment)
+        var snapshot = BoothHealth.snapshot(square: square, screen: app.screen.boothName, simulatePayment: app.simulatePayment)
+        snapshot.epoch = BoothEpoch.known
+        snapshot.outbox = outboxCounts
         let age = now.timeIntervalSince(lastHealthQueued)
         let changed = snapshot != lastHealth
         guard forceHealth || (changed && age >= Self.healthDebounce) || (connectionState == .connected && age >= Self.healthRefresh) else { return }

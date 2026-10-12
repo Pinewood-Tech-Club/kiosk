@@ -196,12 +196,31 @@ struct KioskHealth: Codable, Equatable, Sendable {
     var screen: String
     var lastError: String?
     var lastErrorAt: String?
+    struct OutboxCounts: Codable, Equatable, Sendable {
+        var orders: Int
+        var events: Int
+
+        init(orders: Int, events: Int) {
+            self.orders = orders
+            self.events = events
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: AnyKey.self)
+            orders = c.lenient(AnyKey("orders"), 0)
+            events = c.lenient(AnyKey("events"), 0)
+        }
+    }
+
     var flavors: [FlavorInfo]?
     var kioskName: String?
+    var epoch: Int?
+    var outbox: OutboxCounts?
 
     init(appVersion: String, environment: String, authorized: Bool, authorizationState: String, readers: [Reader],
          readerReady: Bool, catalog: Catalog, deviceBattery: Battery?, simulatePayment: Bool, screen: String,
-         lastError: String?, lastErrorAt: String?, flavors: [FlavorInfo]?, kioskName: String?) {
+         lastError: String?, lastErrorAt: String?, flavors: [FlavorInfo]?, kioskName: String?,
+         epoch: Int? = nil, outbox: OutboxCounts? = nil) {
         self.appVersion = appVersion
         self.environment = environment
         self.authorized = authorized
@@ -216,6 +235,8 @@ struct KioskHealth: Codable, Equatable, Sendable {
         self.lastErrorAt = lastErrorAt
         self.flavors = flavors
         self.kioskName = kioskName
+        self.epoch = epoch
+        self.outbox = outbox
     }
 
     init(from decoder: Decoder) throws {
@@ -234,6 +255,8 @@ struct KioskHealth: Codable, Equatable, Sendable {
         lastErrorAt = c.lenientOptional(AnyKey("lastErrorAt"))
         flavors = c.lenientOptional(AnyKey("flavors"))
         kioskName = c.lenientOptional(AnyKey("kioskName"))
+        epoch = c.lenientOptional(AnyKey("epoch"))
+        outbox = c.lenientOptional(AnyKey("outbox"))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -252,6 +275,8 @@ struct KioskHealth: Codable, Equatable, Sendable {
         try c.encode(lastErrorAt, forKey: AnyKey("lastErrorAt"))
         try c.encodeIfPresent(flavors, forKey: AnyKey("flavors"))
         try c.encodeIfPresent(kioskName, forKey: AnyKey("kioskName"))
+        try c.encodeIfPresent(epoch, forKey: AnyKey("epoch"))
+        try c.encodeIfPresent(outbox, forKey: AnyKey("outbox"))
     }
 }
 
@@ -495,6 +520,7 @@ enum BoothServerMessage: Sendable {
     case error(BoothErrorBody)
     case assist(active: Bool, expiresIn: Double)
     case command(AssistCommand)
+    case control(BoothControl)
     case unknown
 }
 
@@ -520,6 +546,8 @@ extension BoothServerMessage: Decodable {
             self = .assist(active: c.lenient(AnyKey("active"), false), expiresIn: c.lenient(AnyKey("expiresIn"), 30_000) / 1000)
         case "command":
             self = c.lenientOptional(AnyKey("command")).map(BoothServerMessage.command) ?? .unknown
+        case "control":
+            self = c.lenientOptional(AnyKey("control")).map(BoothServerMessage.control) ?? .unknown
         default:
             self = .unknown
         }

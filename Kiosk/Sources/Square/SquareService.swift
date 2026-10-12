@@ -174,6 +174,14 @@ final class SquareService: NSObject {
         }
     }
 
+    func reloadCatalog() -> String? {
+        guard isStarted, hasApplicationID else { return "Square isn't running on this kiosk" }
+        guard credentials.current != nil else { return "This kiosk has no Square credentials yet" }
+        record("Reloading the Square catalog")
+        loadCatalog()
+        return nil
+    }
+
     func loadCatalog() {
         guard let api else { return }
         guard let categoryName = Config.categoryName else {
