@@ -176,10 +176,11 @@ struct KioskHealth: Codable, Equatable, Sendable {
     var lastError: String?
     var lastErrorAt: String?
     var flavors: [FlavorInfo]?
+    var kioskName: String?
 
     init(appVersion: String, environment: String, authorized: Bool, authorizationState: String, readers: [Reader],
          readerReady: Bool, catalog: Catalog, deviceBattery: Battery?, simulatePayment: Bool, screen: String,
-         lastError: String?, lastErrorAt: String?, flavors: [FlavorInfo]?) {
+         lastError: String?, lastErrorAt: String?, flavors: [FlavorInfo]?, kioskName: String?) {
         self.appVersion = appVersion
         self.environment = environment
         self.authorized = authorized
@@ -193,6 +194,7 @@ struct KioskHealth: Codable, Equatable, Sendable {
         self.lastError = lastError
         self.lastErrorAt = lastErrorAt
         self.flavors = flavors
+        self.kioskName = kioskName
     }
 
     init(from decoder: Decoder) throws {
@@ -210,6 +212,7 @@ struct KioskHealth: Codable, Equatable, Sendable {
         lastError = c.lenientOptional(AnyKey("lastError"))
         lastErrorAt = c.lenientOptional(AnyKey("lastErrorAt"))
         flavors = c.lenientOptional(AnyKey("flavors"))
+        kioskName = c.lenientOptional(AnyKey("kioskName"))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -227,6 +230,7 @@ struct KioskHealth: Codable, Equatable, Sendable {
         try c.encode(lastError, forKey: AnyKey("lastError"))
         try c.encode(lastErrorAt, forKey: AnyKey("lastErrorAt"))
         try c.encodeIfPresent(flavors, forKey: AnyKey("flavors"))
+        try c.encodeIfPresent(kioskName, forKey: AnyKey("kioskName"))
     }
 }
 
@@ -258,6 +262,25 @@ struct KioskState: Codable, Equatable, Sendable {
         try c.encode(screen, forKey: AnyKey("screen"))
         try c.encode(health, forKey: AnyKey("health"))
         try c.encode(healthAt, forKey: AnyKey("healthAt"))
+    }
+}
+
+struct KioskEntry: Codable, Equatable, Identifiable, Sendable {
+    var id: String
+    var name: String
+    var tag: String
+    var open: Bool
+    var debug: Bool
+    var online: Bool
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        id = c.lenient(AnyKey("id"), "")
+        name = c.lenient(AnyKey("name"), "")
+        tag = c.lenient(AnyKey("tag"), "")
+        open = c.lenient(AnyKey("open"), true)
+        debug = c.lenient(AnyKey("debug"), false)
+        online = c.lenient(AnyKey("online"), false)
     }
 }
 
@@ -325,6 +348,8 @@ struct BoothState: Codable, Equatable, Sendable {
     var flavors: [BoothFlavorState]
     var kiosk: KioskState
     var kioskOpen: KioskOpenState
+    /// Nil from servers that predate the kiosk registry; those only have the shared `kioskOpen`.
+    var kiosks: [KioskEntry]?
     var alerts: [BoothAlert]
     var orders: [BoothOrderSummary]
     var serverTime: Double
@@ -332,6 +357,7 @@ struct BoothState: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
         rev = c.lenient(AnyKey("rev"), 0)
+        kiosks = c.lenientOptional(AnyKey("kiosks"))
         flavors = c.lenient(AnyKey("flavors"), [])
         kiosk = c.lenient(AnyKey("kiosk"), KioskState())
         kioskOpen = c.lenient(AnyKey("kioskOpen"), KioskOpenState())
@@ -347,6 +373,7 @@ enum BoothChange: Sendable {
     case kiosk(KioskState)
     case order(BoothOrderSummary)
     case kioskOpen(KioskOpenState)
+    case kiosks([KioskEntry])
     case unknown
 }
 
@@ -364,6 +391,8 @@ extension BoothChange: Decodable {
             self = c.lenientOptional(AnyKey("order")).map(BoothChange.order) ?? .unknown
         case "kioskOpen":
             self = c.lenientOptional(AnyKey("kioskOpen")).map(BoothChange.kioskOpen) ?? .unknown
+        case "kiosks":
+            self = c.lenientOptional(AnyKey("kiosks")).map(BoothChange.kiosks) ?? .unknown
         default:
             self = .unknown
         }
@@ -518,6 +547,7 @@ struct BoothOrder: Codable, Equatable, Sendable {
 
     let id: String
     let orderNumber: Int
+    let orderRef: String?
     let squareOrderId: String
     let squarePaymentId: String
     let customerName: String
@@ -535,6 +565,7 @@ struct BoothOrder: Codable, Equatable, Sendable {
     init(receipt: Receipt, quote: OrderQuote) {
         id = receipt.checkoutID
         orderNumber = receipt.orderNumber
+        orderRef = receipt.orderRef
         squareOrderId = receipt.squareOrderID
         squarePaymentId = receipt.paymentID
         customerName = receipt.customerName

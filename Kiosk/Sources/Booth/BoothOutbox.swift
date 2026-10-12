@@ -43,7 +43,7 @@ actor BoothOutbox {
     private static let eventCap = 200
     private static let helpLifetime: TimeInterval = 30 * 60
     private static let seqCeilingKey = "boothSeqCeiling"
-    private static let installIDKey = "boothInstallID"
+    private static let installIDKey = KioskIdentity.installIDKey
 
     private let root: URL
     private let legacyOrders: URL

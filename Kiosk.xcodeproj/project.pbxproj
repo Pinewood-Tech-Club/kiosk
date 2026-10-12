@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0DB3FAFF3FEE7F0C6F1B9A36 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5701FD802D3A088526716CC8 /* Keychain.swift */; };
 		0E3D22FB782B6B3A9FB56CF2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */; };
+		10B70562C5C44F3F048EB7A7 /* KioskIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49DFEEF7AAC0DEB3EF85D86 /* KioskIdentity.swift */; };
 		13BA8C20840B4FEE6E0C80E2 /* StageScoops.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5BD4EEAA5E7AC8701F33D4 /* StageScoops.swift */; };
 		1BB0562605F01093714A5FD4 /* BoothCheckout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DBF1469A678F767112B34C4 /* BoothCheckout.swift */; };
 		1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF36BF94972C41A51D71D966 /* KioskApp.swift */; };
@@ -137,6 +138,7 @@
 		CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-SemiBold.ttf"; sourceTree = "<group>"; };
 		CF19FBBFF9063473EF2C011F /* loop.mp4 */ = {isa = PBXFileReference; path = loop.mp4; sourceTree = "<group>"; };
+		D49DFEEF7AAC0DEB3EF85D86 /* KioskIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KioskIdentity.swift; sourceTree = "<group>"; };
 		D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SheetDragUITests.m; sourceTree = "<group>"; };
 		D6974443317A2D4E0CE83F79 /* Kiosk.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kiosk.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF893650C7E0AA1ED76E777E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -281,6 +283,7 @@
 				C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */,
 				48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */,
 				E3D9A0CFAC70BA8E576B608E /* HelpButton.swift */,
+				D49DFEEF7AAC0DEB3EF85D86 /* KioskIdentity.swift */,
 				989E4F9F6FFDC723DDD4BEA7 /* LogShipper.swift */,
 			);
 			path = Booth;
@@ -526,6 +529,7 @@
 				536DCDE99FE4949A7CD2BFC7 /* HelpButton.swift in Sources */,
 				0DB3FAFF3FEE7F0C6F1B9A36 /* Keychain.swift in Sources */,
 				1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */,
+				10B70562C5C44F3F048EB7A7 /* KioskIdentity.swift in Sources */,
 				565858834D2F23FCC9892AE8 /* LaunchOptions.swift in Sources */,
 				BC87549B0A11F97F418AB61F /* Layout.swift in Sources */,
 				6788115AD2F9F28D7D442445 /* LogShipper.swift in Sources */,

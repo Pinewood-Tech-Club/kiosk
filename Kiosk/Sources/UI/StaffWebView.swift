@@ -3,13 +3,14 @@ import UIKit
 import WebKit
 
 struct StaffWebView: View {
+    let onExit: () -> Void
     @State private var model = StaffWebModel()
 
     var body: some View {
         ZStack {
             Theme.background
             if let url = model.url {
-                StaffWebContainer(model: model, url: url)
+                StaffWebContainer(model: model, url: url, onExit: onExit)
             }
             if let failure = model.failure {
                 StaffOfflineView(model: model, failure: failure)
@@ -17,7 +18,6 @@ struct StaffWebView: View {
         }
         .ignoresSafeArea()
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
     }
 }
 
@@ -113,10 +113,13 @@ private struct StaffOfflineView: View {
 }
 
 private struct StaffWebContainer: UIViewRepresentable {
+    static let messageHandler = "boothApp"
+
     let model: StaffWebModel
     let url: URL
+    let onExit: () -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(model: model, url: url) }
+    func makeCoordinator() -> Coordinator { Coordinator(model: model, url: url, onExit: onExit) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -124,6 +127,7 @@ private struct StaffWebContainer: UIViewRepresentable {
         configuration.allowsInlineMediaPlayback = true
         configuration.applicationNameForUserAgent = "BoothStaffApp/1"
         configuration.websiteDataStore = .default()
+        configuration.userContentController.add(WeakMessageHandler(context.coordinator), name: Self.messageHandler)
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.allowsLinkPreview = false
@@ -146,15 +150,27 @@ private struct StaffWebContainer: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        uiView.configuration.userContentController.removeScriptMessageHandler(forName: messageHandler)
+    }
+
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let model: StaffWebModel
         let url: URL
+        let onExit: () -> Void
         weak var webView: WKWebView?
 
-        init(model: StaffWebModel, url: URL) {
+        init(model: StaffWebModel, url: URL, onExit: @escaping () -> Void) {
             self.model = model
             self.url = url
+            self.onExit = onExit
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.host == url.host(),
+                  (message.body as? [String: Any])?["type"] as? String == "exitStaffMode" else { return }
+            onExit()
         }
 
         func start() {
@@ -215,6 +231,20 @@ private struct StaffWebContainer: UIViewRepresentable {
             default: return error.localizedDescription
             }
         }
+    }
+}
+
+/// WKUserContentController keeps its handlers alive, which would otherwise keep the coordinator alive too.
+@MainActor
+private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var target: WKScriptMessageHandler?
+
+    init(_ target: WKScriptMessageHandler) {
+        self.target = target
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(userContentController, didReceive: message)
     }
 }
 

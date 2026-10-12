@@ -74,9 +74,8 @@ final class AppModel {
     var customerName = ""
     private(set) var isPaying = false
 
-    var debugBarHidden: Bool {
-        didSet { UserDefaults.standard.set(debugBarHidden, forKey: "debugBarHidden") }
-    }
+    private var debugBarOverride: Bool?
+    private var debugBarDismissed = false
     var simulatePayment: Bool
     var slowMotion: Double = 1 {
         didSet { stage.timeScale = slowMotion }
@@ -99,7 +98,7 @@ final class AppModel {
 
     init() {
         let defaults = UserDefaults.standard
-        debugBarHidden = defaults.bool(forKey: "debugBarHidden")
+        debugBarOverride = LaunchOptions.current.hideDebugBar.map { !$0 }
         simulatePayment = false
         forcedError = defaults.string(forKey: "kioskForceError").flatMap(ForcedError.init(rawValue:))
     }
@@ -223,6 +222,25 @@ final class AppModel {
     func changeRole() {
         resetEverything()
         withAnimation(.easeInOut(duration: 0.35)) { screen = .roleSetup }
+    }
+
+    var showsDebugBar: Bool {
+        debugBarOverride ?? (booth.debugEnabled && !debugBarDismissed)
+    }
+
+    func hideDebugBar() {
+        debugBarOverride = nil
+        debugBarDismissed = true
+    }
+
+    func debugToolsTurnedOn() {
+        debugBarDismissed = false
+    }
+
+    func exitStaffMode() {
+        guard screen == .staff else { return }
+        role = nil
+        withAnimation(.easeInOut(duration: 0.5)) { screen = .roleSetup }
     }
 
     var orderingOpen: Bool { booth.kioskOpen }
@@ -548,7 +566,7 @@ final class AppModel {
         booth.checkReaderBeforePayment()
         let quote = orderQuote
         let number = nextOrderNumber()
-        let checkout = CheckoutIdentity.make()
+        let checkout = CheckoutIdentity.make(orderNumber: number)
         Task {
             let result: PaymentResult
             if let forcedError, forcedError != .assets {
@@ -584,7 +602,6 @@ final class AppModel {
         if let slowmo = options.slowMotion { slowMotion = slowmo }
         if options.debug3D { show3DDebug = true }
         if let simulate = options.simulatePayment { simulatePayment = simulate }
-        if let hide = options.hideDebugBar { debugBarHidden = hide }
         if options.role == DeviceRole.kiosk.rawValue, screen == .roleSetup { enterKioskRole(animated: false) }
 
         if let screenName = options.screen {

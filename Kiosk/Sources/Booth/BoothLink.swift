@@ -18,6 +18,8 @@ final class BoothLink {
     }
 
     private static let kioskOpenKey = "boothKioskOpen"
+    private static let debugKey = "boothKioskDebug"
+    private static let nameKey = "boothKioskName"
     private static let soldOutKey = "boothSoldOutState"
     private static let idleLimit: TimeInterval = 60
     private static let helpRateLimit: TimeInterval = 30
@@ -28,6 +30,8 @@ final class BoothLink {
     private(set) var connectionState: BoothConnection.ConnectionState = .idle
     private(set) var soldOut: Set<Flavor>
     private(set) var kioskOpen: Bool
+    private(set) var debugEnabled: Bool
+    private(set) var kioskName: String?
     private(set) var helpBannerVisible = false
 
     @ObservationIgnored private weak var app: AppModel?
@@ -44,11 +48,14 @@ final class BoothLink {
     @ObservationIgnored private var lastHealth: KioskHealth?
     @ObservationIgnored private var lastHealthQueued = Date.distantPast
     @ObservationIgnored private var forceHealth = false
+    @ObservationIgnored private var deviceID: String?
 
     init() {
         let stored = UserDefaults.standard.data(forKey: Self.soldOutKey).flatMap { try? JSONDecoder().decode(SoldOutSnapshot.self, from: $0) }
         soldOut = Set((stored?.soldOut ?? []).compactMap(Flavor.init(rawValue:)))
         kioskOpen = UserDefaults.standard.object(forKey: Self.kioskOpenKey) as? Bool ?? true
+        debugEnabled = UserDefaults.standard.bool(forKey: Self.debugKey)
+        kioskName = UserDefaults.standard.string(forKey: Self.nameKey)
     }
 
     var isEnabled: Bool { BoothConfig.current != nil }
@@ -116,6 +123,7 @@ final class BoothLink {
 
     private func bootstrap(_ config: BoothConfig) async {
         let deviceID = await outbox.device()
+        self.deviceID = deviceID
         let api = BoothAPI(config: config, deviceID: deviceID)
         square?.attachBooth(api)
         await outbox.attach(api: api) { [weak self] message in
@@ -124,6 +132,7 @@ final class BoothLink {
 
         let connection = BoothConnection(api: api) { [weak self] message in self?.log(message) }
         connection.screen = { [weak self] in self?.app?.screen.boothName ?? "roleSetup" }
+        connection.name = { BoothConfig.kioskName }
         connection.onState = { [weak self] state in self?.applyState(state) }
         connection.onConnectionChange = { [weak self] state in self?.connectionChanged(state) }
         self.connection = connection
@@ -155,10 +164,10 @@ final class BoothLink {
     }
 
     private func applyState(_ state: BoothState) {
-        if state.kioskOpen.open != kioskOpen {
-            kioskOpen = state.kioskOpen.open
-            UserDefaults.standard.set(kioskOpen, forKey: Self.kioskOpenKey)
-            log("Booth: kiosk is now " + (kioskOpen ? "open" : "closed"))
+        if let kiosks = state.kiosks {
+            if let mine = kiosks.first(where: { $0.id == deviceID }) { applyOwnEntry(mine) }
+        } else {
+            setOpen(state.kioskOpen.open)
         }
         let updated = Set(state.flavors.filter(\.soldOut).compactMap { Flavor(rawValue: $0.id) })
         guard updated != soldOut else { return }
@@ -166,6 +175,28 @@ final class BoothLink {
         let snapshot = SoldOutSnapshot(rev: state.rev, soldOut: updated.map(\.rawValue).sorted())
         UserDefaults.standard.set(try? JSONEncoder().encode(snapshot), forKey: Self.soldOutKey)
         log("Booth: sold out is now " + (snapshot.soldOut.isEmpty ? "none" : snapshot.soldOut.joined(separator: ", ")))
+    }
+
+    private func applyOwnEntry(_ entry: KioskEntry) {
+        setOpen(entry.open)
+        if entry.debug != debugEnabled {
+            debugEnabled = entry.debug
+            UserDefaults.standard.set(debugEnabled, forKey: Self.debugKey)
+            log("Booth: debug tools turned " + (debugEnabled ? "on" : "off") + " by staff")
+            if debugEnabled { app?.debugToolsTurnedOn() }
+        }
+        if entry.name != kioskName {
+            kioskName = entry.name
+            UserDefaults.standard.set(entry.name, forKey: Self.nameKey)
+            log("Booth: staff pages call this kiosk \(entry.name)")
+        }
+    }
+
+    private func setOpen(_ open: Bool) {
+        guard open != kioskOpen else { return }
+        kioskOpen = open
+        UserDefaults.standard.set(kioskOpen, forKey: Self.kioskOpenKey)
+        log("Booth: kiosk is now " + (kioskOpen ? "open" : "closed"))
     }
 
     private func observeTouches() {

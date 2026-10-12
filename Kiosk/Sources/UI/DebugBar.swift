@@ -44,8 +44,8 @@ struct DebugBar: View {
                     Toggle("Show 3D debug info", isOn: $app.show3DDebug)
                     Divider()
                     Button("Change role") { app.changeRole() }
-                    Button("Hide debug bar (triple-tap top-left to restore)") {
-                        withAnimation(.easeInOut(duration: 0.25)) { app.debugBarHidden = true }
+                    Button("Hide debug bar") {
+                        withAnimation(.easeInOut(duration: 0.25)) { app.hideDebugBar() }
                     }
                 }
             }
