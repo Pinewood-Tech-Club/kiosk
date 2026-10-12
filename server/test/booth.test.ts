@@ -2,7 +2,7 @@ import { createExecutionContext, createScheduledController, evictDurableObject, 
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src";
-import { Booth, FLOOD_LIMIT, HEALTH_GRACE_MS, MAX_SNAPSHOT_ALERTS, OFFLINE_AFTER_MS, healthConditions } from "../src/booth";
+import { ASSIST_TTL_MS, Booth, FLOOD_LIMIT, HEALTH_GRACE_MS, MAX_SNAPSHOT_ALERTS, OFFLINE_AFTER_MS, healthConditions } from "../src/booth";
 import type { Alert, BoothState, Change, ItemResult, ServerMessage } from "../src/protocol";
 import { KioskHealth } from "../src/schema";
 
@@ -77,7 +77,7 @@ class Client {
     const index = this.inbox.findIndex(match);
     if (index >= 0) return Promise.resolve(this.inbox.splice(index, 1)[0] as Msg<T>);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${type}`)), timeout);
+      const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${type}; inbox ${JSON.stringify(this.inbox.map((m) => m.type))}`)), timeout);
       this.waiters.push({
         match,
         resolve: (m) => {
@@ -705,6 +705,180 @@ describe("hub", () => {
     expect((await staff.next("result", (m) => m.id === "evict-b")).status).toBe("ok");
     await staff.settle();
     expect(comparable(staff.state!)).toEqual(comparable(await serverState()));
+  });
+});
+
+describe("assist", () => {
+  const cart = (overrides: Record<string, unknown> = {}) => ({
+    screen: "builder",
+    step: "flavors",
+    editing: false,
+    items: [
+      { id: "item-1", vessel: "cone", flavors: ["vanilla"], toppings: ["whip"], cents: 600, current: false, inOrder: true },
+      { id: "item-2", vessel: "cup", flavors: [], toppings: [], cents: 0, current: true, inOrder: false },
+    ],
+    customerName: "Alex",
+    totalCents: 600,
+    paying: false,
+    orderingOpen: true,
+    assisted: false,
+    maxScoops: 3,
+    results: [],
+    ...overrides,
+  });
+  const command = (id: string, kiosk: string, fields: Record<string, unknown>) => ({ id, kiosk, by: "Toppings iPad", ...fields });
+  const closed = async (client: Client) => {
+    client.ws.close(1000, "done");
+    await new Promise((r) => setTimeout(r, 50));
+  };
+  const kioskState = async (device: string) =>
+    (await (await exports.default.fetch(`${BASE}/v1/state`, { headers: headers(KIOSK, device) })).json()) as BoothState;
+
+  it("relays a kiosk's live session to staff only, without touching the revision, and drops it when the kiosk leaves", async () => {
+    const staff = await open(STAFF, newDevice("s"));
+    const device = newDevice("k");
+    const kiosk = await open(KIOSK, device);
+    await staff.settle();
+    const rev = (await serverState()).rev;
+
+    kiosk.send({ type: "session", session: cart() });
+    const live = await staff.next("session", (m) => m.kiosk === device);
+    expect(live.session).toMatchObject({ kiosk: device, customerName: "Alex", totalCents: 600, screen: "builder", step: "flavors" });
+    expect(live.session!.items.map((i) => [i.id, i.vessel, i.flavors, i.toppings, i.current])).toEqual([
+      ["item-1", "cone", ["vanilla"], ["whip"], false],
+      ["item-2", "cup", [], [], true],
+    ]);
+    kiosk.send({ type: "session", session: cart({ screen: "name", step: null, customerName: "Alexandra" }) });
+    await staff.next("session", (m) => m.kiosk === device && m.session?.customerName === "Alexandra");
+
+    const truth = await serverState();
+    expect(truth.rev).toBe(rev);
+    expect(truth.sessions?.find((x) => x.kiosk === device)).toMatchObject({ screen: "name", customerName: "Alexandra" });
+    expect((await kioskState(device)).sessions).toBeUndefined();
+    expect(kiosk.inbox.filter((m) => m.type === "session")).toEqual([]);
+
+    kiosk.send({ type: "session", session: { ...cart(), items: "lots" } });
+    expect((await kiosk.next("error")).error.code).toBe("bad_request");
+    staff.send({ type: "session", session: cart() });
+    expect((await staff.next("error")).error.code).toBe("forbidden");
+
+    const fresh = await open(STAFF, newDevice("s"));
+    expect(fresh.state!.sessions?.find((x) => x.kiosk === device)?.customerName).toBe("Alexandra");
+
+    await closed(kiosk);
+    expect((await staff.next("session", (m) => m.kiosk === device)).session).toBeNull();
+    expect((await serverState()).sessions?.find((x) => x.kiosk === device)).toBeUndefined();
+  });
+
+  it("tells the kiosk while any staff page is assisting it, and stops when the last one leaves", async () => {
+    const device = newDevice("k");
+    const other = newDevice("k");
+    const toppings = await open(STAFF, newDevice("s"));
+    toppings.send({ type: "assist", kiosk: device, by: "Toppings iPad" });
+    await toppings.settle();
+
+    const kiosk = await open(KIOSK, device);
+    const bystander = await open(KIOSK, other);
+    expect(await kiosk.next("assist")).toMatchObject({ active: true, by: "Toppings iPad", expiresIn: ASSIST_TTL_MS });
+    expect((await bystander.next("assist")).active).toBe(false);
+
+    const scooper = await open(STAFF, newDevice("s"));
+    scooper.send({ type: "assist", kiosk: device, by: "Scooper iPad" });
+    expect((await kiosk.next("assist")).active).toBe(true);
+    toppings.send({ type: "assist", kiosk: null });
+    expect((await kiosk.next("assist")).active).toBe(true);
+    await closed(scooper);
+    expect(await kiosk.next("assist")).toMatchObject({ active: false, by: null });
+
+    toppings.send({ type: "assist", kiosk: device, by: "Toppings iPad" });
+    expect((await kiosk.next("assist")).active).toBe(true);
+    toppings.send({ type: "assist", kiosk: other, by: "Toppings iPad" });
+    expect((await kiosk.next("assist")).active).toBe(false);
+    expect((await bystander.next("assist")).active).toBe(true);
+    toppings.send({ type: "assist", kiosk: null });
+    expect((await bystander.next("assist")).active).toBe(false);
+
+    kiosk.send({ type: "assist", kiosk: other });
+    expect((await kiosk.next("error")).error.code).toBe("forbidden");
+  });
+
+  it("relays commands with their ids to the kiosk, and refuses them for a kiosk that isn't connected", async () => {
+    const staff = await open(STAFF, newDevice("s"));
+    const device = newDevice("k");
+    const kiosk = await open(KIOSK, device);
+
+    const add = command("c-1", device, { op: "addScoop", item: "item-2", flavor: "vanilla" });
+    staff.send({ type: "command", command: add });
+    expect(await staff.next("result", (m) => m.id === "c-1")).toMatchObject({ status: "ok" });
+    expect((await kiosk.next("command")).command).toEqual(add);
+    staff.send({ type: "command", command: add });
+    expect((await kiosk.next("command")).command.id).toBe("c-1");
+    await staff.next("result", (m) => m.id === "c-1");
+
+    for (const op of [
+      { op: "removeScoop", item: "item-1", flavor: "vanilla" },
+      { op: "setVessel", item: "item-1", vessel: "cone" },
+      { op: "setTopping", item: "item-1", topping: "sprinkles", on: true },
+      { op: "addItem" },
+      { op: "removeItem", item: "item-1" },
+      { op: "setName", name: "Sam" },
+      { op: "navigate", to: "summary" },
+      { op: "startOver" },
+    ]) {
+      const id = `c-${op.op}`;
+      staff.send({ type: "command", command: command(id, device, op) });
+      expect((await staff.next("result", (m) => m.id === id)).status).toBe("ok");
+      expect((await kiosk.next("command")).command).toMatchObject(op);
+    }
+
+    const bad = [
+      command("b-1", device, { op: "launch" }),
+      command("b-2", device, { op: "setVessel", item: "item-1", vessel: "bowl" }),
+      command("b-3", device, { op: "navigate", to: "payment" }),
+      command("b-4", device, { op: "addScoop", item: "", flavor: "vanilla" }),
+    ];
+    for (const c of bad) {
+      staff.send({ type: "command", command: c });
+      expect((await staff.next("result", (m) => m.id === c.id)).error?.code).toBe("bad_request");
+    }
+
+    staff.send({ type: "command", command: command("o-1", newDevice("k"), { op: "startOver" }) });
+    expect((await staff.next("result", (m) => m.id === "o-1")).error?.code).toBe("kiosk_offline");
+    kiosk.send({ type: "command", command: command("f-1", device, { op: "startOver" }) });
+    expect((await kiosk.next("result", (m) => m.id === "f-1")).error?.code).toBe("forbidden");
+
+    await closed(kiosk);
+    staff.send({ type: "command", command: command("o-2", device, { op: "startOver" }) });
+    const offline = await staff.next("result", (m) => m.id === "o-2");
+    expect(offline).toMatchObject({ status: "rejected", error: { code: "kiosk_offline" } });
+    expect(offline.error?.message).toMatch(/isn't connected/);
+  });
+
+  it("converges every staff page on the kiosk's latest session, across eviction", async () => {
+    const stub = env.BOOTH.getByName("booth");
+    const device = newDevice("k");
+    const kiosk = await open(KIOSK, device);
+    expect((await kiosk.next("assist")).active).toBe(false);
+    const first = await open(STAFF, newDevice("s"));
+    const second = await open(STAFF, newDevice("s"));
+    second.send({ type: "assist", kiosk: device, by: "Toppings iPad" });
+    expect((await kiosk.next("assist")).active).toBe(true);
+
+    for (let i = 1; i <= 8; i++) {
+      kiosk.send({ type: "session", session: cart({ totalCents: i * 100, results: [{ id: `r-${i}`, status: i % 2 ? "applied" : "rejected", message: "3 scoops max" }] }) });
+    }
+    await first.next("session", (m) => m.session?.totalCents === 800);
+    await second.next("session", (m) => m.session?.totalCents === 800);
+
+    await evictDurableObject(stub);
+
+    const after = await serverState();
+    expect(after.sessions?.find((x) => x.kiosk === device)).toMatchObject({ totalCents: 800, results: [{ id: "r-8", status: "rejected" }] });
+    first.sync();
+    const snapshot = await first.next("snapshot");
+    expect(snapshot.state.sessions?.find((x) => x.kiosk === device)?.totalCents).toBe(800);
+    await closed(second);
+    expect((await kiosk.next("assist")).active).toBe(false);
   });
 });
 

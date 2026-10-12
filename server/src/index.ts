@@ -14,7 +14,7 @@ export { Booth } from "./booth";
 
 const SERVICE = "techclub-icecream";
 
-export const FEATURES = ["square-oauth", "square-credentials", "checkout", "receipt-tokens", "order-feed", "stats", "staff-session", "kiosk-registry", "supplies", "gift-cards"];
+export const FEATURES = ["square-oauth", "square-credentials", "checkout", "receipt-tokens", "order-feed", "stats", "staff-session", "kiosk-registry", "supplies", "gift-cards", "assist"];
 
 const core: Route[] = [
   {
@@ -46,8 +46,8 @@ const core: Route[] = [
     method: "GET",
     path: "/v1/state",
     async handle({ request, env }) {
-      await authenticate(request, env, ["kiosk", "staff"]);
-      return json(await callHub("state", () => hub(env).getState()));
+      const client = await authenticate(request, env, ["kiosk", "staff"]);
+      return json(await callHub("state", () => hub(env).getState(client.role)));
     },
   },
   {
