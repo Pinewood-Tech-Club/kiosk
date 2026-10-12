@@ -76,7 +76,7 @@ async function ingestOrders(request: Request, env: Env, client: Client): Promise
   if (feed.length > 0) {
     const epochs = Object.fromEntries(feed.filter((o) => o.epoch !== undefined).map((o) => [o.id, o.epoch!]));
     const recorded = await callHub("orders", () => hub(env).recordOrders(feed.map((o) => orderSummary(o, now, client.device)), epochs));
-    if (recorded.stale.length > 0) await dropRaced(env, recorded.stale, results, client.device);
+    if (recorded.stale?.length) await dropRaced(env, recorded.stale, results, client.device);
   }
   for (const result of results) {
     console.log({ event: "order", id: result.id, status: result.status, device: client.device });
