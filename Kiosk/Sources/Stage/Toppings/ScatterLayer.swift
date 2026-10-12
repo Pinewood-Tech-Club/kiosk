@@ -27,6 +27,8 @@ final class ScatterLayer: ToppingLayer {
     /// Where the topping's card icon is, in the layer's parent space; read every frame. When set,
     /// animated pieces are tossed from it and removed pieces fly back into it.
     var launchPoint: (() -> SIMD3<Float>)?
+    /// Height in the layer's parent space that tossed and returning pieces stay under; read every frame.
+    var ceiling: (() -> Float)?
     /// While set, each piece shows raised by this much at its (x, z): the cream beneath it is growing or
     /// deflating, and the pieces ride it until the stack resurfaces them onto the finished surface.
     var heave: ((Float, Float) -> Float)? {
@@ -472,6 +474,7 @@ final class ScatterLayer: ToppingLayer {
         var active = resurfacing != nil
         var leaving = false
         let launch = launchPoint?()
+        let ceiling = self.ceiling?() ?? .infinity
         for index in pieces.indices {
             switch pieces[index].motion {
             case .none:
@@ -479,12 +482,12 @@ final class ScatterLayer: ToppingLayer {
                 continue
             case .arrive(let start):
                 if pieces[index].lost { continue }
-                active = stepArrive(index, t: now - start - pieces[index].delay, launch: launch) || active
+                active = stepArrive(index, t: now - start - pieces[index].delay, launch: launch, ceiling: ceiling) || active
             case let .settle(from, start, lift):
                 active = stepSettle(index, from: from, t: now - start, lift: lift) || active
             case let .leave(from, start):
                 leaving = true
-                active = stepLeave(index, from: from, t: now - start, launch: launch) || active
+                active = stepLeave(index, from: from, t: now - start, launch: launch, ceiling: ceiling) || active
             }
             place(pieces[index])
         }
@@ -496,7 +499,9 @@ final class ScatterLayer: ToppingLayer {
 
     // MARK: Motion
 
-    private func stepArrive(_ index: Int, t: Double, launch: SIMD3<Float>?) -> Bool {
+    /// The recorded fall starts a drop height above the landing spot, which on a tall item can reach the title, so a
+    /// tossed piece is held under `ceiling` and only then follows the fall.
+    private func stepArrive(_ index: Int, t: Double, launch: SIMD3<Float>?, ceiling: Float) -> Bool {
         var piece = pieces[index]
         defer { pieces[index] = piece }
         guard t >= 0 else {
@@ -505,28 +510,34 @@ final class ScatterLayer: ToppingLayer {
         }
         guard !piece.track.isEmpty else { return true }
         piece.model.isEnabled = true
-        let first = piece.track[0]
-        if let launch {
-            if t < piece.flight {
-                let s = Float(t / piece.flight)
-                let start = launch + piece.hand
-                let peak = first.position.y + piece.arcHeight
-                let entry = Self.entryVelocity(piece.track)
-                let ahead = simd_mix(start, first.position, SIMD3(repeating: piece.lean))
-                let rise = SIMD3(ahead.x, peak + 0.3 * piece.arcHeight, ahead.z)
-                var fall = first.position - entry * Float(piece.flight) / 3
-                fall.y = max(fall.y, peak)
-                let position = cubicBezier(start, rise, fall, first.position, s)
-                let spin = simd_quatf(angle: piece.tumble * (1 - s), axis: piece.tumbleAxis)
-                piece.shown = ScatterPose(position: position, rotation: first.rotation * spin)
-                piece.scale = 0.45 + 0.55 * Ease.outCubic(min(s * 2.5, 1))
-                return true
-            }
+        let top = max(ceiling - piece.shape.bound, piece.rest.position.y)
+        var first = piece.track[0]
+        first.position.y = min(first.position.y, top)
+        let running: Bool
+        if let launch, t < piece.flight {
+            let s = Float(t / piece.flight)
+            let start = launch + piece.hand
+            let arc = max(min(piece.arcHeight, (top - first.position.y) / 1.3), 0)
+            let peak = first.position.y + arc
+            let entry = Self.entryVelocity(piece.track)
+            let ahead = simd_mix(start, first.position, SIMD3(repeating: piece.lean))
+            let rise = SIMD3(ahead.x, peak + 0.3 * arc, ahead.z)
+            var fall = first.position - entry * Float(piece.flight) / 3
+            fall.y = min(max(fall.y, peak), top)
+            let position = cubicBezier(start, rise, fall, first.position, s)
+            let spin = simd_quatf(angle: piece.tumble * (1 - s), axis: piece.tumbleAxis)
+            piece.shown = ScatterPose(position: position, rotation: first.rotation * spin)
+            piece.scale = 0.45 + 0.55 * Ease.outCubic(min(s * 2.5, 1))
+            running = true
+        } else if launch != nil {
             piece.scale = 1
-            return playTrack(&piece, t: t - piece.flight)
+            running = playTrack(&piece, t: t - piece.flight)
+        } else {
+            piece.scale = Ease.outCubic(Float(min(t / 0.08, 1)))
+            running = playTrack(&piece, t: t)
         }
-        piece.scale = Ease.outCubic(Float(min(t / 0.08, 1)))
-        return playTrack(&piece, t: t)
+        piece.shown.position.y = min(piece.shown.position.y, top)
+        return running
     }
 
     private func stepSettle(_ index: Int, from: ScatterPose, t: Double, lift: Double) -> Bool {
@@ -556,14 +567,15 @@ final class ScatterLayer: ToppingLayer {
         return true
     }
 
-    private func stepLeave(_ index: Int, from: ScatterPose, t: Double, launch: SIMD3<Float>?) -> Bool {
+    private func stepLeave(_ index: Int, from: ScatterPose, t: Double, launch: SIMD3<Float>?, ceiling: Float) -> Bool {
         var piece = pieces[index]
         defer { pieces[index] = piece }
         guard t >= 0 else { return true }
         if let launch {
             let s = Float(min(t / Self.returnDuration, 1))
             let e = Ease.inOutSine(s)
-            let lifted = (from.position + launch) / 2 + SIMD3(0, piece.arcHeight * 0.8, 0)
+            var lifted = (from.position + launch) / 2 + SIMD3(0, piece.arcHeight * 0.8, 0)
+            lifted.y = min(lifted.y, max(ceiling - piece.shape.bound, from.position.y))
             let u = 1 - e
             let position = u * u * from.position + 2 * u * e * lifted + e * e * launch
             piece.shown = ScatterPose(position: position,

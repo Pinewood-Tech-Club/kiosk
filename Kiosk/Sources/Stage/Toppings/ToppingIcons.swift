@@ -161,6 +161,12 @@ extension Stage {
             let world = self.toppingIconPlacement(topping).position
             let local = simd_inverse(rig.body.transformMatrix(relativeTo: nil)) * SIMD4<Float>(world, 1)
             return [local.x, local.y, local.z]
-        }, icon: toppingIcons[topping])
+        }, icon: toppingIcons[topping], ceiling: { [weak self, weak rig] in
+            guard let self, let rig else { return .infinity }
+            let body = rig.body.transformMatrix(relativeTo: nil)
+            var line = body.columns.3
+            line.y = self.world(CGPoint(x: 0, y: Self.flightCeilingY), z: line.z).y
+            return (simd_inverse(body) * line).y
+        })
     }
 }

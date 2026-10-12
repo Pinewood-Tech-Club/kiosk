@@ -24,6 +24,8 @@ extension Topping {
 struct ToppingLaunch {
     let point: () -> SIMD3<Float>
     let icon: ToppingCardIcon?
+    /// Height in the rig's body space that tossed pieces stay under: the bottom of the step's title.
+    var ceiling: (() -> Float)?
 }
 
 enum ToppingSeed {
@@ -258,7 +260,9 @@ final class ToppingStack {
         var changeDuration: Double = 0
         var scatterChangeDuration: Double = 0
         for entry in placed where !wanted.contains(entry.topping) {
-            entry.layer.launchPoint = animated ? launch?(entry.topping)?.point : nil
+            let tap = animated ? launch?(entry.topping) : nil
+            entry.layer.launchPoint = tap?.point
+            (entry.layer as? ScatterLayer)?.ceiling = tap?.ceiling
             (entry.layer as? ScatterLayer)?.heave = nil
             entry.layer.remove(now: now)
             leaving.append(entry.layer)
@@ -313,6 +317,7 @@ final class ToppingStack {
                 let tap = animated ? launch?(topping) : nil
                 if let tap {
                     layer.launchPoint = tap.point
+                    scatter?.ceiling = tap.ceiling
                     layer.cardIcon = tap.icon
                 }
                 root.addChild(layer.entity)
