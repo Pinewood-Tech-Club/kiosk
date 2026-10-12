@@ -347,6 +347,8 @@ final class ScatterLayer: ToppingLayer {
         }
         if let result {
             switch judge(result, shape: piece.shape, on: surface) {
+            case .lies where Self.isRaised(piece.shape, result.rest, on: surface, among: bodies):
+                if job.perched == nil { job.perched = result }
             case .lies:
                 landed = result
                 verdict = "lies"
