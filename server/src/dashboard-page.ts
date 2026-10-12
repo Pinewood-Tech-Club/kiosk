@@ -269,6 +269,13 @@ body.app .web-only{display:none!important}
 body:not(.app) .app-only{display:none!important}
 .kcell{width:100%;text-align:left;min-height:84px}
 button.kcell:active{background:rgba(0,0,0,.04)}
+.krow{position:relative}
+.krow .kopen{position:absolute;inset:0;z-index:0;width:100%;border-radius:inherit}
+.krow .kopen:active{background:rgba(0,0,0,.04)}
+.krow>:not(.kopen){position:relative;z-index:1;pointer-events:none}
+.krow>.kdbg{pointer-events:auto;display:flex;align-items:center;gap:12px;flex:none;padding:8px 4px 8px 12px}
+.kdbg-l{font-size:17px;font-weight:500;color:var(--label-2)}
+.krow .value{min-width:64px}
 .kcell .chev{color:var(--label-3);font-size:22px}
 .kglyph{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:20px;color:#fff;background:var(--tint);flex:none}
 .kglyph.off{background:var(--label-3)}
@@ -453,7 +460,7 @@ const SECTIONS: Record<StaffSection, (display: boolean, role: StaffRole) => stri
   board: () => `<div class="board"><section><div class="section-head"><h2>Ready for pickup</h2><span id="readyCount"></span></div><div class="group list" id="boardReady"></div></section><section><div class="section-head"><h2>Being made</h2><span id="makingCount"></span></div><div class="group list" id="boardMaking"></div></section></div>`,
   feed: () => `<div class="section-head"><h2>Orders</h2><span id="feedCount"></span></div><div class="group list" id="feed"></div>`,
   supplies: (display, role) => `<div id="soldout">${suppliesSection(display, role)}</div>`,
-  kiosks: (display) => `<div class="section-head"><h2>Kiosks</h2><span id="kioskCount"></span></div><div class="group list" id="kiosks"></div>${display ? "" : `<p class="footnote">Tap a kiosk to rename it, close or reopen it, or turn on its debug tools.</p>`}`,
+  kiosks: (display) => `<div class="section-head"><h2>Kiosks</h2><span id="kioskCount"></span></div><div class="group list" id="kiosks"></div>${display ? "" : `<p class="footnote">Debug shows the debug bar at the top of that kiosk's screen. Tap a kiosk to rename it or to close or reopen it.</p>`}`,
   stats: () => `<div class="section-head"><h2>Today</h2><span id="updated"></span></div>
 <div class="group tiles">
 <div class="tile wide"><div class="k">Revenue</div><div class="v" id="tRevenue">$0</div><div class="s" id="tAvg"></div></div>
@@ -1207,9 +1214,12 @@ function renderKiosks(){
   var reason=supplyClosedReason();
   var html=list.map(function(k){
     var open=kioskOpenNow(k),s=kioskShort(k),taking=open&&!reason;
-    var text='<div class="label">'+esc(kioskName(k))+'</div><div class="sub'+(s.bad?" bad":"")+'">'+s.html+"</div>"+(open&&reason?'<div class="sub warn">'+esc(reason)+"</div>":"")+(kioskDebug(k)?'<div class="sub warn">Debug tools on</div>':"")+openPending(k)+pendingTag("name:"+k.id)+pendingTag("debug:"+k.id);
-    var inner='<span class="kglyph'+(k.online?"":" off")+'">'+ico("tablet")+'</span><div class="grow">'+text+'</div><span class="value'+(taking?"":" bad")+'">'+(taking?"Open":"Closed")+"</span>";
-    return READONLY?'<div class="cell kcell">'+inner+"</div>":'<button class="cell kcell" type="button" data-kiosk="'+esc(k.id)+'" aria-label="'+esc(kioskName(k))+', '+(taking?"open":"closed")+'">'+inner+ico("chevron","chev")+"</button>";
+    var debug=kioskDebug(k),name=esc(kioskName(k));
+    var text='<div class="label">'+name+'</div><div class="sub'+(s.bad?" bad":"")+'">'+s.html+"</div>"+(open&&reason?'<div class="sub warn">'+esc(reason)+"</div>":"")+(READONLY&&debug?'<div class="sub warn">Debug tools on</div>':"")+openPending(k)+pendingTag("name:"+k.id)+pendingTag("debug:"+k.id);
+    var glyph='<span class="kglyph'+(k.online?"":" off")+'">'+ico("tablet")+"</span>",value='<span class="value'+(taking?"":" bad")+'">'+(taking?"Open":"Closed")+"</span>";
+    if(READONLY)return '<div class="cell kcell">'+glyph+'<div class="grow">'+text+"</div>"+value+"</div>";
+    var sw='<span class="kdbg"><span class="kdbg-l" aria-hidden="true">Debug</span><button class="switch" role="switch" type="button" data-kdebug="'+esc(k.id)+'" aria-checked="'+debug+'" aria-label="Debug tools on '+name+'"></button></span>';
+    return '<div class="cell kcell krow"><button class="kopen" type="button" data-kiosk="'+esc(k.id)+'" aria-label="'+name+', '+(taking?"open":"closed")+', details"></button>'+glyph+'<div class="grow">'+text+"</div>"+sw+value+ico("chevron","chev")+"</div>";
   }).join("");
   if(!READONLY){
     var one=list.length===1,anyOpen=list.some(kioskOpenNow),anyClosed=list.some(function(k){return !kioskOpenNow(k);});

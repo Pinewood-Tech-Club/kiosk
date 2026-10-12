@@ -52,6 +52,14 @@ struct DebugBar: View {
                         withAnimation(.easeInOut(duration: 0.25)) { app.hideDebugBar() }
                     }
                 }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) { app.hideDebugBar() }
+                } label: {
+                    HStack(spacing: 5) {
+                        LucideIcon(name: "eye-off", size: 13)
+                        Text("Hide")
+                    }
+                }
             }
         }
         .buttonStyle(.glass)

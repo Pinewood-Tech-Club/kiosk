@@ -225,14 +225,15 @@ Client to server:
 { "type": "action", "action": Action }                              // staff; answered with result
 { "type": "session", "session": KioskSession }                      // (added) kiosk; relayed to staff, no reply (error if invalid)
 { "type": "assist", "kiosk": "<device id>" | null, "by": "Toppings iPad" }   // (added) staff; which kiosk this page is assisting, every 10 s while open
-{ "type": "command", "command": AssistCommand }                     // (added) staff; answered with result (relayed, or rejected)
+{ "type": "command", "command": AssistCommand }                     // (added) staff; answered with result (relayed, duplicate, or rejected)
+{ "type": "commands", "commands": AssistCommand[] }                 // (added) staff; 1 to 50 commands relayed in order, one result each
 ```
 
 Liveness: clients send `heartbeat` or `ping` every 10 s and treat 25 s without any message from the server as a dead socket: close it and reconnect. Reconnect with backoff (1 s doubling to 30 s, with jitter), and at once when the app returns to the foreground or the network path comes back. The server treats 30 s without kiosk contact as offline. Text frames over 64 KB are rejected, and a socket that floods (more than 60 messages in 10 s) gets an error and is closed with code 1008.
 
 ## Assist *(added)*
 
-A staff member at one of the booth iPads can follow and change the order of the customer standing at a kiosk. The kiosk is authoritative: staff send commands, the kiosk applies them through its own ordering model (pricing, the three-scoop limit and sold out all hold, and the customer sees the change on screen), and staff only ever display what the kiosk publishes. Assist needs live sockets on both sides; nothing is queued, and ordering and payment never depend on it.
+A staff member at one of the booth iPads can follow and change the order of the customer standing at a kiosk. The kiosk is authoritative: staff send commands, the kiosk applies them through its own ordering model (pricing, the three-scoop limit and sold out all hold, and the customer sees the change on screen). The staff page is optimistic: it shows the kiosk's last session with its own unacknowledged commands applied by the same rules, so every tap shows at once, and it snaps back to the kiosk's truth whenever the kiosk refuses one. Assist needs live sockets on both sides; nothing is stored, and ordering and payment never depend on it.
 
 **Session.** While its socket is open the kiosk sends its session whenever it changes, at most 4 times a second (a socket is closed past 60 messages in 10 s), and again after every reconnect. The hub keeps the latest one in its Durable Object storage only while that kiosk has an open socket (never in D1, never in `rev`), sends it to every staff socket as `{"type":"session"}`, includes it in staff snapshots and `GET /v1/state` for staff as `sessions`, and sends `session: null` once the kiosk's last socket closes. Kiosk sockets never receive sessions.
 
@@ -256,13 +257,14 @@ interface KioskSession {
   orderingOpen: boolean;          // false while this kiosk is closed or out of cups and cones
   assisted: boolean;              // the kiosk is showing "A staff member is helping you"
   maxScoops: number;              // per item, 3
-  results: { id: string; status: "applied" | "duplicate" | "rejected"; message?: string }[];  // the last 20 commands
+  results: { id: string; status: "applied" | "duplicate" | "rejected"; message?: string }[];  // the last 30 commands (at most 40)
+  streams?: { id: string; received: number; done: number; waiting: number }[];  // (added) per staff stream, most recent first, at most 8
 }
 ```
 
 **Presence.** A staff page sends `{"type":"assist","kiosk":"<device id>","by":"Toppings iPad"}` when it opens assist and every 10 s while it stays open, and `"kiosk": null` when it closes. The hub remembers it on that socket (surviving hibernation) for 30 s. Whenever the set of staff assisting a kiosk changes, and when the kiosk connects, the kiosk gets `{"type":"assist","active":...,"expiresIn":30000}`; it shows its *assisting* note while active and hides it if no refresh arrives within `expiresIn` plus 5 s, so a staff iPad that drops off the network can't leave it up.
 
-**Commands.** Staff send `{"type":"command","command":AssistCommand}`:
+**Commands.** Staff send `{"type":"command","command":AssistCommand}`, or several at once as `{"type":"commands","commands":[...]}` (1 to 50, used to resend):
 
 ```jsonc
 { "id": "<uuid>", "kiosk": "<device id>", "by": "Toppings iPad", "op": "addScoop", "item": "<item id>", "flavor": "vanilla" }
@@ -276,7 +278,21 @@ interface KioskSession {
 { ..., "op": "startOver" }                                // clears the order and returns to the welcome screen
 ```
 
-The hub validates the shape and relays the command to every open socket of that kiosk, answering the staff socket with `result` `ok` (relayed), or `rejected` with `bad_request` or `kiosk_offline` ("Front table isn't connected"). It doesn't dedupe or store commands. The kiosk applies them one at a time in arrival order, the same way a customer's taps would: an item that isn't on screen is first taken back out of the tray (or the review sheet) and the builder moves to the step that edits it, so the customer sees each change happen. Its answer is in the `results` of its next session: `applied`, `rejected` with a plain reason ("3 scoops max", "Payment is in progress on the kiosk", "Chocolate is sold out"), or `duplicate` for an id it already applied (it remembers the last 500); a resend that arrives while the kiosk is still applying that id is ignored. Staff resend a command with the same id until it appears in `results`, so a resend never applies twice. Commands are relative ("add a vanilla scoop"), so simultaneous taps by the customer and staff both apply in the order the kiosk sees them and every page converges on the kiosk's next session.
+Ordering fields *(added, optional)*, on every command:
+
+| Field | Meaning |
+| --- | --- |
+| `stream` | The staff page's assist stream: a new id each time a page opens assist. |
+| `seq` | 1, 2, 3, ... within the stream, in the order staff tapped. |
+| `base` | Every `seq` at or below this is settled on the staff page (acknowledged or dropped), so the kiosk never waits for it. |
+| `after` | Ids of earlier commands this one depends on (the page's last pending command on the same item, or the one that started that item). If any of them was refused, the kiosk refuses this one too ("Skipped because an earlier change didn't go through"). |
+| `ref` | On `addItem`, `navigate` and `removeItem`: an upper-case UUID. If the kiosk ends up on the builder with an empty item being built (no scoops, no toppings, not one taken back out of the order), that item takes this id, so commands the page sends before the next session can name the new item. |
+
+**Hub.** The hub validates each command and relays it to every open socket of that kiosk in the order received, answering the staff socket with one `result` per command: `ok` (relayed), `duplicate` (that id was already relayed to every one of the kiosk's current sockets; nothing is sent again), or `rejected` with `bad_request` or `kiosk_offline` ("Front table isn't connected"). It remembers the last 500 ids per kiosk socket in memory only, so a kiosk that reconnects gets resends again. It stores nothing.
+
+**Kiosk.** The kiosk queues commands per stream and applies them strictly in `seq` order, one at a time, the way a customer's taps would: an item that isn't on screen is first taken back out of the tray (or the review sheet) and the builder moves to the step that edits it, and after each applied change the kiosk waits a beat (about 0.3 s for a name, 0.7 s for a scoop, 1 s for a topping going on) before the next, so the customer sees each change happen in order. A command that arrives ahead of a missing `seq` waits for it (the page's resend fills the gap); after 6 s the kiosk gives up on the gap and refuses the late one if it ever arrives. Commands without a stream run in arrival order. Its answer is in the `results` of its next session: `applied`, `rejected` with a plain reason ("3 scoops max", "Payment is in progress on the kiosk", "Chocolate is sold out", "That item is no longer in the order"), or `duplicate` for an id it already handled (it remembers the last 500); a copy that arrives while the original is still queued or playing is ignored. `streams` reports, per stream, the highest `seq` received with nothing missing below it (`received`), the highest one finished (`done`) and how many are still to play (`waiting`).
+
+**Staff page.** The page keeps its unacknowledged commands in order and shows the projected cart: the kiosk's last session with those commands applied by the kiosk's rules (prices per item: 1 scoop $4, 2 scoops $7, 3 scoops $9, a waffle cone +$1.50, each topping +$0.50; at most 3 scoops; sold-out supplies refused; toppings need a scoop). A tap the projection would refuse isn't sent. On every session it drops commands that appear in `results` or are at or below the stream's `done`; a refused one is dropped together with every pending command that depends on it, the view snaps to the kiosk's truth plus what is still pending, and a short notice says what didn't happen and why. While commands are pending it shows "N changes playing on the kiosk". It resends, in order and batched, every command above the stream's `received` after 3 s and on every reconnect, gives up with a notice when the kiosk hasn't received a command for 20 s or hasn't finished for 90 s, and never resends one the kiosk has received. Commands are relative ("add a vanilla scoop"), so a customer tapping on the kiosk during assist simply lands between staff commands and every page converges on the kiosk's next session. Payment always locks assist: while `paying` the kiosk refuses every command and the page disables editing. Kiosk apps from before ordering fields ignore them and apply commands in arrival order.
 
 ## Kiosk events: `POST /v1/events` (kiosk)
 

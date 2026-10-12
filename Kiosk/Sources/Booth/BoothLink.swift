@@ -143,6 +143,18 @@ final class BoothLink {
         Task { await outbox.enqueueHelp(reason: reason.rawValue, message: message) }
     }
 
+    func checkStaffPin(_ pin: String) async -> Bool {
+        struct StaffSession: Decodable { let token: String }
+        guard let api else { return false }
+        do {
+            let _: StaffSession = try await api.post("/v1/staff/session", ["pin": pin])
+            return true
+        } catch {
+            log("Booth: staff PIN check failed (\((error as? BoothError)?.summary ?? error.localizedDescription))")
+            return false
+        }
+    }
+
     func paymentFailed(_ problem: PaymentProblem) {
         requestHelp(.paymentFailed, message: "Payment failed: \(problem.title)")
     }

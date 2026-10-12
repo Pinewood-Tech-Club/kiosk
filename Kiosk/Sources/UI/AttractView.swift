@@ -62,8 +62,10 @@ struct AttractView: View {
             SecureField("PIN", text: $pin)
                 .keyboardType(.numberPad)
             Button("Unlock") {
-                guard !app.unlockDebugBar(pin: pin) else { return }
+                let entered = pin
                 Task {
+                    let unlocked = await app.unlockDebugBar(pin: entered)
+                    guard !unlocked else { return }
                     try? await Task.sleep(for: .seconds(0.5))
                     askForPin(rejected: true)
                 }

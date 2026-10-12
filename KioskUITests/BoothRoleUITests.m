@@ -270,6 +270,50 @@
     XCTAssertTrue([self waitForAbsence:app.buttons[@"Log"] timeout:10]);
 }
 
+- (void)unlockWithPin:(NSString *)pin in:(XCUIApplication *)app {
+    XCUICoordinate *corner = [app coordinateWithNormalizedOffset:CGVectorMake(0.03, 0.03)];
+    [corner pressForDuration:3.5];
+    XCUIElement *alert = app.alerts[@"Staff tools"];
+    XCTAssertTrue([alert waitForExistenceWithTimeout:10]);
+    XCUIElement *field = alert.secureTextFields.firstMatch;
+    [field tap];
+    [field typeText:pin];
+    [alert.buttons[@"Unlock"] tap];
+}
+
+- (void)testStaffPinUnlocksTheDebugBarWithTheBooth {
+    NSString *boothPin = NSProcessInfo.processInfo.environment[@"BOOTH_TEST_STAFF_PIN"];
+    XCTSkipUnless([self hasBooth] && boothPin.length, @"Also set TEST_RUNNER_BOOTH_TEST_STAFF_PIN to the booth's staff PIN");
+    NSString *name = [@"UI pin " stringByAppendingString:[NSUUID.UUID.UUIDString substringToIndex:6]];
+    NSString *localPin = [boothPin isEqualToString:@"2468"] ? @"1357" : @"2468";
+    XCUIApplication *app = [[XCUIApplication alloc] init];
+    app.launchArguments = @[@"-kioskRole", @"kiosk", @"-boothURL", self.boothURL, @"-boothToken", self.kioskToken,
+                            @"-kioskNoSquare", @"YES", @"-kioskName", name, @"-kioskStaffPin", localPin,
+                            @"-kioskStaffPinHash", @"", @"-boothKioskDebug", @"NO", @"-boothKioskOpen", @"YES"];
+    [app launch];
+    XCTAssertTrue([app.buttons[@"Begin Order"] waitForExistenceWithTimeout:90]);
+    NSDictionary *kiosk = [self waitForKioskNamed:name matching:^BOOL(NSDictionary *k) { return [k[@"connected"] boolValue]; }];
+    XCTAssertNotNil(kiosk);
+    NSString *kioskID = kiosk[@"id"];
+    XCTAssertFalse([kiosk[@"debug"] boolValue]);
+    XCTAssertFalse(app.buttons[@"Log"].exists);
+
+    [self unlockWithPin:boothPin in:app];
+    XCTAssertTrue([app.buttons[@"Log"] waitForExistenceWithTimeout:20], @"the booth's staff PIN unlocks while the booth is reachable");
+    [self keepScreenshot:@"debug-bar-unlocked-online"];
+    [app.buttons[@"Hide"] tap];
+    XCTAssertTrue([self waitForAbsence:app.buttons[@"Log"] timeout:10]);
+
+    [self unlockWithPin:localPin in:app];
+    XCTAssertTrue([app.buttons[@"Log"] waitForExistenceWithTimeout:10], @"the kiosk's own PIN works with the booth reachable too");
+    [app.buttons[@"Hide"] tap];
+    XCTAssertTrue([self waitForAbsence:app.buttons[@"Log"] timeout:10]);
+    XCTAssertFalse([[self kioskNamed:name][@"debug"] boolValue], @"unlocking on the kiosk doesn't change the staff switch");
+
+    [app terminate];
+    [self act:@{@"type": @"removeKiosk", @"kiosk": kioskID}];
+}
+
 - (NSURLSessionWebSocketTask *)openStaffSocket {
     NSString *url = [[self.boothURL stringByReplacingOccurrencesOfString:@"http" withString:@"ws" options:NSAnchoredSearch range:NSMakeRange(0, self.boothURL.length)]
                      stringByAppendingString:@"/v1/ws"];

@@ -1,3 +1,4 @@
+import CryptoKit
 import Observation
 import SwiftUI
 
@@ -253,11 +254,34 @@ final class AppModel {
         debugBarOverride ?? ((booth.debugEnabled || debugBarUnlocked || !booth.isEnabled) && !debugBarDismissed)
     }
 
-    var canUnlockDebugBar: Bool { Config.staffPin != nil }
+    private static let staffPinHashKey = "kioskStaffPinHash"
 
-    func unlockDebugBar(pin: String) -> Bool {
-        guard let expected = Config.staffPin, pin.trimmingCharacters(in: .whitespaces) == expected else { return false }
-        square.record("Debug bar unlocked with the staff PIN")
+    var canUnlockDebugBar: Bool {
+        Config.staffPin != nil || booth.isEnabled || UserDefaults.standard.string(forKey: Self.staffPinHashKey) != nil
+    }
+
+    private static func staffPinHash(_ pin: String) -> String {
+        SHA256.hash(data: Data("kiosk-staff-pin:\(pin)".utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Checks the PIN on the iPad first (`KIOSK_STAFF_PIN`, or the last PIN the booth accepted), so it works without the
+    /// booth, then asks the booth.
+    func unlockDebugBar(pin: String) async -> Bool {
+        let entered = pin.trimmingCharacters(in: .whitespaces)
+        guard !entered.isEmpty else { return false }
+        let hash = Self.staffPinHash(entered)
+        var source = "the staff PIN"
+        var accepted = entered == Config.staffPin || hash == UserDefaults.standard.string(forKey: Self.staffPinHashKey)
+        if !accepted, await booth.checkStaffPin(entered) {
+            accepted = true
+            source = "the booth's staff PIN"
+            UserDefaults.standard.set(hash, forKey: Self.staffPinHashKey)
+        }
+        guard accepted else {
+            square.record("Debug bar unlock refused: wrong PIN")
+            return false
+        }
+        square.record("Debug bar unlocked with \(source)")
         debugBarOverride = nil
         debugBarUnlocked = true
         debugBarDismissed = false
@@ -265,6 +289,7 @@ final class AppModel {
     }
 
     func hideDebugBar() {
+        square.record("Debug bar hidden on the kiosk")
         debugBarOverride = nil
         debugBarUnlocked = false
         debugBarDismissed = true
