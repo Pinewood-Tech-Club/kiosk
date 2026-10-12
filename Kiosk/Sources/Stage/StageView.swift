@@ -4,6 +4,7 @@ import SwiftUI
 
 struct StageView: View {
     let stage: Stage
+    var clipsTray = true
 
     var body: some View {
         RealityView { content in
@@ -13,7 +14,7 @@ struct StageView: View {
         }
         .mask {
             ZStack {
-                StageClip().fill(style: FillStyle(eoFill: true))
+                StageClip(isActive: clipsTray).fill(style: FillStyle(eoFill: true))
                 CarouselEdgeFade()
                     .frame(width: Layout.toppingCarouselRect.width, height: Layout.toppingCarouselRect.height)
                     .position(x: Layout.toppingCarouselRect.midX, y: Layout.toppingCarouselRect.midY)
@@ -39,8 +40,11 @@ enum TrayClip {
 /// Where the stage may draw: everywhere but the tray's band (except its item area, see `TrayClip`) and the
 /// toppings carousel's band, which `CarouselEdgeFade` fills back in.
 struct StageClip: Shape {
+    var isActive = true
+
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
+        guard isActive else { return path }
         let glass = Layout.trayGlassRect
         path.addRect(CGRect(x: rect.minX, y: glass.minY, width: rect.width, height: rect.maxY - glass.minY))
         path.addPath(TrayClip.itemsShape.path(in: TrayClip.itemsArea))

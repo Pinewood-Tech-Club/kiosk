@@ -484,9 +484,11 @@ extension Stage {
     }
 
     func reset() {
+        attract = nil
+        staging = .builder
         for tween in tweens { tween.cancel() }
         tweens.removeAll()
-        for rig in heroes.values { discard(rig) }
+        for rig in Array(heroes.values) + leavingRigs { discard(rig) }
         heroes.removeAll()
         for scoop in scoops { discard(scoop) }
         scoops.removeAll()

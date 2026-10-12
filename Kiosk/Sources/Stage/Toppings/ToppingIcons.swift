@@ -162,7 +162,14 @@ extension Stage {
 
     /// The card icon's position in `rig`'s body space, live.
     func toppingLaunch(_ topping: Topping, onto rig: ItemRig) -> ToppingLaunch {
-        ToppingLaunch(point: { [weak self, weak rig] in
+        if staging.offscreenCards {
+            return ToppingLaunch(point: { [weak self, weak rig] in
+                guard let self, let rig else { return .zero }
+                let local = simd_inverse(rig.body.transformMatrix(relativeTo: nil)) * SIMD4<Float>(self.toppingPort(topping), 1)
+                return [local.x, local.y, local.z]
+            }, icon: nil)
+        }
+        return ToppingLaunch(point: { [weak self, weak rig] in
             guard let self, let rig else { return .zero }
             let world = self.toppingIconPlacement(topping).position
             let local = simd_inverse(rig.body.transformMatrix(relativeTo: nil)) * SIMD4<Float>(world, 1)

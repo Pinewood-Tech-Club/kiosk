@@ -1,22 +1,32 @@
-import AVFoundation
 import SwiftUI
 
-/// Stays in the view tree for the app's lifetime so the video is already decoded when the screen fades
-/// in; it only plays while visible.
+/// The photos behind the attract screen's item; while the stage plays the attract scene they sit beneath it
+/// (`RootView`), otherwise they cover it like any other screen.
+struct AttractBackdrop: View {
+    var isActive: Bool
+
+    var body: some View {
+        ZStack {
+            RadialGradient(colors: [Theme.surface, Theme.background], center: UnitPoint(x: 0.5, y: 0.44),
+                           startRadius: 0, endRadius: 760)
+            PhotoColumns(isActive: isActive)
+        }
+        .frame(width: Layout.screen.width, height: Layout.screen.height)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
 struct AttractView: View {
     let app: AppModel
-    var isActive = true
     @State private var showsButton = false
-    @State private var playing = false
-    @State private var pauseTask: Task<Void, Never>?
     @State private var asksForPin = false
     @State private var pin = ""
     @State private var pinRejected = false
 
     var body: some View {
         ZStack {
-            Color.black
-            LoopingVideoView(url: Bundle.main.url(forResource: "loop", withExtension: "mp4"), isPlaying: playing)
+            Color.clear
 
             GlassEffectContainer {
                 if app.assetsFailed {
@@ -64,17 +74,6 @@ struct AttractView: View {
         }
         .onChange(of: app.stageReady, initial: true) { _, ready in
             withAnimation(.smooth(duration: 0.8)) { showsButton = ready }
-        }
-        .onChange(of: isActive, initial: true) { _, active in
-            pauseTask?.cancel()
-            if active {
-                playing = true
-            } else {
-                pauseTask = Task {
-                    try? await Task.sleep(for: .seconds(0.6))
-                    if !Task.isCancelled { playing = false }
-                }
-            }
         }
     }
 }
@@ -138,53 +137,6 @@ private struct BeginOrderButton: View {
         } animation: { _ in
             .easeInOut(duration: 1.8)
         }
-    }
-}
-
-struct LoopingVideoView: UIViewRepresentable {
-    let url: URL?
-    var isPlaying = true
-
-    func makeUIView(context: Context) -> PlayerView {
-        let view = PlayerView()
-        view.playerLayer.videoGravity = .resizeAspectFill
-        view.backgroundColor = .black
-        if let url {
-            let item = AVPlayerItem(url: url)
-            let player = AVQueuePlayer()
-            player.isMuted = true
-            player.preventsDisplaySleepDuringVideoPlayback = true
-            context.coordinator.looper = AVPlayerLooper(player: player, templateItem: item)
-            view.playerLayer.player = player
-            if isPlaying { player.play() }
-        }
-        return view
-    }
-
-    func updateUIView(_ uiView: PlayerView, context: Context) {
-        guard let player = uiView.playerLayer.player else { return }
-        if isPlaying, player.rate == 0 {
-            player.play()
-        } else if !isPlaying, player.rate != 0 {
-            player.pause()
-        }
-    }
-
-    static func dismantleUIView(_ uiView: PlayerView, coordinator: Coordinator) {
-        uiView.playerLayer.player?.pause()
-        coordinator.looper?.disableLooping()
-        coordinator.looper = nil
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator {
-        var looper: AVPlayerLooper?
-    }
-
-    final class PlayerView: UIView {
-        override class var layerClass: AnyClass { AVPlayerLayer.self }
-        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
     }
 }
 
