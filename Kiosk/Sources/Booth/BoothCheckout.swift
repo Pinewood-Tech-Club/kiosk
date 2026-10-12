@@ -81,15 +81,8 @@ final class BoothCheckoutClient {
     func createOrder(quote: OrderQuote, customerName: String, orderNumber: Int, checkout: CheckoutIdentity, locationID: String,
                      sourceName: String) async -> SquareAPI.CreatedOrder? {
         guard Date() >= skipUntil else { return nil }
-        let request = CheckoutRequest(
-            id: checkout.id, receiptToken: checkout.receiptToken, orderNumber: orderNumber, orderRef: checkout.orderRef,
-            customerName: customerName,
-            sourceName: sourceName, locationId: locationID, quotedCents: quote.totalCents,
-            items: quote.lines.map {
-                CheckoutRequest.Item(vessel: $0.item.vessel.rawValue, flavors: $0.item.flavors.map(\.rawValue),
-                                     toppings: $0.item.toppings.map(\.rawValue))
-            }
-        )
+        let request = Self.request(quote: quote, customerName: customerName, orderNumber: orderNumber, checkout: checkout,
+                                   locationID: locationID, sourceName: sourceName)
         let api = api
         let started = Date()
         let outcome: Result<CheckoutResponse, Error>? = await withTaskGroup(of: Result<CheckoutResponse, Error>?.self) { group in
@@ -113,13 +106,7 @@ final class BoothCheckoutClient {
         switch outcome {
         case .success(let response) where response.locationId == locationID:
             log("Booth checkout: order \(response.squareOrderId) \(response.status) in \(elapsed) ms (\(response.usedCatalog ? "catalog" : "ad-hoc: \(response.catalogError ?? "no catalog")"))")
-            return SquareAPI.CreatedOrder(
-                id: response.squareOrderId, totalCents: response.totalCents, taxCents: response.taxCents,
-                lines: response.lines.map {
-                    Receipt.Line(title: $0.title, detail: $0.detail, quantity: $0.quantity, baseCents: $0.baseCents, cents: $0.cents)
-                },
-                usedCatalog: response.usedCatalog
-            )
+            return response.order
         case .success(let response):
             log("Booth checkout: server used location \(response.locationId), not \(locationID); creating the order on the device")
         case .failure(let error):
@@ -129,5 +116,45 @@ final class BoothCheckoutClient {
         }
         skipUntil = Date().addingTimeInterval(Self.skipAfterFailure)
         return nil
+    }
+
+    /// Gift cards are charged against the server's own record of the checkout, so unlike `createOrder` there is no
+    /// device fallback and no shortcut past a recently failed backend.
+    @MainActor
+    func createServerOrder(quote: OrderQuote, customerName: String, orderNumber: Int, checkout: CheckoutIdentity,
+                           locationID: String, sourceName: String) async throws -> SquareAPI.CreatedOrder {
+        let request = Self.request(quote: quote, customerName: customerName, orderNumber: orderNumber, checkout: checkout,
+                                   locationID: locationID, sourceName: sourceName)
+        let response: CheckoutResponse = try await api.post("/v1/checkout", request)
+        guard response.locationId == locationID else {
+            throw BoothError.badResponse("server used location \(response.locationId), not \(locationID)")
+        }
+        log("Booth checkout: order \(response.squareOrderId) \(response.status) for a gift card payment")
+        return response.order
+    }
+
+    private static func request(quote: OrderQuote, customerName: String, orderNumber: Int, checkout: CheckoutIdentity,
+                                locationID: String, sourceName: String) -> CheckoutRequest {
+        CheckoutRequest(
+            id: checkout.id, receiptToken: checkout.receiptToken, orderNumber: orderNumber, orderRef: checkout.orderRef,
+            customerName: customerName,
+            sourceName: sourceName, locationId: locationID, quotedCents: quote.totalCents,
+            items: quote.lines.map {
+                CheckoutRequest.Item(vessel: $0.item.vessel.rawValue, flavors: $0.item.flavors.map(\.rawValue),
+                                     toppings: $0.item.toppings.map(\.rawValue))
+            }
+        )
+    }
+}
+
+private extension CheckoutResponse {
+    var order: SquareAPI.CreatedOrder {
+        SquareAPI.CreatedOrder(
+            id: squareOrderId, totalCents: totalCents, taxCents: taxCents,
+            lines: lines.map {
+                Receipt.Line(title: $0.title, detail: $0.detail, quantity: $0.quantity, baseCents: $0.baseCents, cents: $0.cents)
+            },
+            usedCatalog: usedCatalog
+        )
     }
 }

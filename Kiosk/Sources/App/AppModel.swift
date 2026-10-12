@@ -7,6 +7,7 @@ final class AppModel {
     enum Screen: Equatable { case roleSetup, attract, builder, name, confirmation, staff }
     enum DeviceRole: String { case kiosk, staff }
     enum BuilderMode: Equatable { case customize, summary }
+    enum PaymentMethod: Equatable { case card, giftCard }
 
     struct Notice: Equatable {
         let title: String
@@ -80,6 +81,9 @@ final class AppModel {
     var receipt: Receipt?
     var customerName = ""
     private(set) var isPaying = false
+    var paymentMethod: PaymentMethod = .card
+    /// While set, the name screen shows the gift card flow in place of name entry.
+    var giftCard: GiftCardCheckout?
 
     private var debugBarOverride: Bool?
     private var debugBarDismissed = false
@@ -296,6 +300,10 @@ final class AppModel {
         notice = nil
         receipt = nil
         customerName = ""
+        let abandoned = giftCard
+        giftCard = nil
+        abandoned?.leave()
+        paymentMethod = .card
         stage.reset()
     }
 
@@ -609,9 +617,11 @@ final class AppModel {
         endSheetDrag(translation: pulled, predicted: pulled, velocity: 0)
     }
 
-    func completeOrder() {
+    func completeOrder(with method: PaymentMethod = .card) {
         guard !items.isEmpty, !isPullingSheet else { return }
-        booth.checkReaderBeforePayment()
+        paymentMethod = method
+        giftCard = nil
+        if method == .card { booth.checkReaderBeforePayment() }
         notice = nil
         withAnimation(.easeInOut(duration: 0.4)) { screen = .name }
     }
@@ -621,7 +631,7 @@ final class AppModel {
         withAnimation(.easeInOut(duration: 0.4)) { screen = .builder }
     }
 
-    private func nextOrderNumber() -> Int {
+    func nextOrderNumber() -> Int {
         let defaults = UserDefaults.standard
         let number = defaults.integer(forKey: "orderCounter") + 1
         defaults.set(number, forKey: "orderCounter")
@@ -631,6 +641,10 @@ final class AppModel {
     func submitName() {
         let name = customerName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !isPaying, !items.isEmpty else { return }
+        if paymentMethod == .giftCard {
+            startGiftCard(name: name)
+            return
+        }
         isPaying = true
         booth.checkReaderBeforePayment()
         let quote = orderQuote
@@ -697,6 +711,16 @@ final class AppModel {
                 mode = .summary
                 builderVisible = true
                 screen = .name
+            case "giftcard":
+                current = freshItem()
+                step = .vessel
+                stage.restore(current: current, items: items, step: .vessel, summary: true)
+                mode = .summary
+                builderVisible = true
+                screen = .name
+                paymentMethod = .giftCard
+                if customerName.isEmpty { customerName = "Alex" }
+                startGiftCard(name: customerName)
             case "confirmation":
                 stage.restore(current: nil, items: items, step: .vessel, summary: true)
                 stage.enterReceipt()

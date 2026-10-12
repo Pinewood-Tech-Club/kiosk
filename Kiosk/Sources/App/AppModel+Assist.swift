@@ -31,7 +31,7 @@ extension AppModel {
             break
         }
         return AssistSession(screen: screenName, step: stepName, editing: screen == .builder && mode == .customize && isEditing,
-                             items: lines, customerName: customerName, totalCents: total, paying: isPaying,
+                             items: lines, customerName: customerName, totalCents: total, paying: isPaying || giftCard != nil,
                              orderingOpen: orderingOpen, assisted: assisted, maxScoops: Pricing.maxScoopsPerItem, results: results)
     }
 
@@ -42,7 +42,7 @@ extension AppModel {
 
     func applyAssist(_ op: AssistCommand.Op) async -> AssistOutcome {
         guard role == .kiosk else { return .rejected("This iPad isn't running as a kiosk") }
-        guard !isPaying else { return .rejected("Payment is in progress on the kiosk") }
+        guard !isPaying, giftCard == nil else { return .rejected("Payment is in progress on the kiosk") }
         switch op {
         case .unsupported(let reason):
             return .rejected(reason)

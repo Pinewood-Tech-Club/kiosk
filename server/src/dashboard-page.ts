@@ -263,6 +263,7 @@ dialog.sheet{width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);o
 .field{font:inherit;font-size:21px;border:0;background:none;color:var(--label);flex:1;min-width:0;height:44px}
 .field:focus,.field:focus-visible{outline:none}
 dialog.assist{width:100vw;height:100vh;max-width:100vw;max-height:100vh;margin:0;padding:0;border-radius:0;background:var(--bg);box-shadow:none;overflow:auto;overscroll-behavior:contain;-webkit-backdrop-filter:none;backdrop-filter:none}
+dialog.assist:focus,dialog.assist:focus-visible{outline:none}
 dialog.assist[open]{animation:rise .32s cubic-bezier(.2,.9,.3,1)}
 @keyframes rise{from{transform:translateY(36px);opacity:0}}
 .assist-page{max-width:1032px;margin:0 auto;padding:env(safe-area-inset-top) max(40px,env(safe-area-inset-right)) calc(72px + env(safe-area-inset-bottom)) max(40px,env(safe-area-inset-left))}
