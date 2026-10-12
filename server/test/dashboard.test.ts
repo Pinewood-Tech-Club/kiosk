@@ -124,7 +124,7 @@ describe("dashboard page", () => {
     expect(script).toContain("function pjProject(");
     const rows = /function renderKiosks\(\)\{[\s\S]*?\n\}/.exec(script)![0];
     expect(rows).toContain('<div class="cell kcell krow"><button class="kopen" type="button" data-kiosk="');
-    expect(rows).toContain('<button class="switch" role="switch" type="button" data-kdebug="');
+    expect(rows).toContain('<div class="kdbg"><span class="kdbg-l" aria-hidden="true">Debug tools</span><button class="switch" role="switch" type="button" data-kdebug="');
     expect(rows).toMatch(/if\(READONLY\)return [^;]*Debug tools on|READONLY&&debug\?'<div class="sub warn">Debug tools on/);
     expect(script).toContain('send({type:"assist",kiosk:assistKiosk,by:ACTOR})');
     expect(text).not.toMatch(/\u2014/);
