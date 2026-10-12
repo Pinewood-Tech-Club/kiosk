@@ -11,6 +11,7 @@ import {
   type ItemResult,
   type KioskState,
   type OrderSummary,
+  type KioskOpen,
   type Role,
   type ServerMessage,
   type Severity,
@@ -437,7 +438,9 @@ export class Booth extends DurableObject<Env> {
           ? this.ack(action.alertId, action.by ?? null, now)
           : action.type === "setSoldOut"
             ? this.setSoldOut(action.flavor, action.soldOut, action.by ?? null, now)
-            : this.setOrderStatus(action.orderId, action.status, action.by ?? null, now);
+            : action.type === "setKioskOpen"
+              ? this.setKioskOpen(action.open, action.by ?? null, now)
+              : this.setOrderStatus(action.orderId, action.status, action.by ?? null, now);
         const stored: ItemResult = error ? { id: action.id, status: "rejected", error } : { id: action.id, status: "ok" };
         this.sql.exec("INSERT INTO processed (device, id, result, at) VALUES (?, ?, ?, ?)", device, action.id, JSON.stringify(stored), now);
         return stored;
@@ -632,7 +635,7 @@ export class Booth extends DurableObject<Env> {
       )
       .toArray()
       .map((row) => JSON.parse(row.data) as OrderSummary);
-    return { rev: this.rev(), flavors: this.flavors(), kiosk: this.kiosk(), alerts, orders, serverTime: now };
+    return { rev: this.rev(), kioskOpen: this.kioskOpen(), flavors: this.flavors(), kiosk: this.kiosk(), alerts, orders, serverTime: now };
   }
 
   private rev(): number {
@@ -729,6 +732,18 @@ export class Booth extends DurableObject<Env> {
   private setKiosk(kiosk: KioskState) {
     this.putMeta("kiosk", kiosk);
     this.commit({ kind: "kiosk", kiosk });
+  }
+
+  private kioskOpen(): KioskOpen {
+    return this.getMeta<KioskOpen>("kioskOpen") ?? { open: true, changedAt: null, changedBy: null };
+  }
+
+  private setKioskOpen(open: boolean, by: string | null, now: number): ApiError | null {
+    if (this.kioskOpen().open === open) return null;
+    const kioskOpen: KioskOpen = { open, changedAt: now, changedBy: by };
+    this.putMeta("kioskOpen", kioskOpen);
+    this.commit({ kind: "kioskOpen", kioskOpen });
+    return null;
   }
 
   private flavorList(): { id: string; name: string }[] {

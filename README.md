@@ -13,16 +13,16 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
    - `SQUARE_ACCESS_TOKEN`, `SQUARE_LOCATION_ID`: a dev fallback only. The kiosk gets its access token and location from the [backend](#square-oauth-and-checkout) and keeps the last ones in the Keychain; the bundled pair is used only until it has reached the backend once.
    - `SQUARE_CATEGORY_NAME`: the catalog category holding the *1 Scoop*, *2nd Scoop*, *3rd+ Scoop*, *Waffle Cone* and *Topping* items (one fixed-price variation each). If it's missing or its prices don't match the kiosk's, orders fall back to ad-hoc line items and the debug bar shows the error.
    - `KIOSK_EVENT_NAME`, shown on the receipt screen.
-   - `BOOTH_URL` and `BOOTH_TOKEN` for the [backend](#backend). `BOOTH_URL` is a bare host (`techclub-icecream.adamxu.workers.dev`) because `//` starts a comment in an xcconfig. Leave them empty to run without the backend; the kiosk works the same either way (with the bundled Square token).
-   - Staff iPad only: `KIOSK_ROLE = staff` skips role setup and opens the staff screen; `BOOTH_STAFF_TOKEN` is the staff token it connects with (a staff session from a PIN sign-in, kept in the Keychain, also works).
+   - `BOOTH_URL` and `BOOTH_TOKEN` for the [backend](#backend). `BOOTH_URL` is a bare host (`kiosk.jamboree.techclub.pw`) because `//` starts a comment in an xcconfig. Leave them empty to run without the backend; the kiosk works the same either way (with the bundled Square token).
+   - Staff iPads only: `KIOSK_ROLE = staff` skips role setup and opens the [staff page](#staff-pages) `STAFF_PAGE` (`scooper` or `toppings`; empty means `scooper`). With `BOOTH_STAFF_TOKEN` set it signs in by itself; without it the page asks for the staff PIN.
 3. `xcodegen generate` (the project is generated from `project.yml`; rerun after adding source files), open `Kiosk.xcodeproj`, pick the iPad, Run. Debug builds are compiled optimized (`-O`): the topping simulation is about 40 times slower without it.
 
 `Kiosk/Resources/3D/` is a folder reference, so new or updated 3D assets are bundled without regenerating the project (do a clean build if Xcode misses a change). The Metal morph kernel is compiled at launch, so the separate Metal toolchain download isn't needed.
 
 ## Flow
 
-1. **Role setup** (every launch, unless `KIOSK_ROLE` or `-kioskRole` picks one): *Start Kiosk* or *Staff*. Square and the kiosk's backend link start only when the kiosk role is chosen, so a staff iPad never reports itself as the kiosk; once the kiosk has started, switching this iPad to staff needs a relaunch. *Staff* opens a placeholder `StaffView` connected to the hub in the staff role.
-2. **Attract**: looping `loop.mp4`. *Begin Order* appears once every 3D asset is preloaded; tapping anywhere starts an order.
+1. **Role setup** (every launch, unless `KIOSK_ROLE` or `-kioskRole` picks one): *Start Kiosk* or *Staff*. Square and the kiosk's backend link start only when the kiosk role is chosen, so a staff iPad never reports itself as the kiosk; once the kiosk has started, switching this iPad to staff needs a relaunch. *Staff* opens the [staff page](#staff-pages).
+2. **Attract**: looping `loop.mp4`. *Begin Order* appears once every 3D asset is preloaded; tapping anywhere starts an order. While staff have closed the kiosk, the video keeps looping but *Begin Order* is a dimmed *Closed* button and taps do nothing; a customer already ordering is never interrupted. The last known open/closed state is kept across relaunches and while the backend is unreachable.
 3. **Builder** (one RealityView behind the SwiftUI controls holds every 3D object):
    - *Vessel*: Cup (included) or Waffle Cone (+$1.50). Selecting flies the new vessel out of its icon while the old one spins back into its slot. Drag the item to orbit it; it eases back and resumes spinning.
    - *Flavors*: tap a flavor to fling a scoop onto the item (up to 3); each card shows what the next scoop costs. The card's minus button takes one of that flavor back off.
@@ -32,7 +32,7 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
 4. **Your order**: *View Order* grows the tray's glass into a sheet over the builder; each item's 3D model rides up from its tray slot into its row, with edit (pencil) and remove (trash) buttons. Below are the total and *Check Out*. *Keep ordering*, or pulling the sheet down, folds it back into the tray with the items riding back into their slots, revealing a fresh builder that was set up while the sheet covered it.
 5. **Name**: the name becomes the Square order's ticket name and pickup recipient.
 6. **Payment**: generates a checkout id and an unguessable receipt token on the kiosk, asks the backend to create the Square order (3.5 s budget, then the kiosk does it itself, and skips the backend for a minute), or creates a Square order from the catalog on the device (one line per scoop, priced by its position in the whole order, plus one line per waffle cone and one per topping; taxes auto-applied by Square), then `startPayment` for Square's total with Square's default payment screen. Once a card touches the reader, Square's own screens take over (PIN, processing, declines, low gift card balances, card read errors, with retry or cancel). On failure the customer returns to their order and an alert explains in plain words what happened and what to do (copy lives in `PaymentProblem.swift`; the technical error goes to the log); a cancel just returns them to it.
-7. **Confirmation**: an itemized receipt of what Square charged, a prompt to photograph it, and *New Order*. Returns to the attract screen after 10 s without a touch.
+7. **Confirmation**: an itemized receipt of what Square charged, a QR code to the digital receipt page ("Scan for your receipt"), and *New Order*. Returns to the attract screen after 30 s without a touch (10 s when there is no QR code because BOOTH_URL is unset).
 
 Pricing: scoops are priced by their position in the whole order: the first is $4, the second $3, and every one after that $2 (so 1 → $4, 2 → $7, 3 → $9). Waffle cones are $1.50 each, and toppings $0.50 each.
 
@@ -55,6 +55,7 @@ Pass in the scheme or with `xcrun simctl launch <udid> com.adamxu.kiosk -kioskSc
 | Argument | Effect |
 | --- | --- |
 | `-kioskRole kiosk\|staff` | Skip role setup. |
+| `-staffPage scooper\|toppings` | Override `STAFF_PAGE` (any role page name works). |
 | `-boothURL <url>`, `-boothToken <token>`, `-boothStaffToken <token>` | Override `BOOTH_URL`, `BOOTH_TOKEN`, `BOOTH_STAFF_TOKEN`. |
 | `-kioskScreen attract\|builder\|summary\|name\|confirmation` | Open a screen directly. |
 | `-kioskStep vessel\|flavors\|toppings` | Builder step (implies `builder`). |
@@ -85,6 +86,32 @@ Example: `xcrun simctl launch booted com.adamxu.kiosk -kioskCurrent cup -kioskSt
 xcodebuild test -project Kiosk.xcodeproj -scheme Kiosk -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
 ```
 
+`StaffUITests` launches the staff role against an unreachable booth and checks the native *Can't reach the booth* screen. The staff pages themselves are web pages, tested in `server/test` and in a browser (see [Staff pages](#staff-pages)).
+
+## Staff pages
+
+All staff tooling is the web dashboard served by the backend. Two people work the booth, each with an iPad, and laptops show read-only status displays. Each role has its own page at `/staff/<role>`; `/staff` (and the old `/dashboard`) is a picker. Pages are listed in `server/src/staff-roles.ts`: a role is a title, whether it is an iPad or a read-only display, how prominent alerts are, and its columns of sections, so adding one is a single entry there.
+
+| Page | For | Shows |
+| --- | --- | --- |
+| `/staff/scooper` | Scooper + supplies iPad | Make list (oldest first; customer name and each cup or cone with its flavors in large type, toppings in small type) with *Start* (paid to preparing) and *Done* (to ready); open/close the kiosk; flavor sold-out toggles; alerts in a compact list without sound. |
+| `/staff/toppings` | Toppings + customer service iPad | Help and other urgent alerts front and center with *Acknowledge* and a chime; orders ready to hand off and coming up, each item's toppings in large type; *Handed off* (to collected), *Cancel*, *Reopen* for finished ones; open/close the kiosk; kiosk health; sold-out toggles. |
+| `/staff/organizer` | Laptop display | Read-only: today's stats, the order feed, whether the kiosk is open, kiosk health, sold-out state and open alerts. |
+| `/staff/board` | Laptop display | Read-only: orders being made and ready for pickup in large type. |
+
+On the iPads the app's staff role is a full-screen web view of `BOOTH_URL/staff/STAFF_PAGE` (no browser chrome, zoom or pull-to-refresh, screen kept awake, sound allowed without a tap). With `BOOTH_STAFF_TOKEN` configured it trades the token for a staff session (`POST /v1/staff/session`) and puts it in the web view's cookie store as `booth_staff`, so nobody types the PIN. If the page can't load it shows a native *Can't reach the booth* screen with *Retry now* and retries with backoff. In a browser the pages ask for the staff PIN once.
+
+Behavior shared by every page:
+
+- **Confirmations**: anything customers can see asks first in a large in-page dialog that says what will happen: marking a flavor sold out or available again, closing or reopening the kiosk, and cancelling an order. Acknowledging an alert and moving an order along don't.
+- **Offline-proof actions**: every change goes into a queue in `localStorage` with its own id and a per-browser device id (`X-Booth-Device`), shows at once, and is sent oldest first as soon as the booth is reachable, including after a reload or relaunch. A newer change to the same flavor, order or open state replaces an unsent older one. Unsent changes older than an hour are dropped with a notice.
+- **Connection**: *Live*, *Connecting* or *Offline since 2:41 PM*, with a banner saying how many changes are waiting.
+- **Sound**: new urgent alerts chime on the toppings page and repeat every 30 s until acknowledged, only in the app's web view. In a browser the pages are silent.
+- **Undo**: status changes show a toast with *Undo* for a few seconds.
+- **Unattended displays**: pages renew their session cookie (`POST /dashboard/renew`) every 30 minutes, so a display left running never falls back to the PIN prompt.
+
+Not modeled yet: cups, cones and toppings can't be marked out of stock (only flavors), because the kiosk has no way to hide them.
+
 ## Testing payments
 
 - **Simulator**: the sandbox mock reader works here too: tap **Mock Reader**, add a *Contactless & Chip* reader, check out, then *Tap Card* or *Insert Card*. Or use *Simulate payment success*.
@@ -95,33 +122,33 @@ Square blocks payments while the screen is recorded or mirrored; the kiosk check
 
 ## Backend
 
-`server/` is a Cloudflare Worker (TypeScript, pnpm): an HTTP API, one websocket hub, the Square connection, and a few browser pages (receipts, the staff dashboard). The kiosk reports to it, and the toppings person uses another iPad running this app in the staff role. The wire protocol, including auth, versioning, ordering, idempotency and every route, is in [`server/PROTOCOL.md`](server/PROTOCOL.md).
+`server/` is a Cloudflare Worker (TypeScript, pnpm): an HTTP API, one websocket hub, the Square connection, and a few browser pages (receipts, the [staff pages](#staff-pages)). The kiosk reports to it; staff use the staff pages on iPads running this app in the staff role and on laptops. The wire protocol, including auth, versioning, ordering, idempotency and every route, is in [`server/PROTOCOL.md`](server/PROTOCOL.md).
 
 Each feature lives in its own module and exports its routes; `src/index.ts` only concatenates the route tables:
 
 | Module | Routes |
 | --- | --- |
 | `index.ts` | `/v1/health`, `/v1/ws`, `/v1/state`, `/v1/events`, `/v1/actions`; the cron |
-| `booth.ts` | The hub Durable Object: alerts, sold out, kiosk health, order feed |
+| `booth.ts` | The hub Durable Object: alerts, sold out, kiosk open/closed, kiosk health, order feed |
 | `orders.ts`, `logs.ts` | `/v1/orders`, `/v1/logs` |
 | `oauth.ts`, `square.ts`, `catalog.ts` | `/v1/square/*`: OAuth, status, refresh, revoke, kiosk credentials; Square HTTP; catalog cache |
 | `checkout.ts`, `pricing.ts` | `/v1/checkout`: server-priced Square order creation |
-| `receipts.ts` | `/r/<token>` (placeholder) |
+| `receipts.ts` | `/r/<token>`, the public receipt page |
 | `stats.ts` | `/v1/stats` |
-| `dashboard.ts`, `session.ts` | `/dashboard` (placeholder), PIN sign-in, staff sessions (`/v1/staff/session`) |
+| `dashboard.ts`, `dashboard-page.ts`, `staff-roles.ts`, `session.ts` | `/staff` and `/staff/<role>` pages (shared shell and script in `dashboard-page.ts`, the role list in `staff-roles.ts`), PIN sign-in, session renewal, staff sessions (`/v1/staff/session`) |
 | `http.ts` | Errors, auth (bearer and cookie), body parsing, retries |
 
-- Production: `https://techclub-icecream.adamxu.workers.dev/v1/` (account *Adam*; health check at `/v1/health`).
-- Staging, for chaos tests: `https://techclub-icecream-staging.adamxu.workers.dev/v1/`, with its own D1 database, hub and tokens.
+- Production: `https://kiosk.jamboree.techclub.pw/v1/` (account *Pinewood Tech Club*; health check at `/v1/health`).
+- Staging, for chaos tests: `https://kiosk-staging.jamboree.techclub.pw/v1/`, with its own D1 database, hub and tokens.
 
 ```
  kiosk iPad ──Bearer BOOTH_TOKEN──┐                       ┌── D1: logs (30 days), orders, checkouts, Square tokens
                                   ├─ Worker: auth, zod,   ┤
- staff iPad ──Bearer STAFF_TOKEN──┤  rate limits, routing ├── Workers Logs: every request and kiosk log line
- dashboard ──PIN session cookie───┘       │               └── Square: OAuth, catalog, CreateOrder
+ staff pages ─staff session cookie┤  rate limits, routing ├── Workers Logs: every request and kiosk log line
+ scripts ────Bearer STAFF_TOKEN───┘       │               └── Square: OAuth, catalog, CreateOrder
                                           ▼
                      Booth Durable Object (one instance, WebSocket Hibernation, SQLite):
-                     sold-out map, flavors, kiosk health, alerts, order feed, revision counter, processed ids
+                     open/closed flag, sold-out map, flavors, kiosk health, alerts, order feed, revision counter, processed ids
 ```
 
 - **Hub**: on connect a client gets a snapshot with the hub's revision, then one patch per change carrying the next revision. Clients ignore stale patches and resync when they see a gap, so every client converges after drops and reconnects. Everything lives in SQLite, so eviction or a redeploy loses nothing; a Durable Object alarm raises *Kiosk offline* after 30 s without kiosk contact.
@@ -139,13 +166,13 @@ Vars in `wrangler.jsonc`: `SQUARE_ENVIRONMENT` (`production` or `sandbox`; produ
 | `SQUARE_APPLICATION_ID` | The Square application ID for the Worker's environment. Must be the same application the kiosk build uses. |
 | `SQUARE_APPLICATION_SECRET` | From the Developer Console's *OAuth* page. Enables the OAuth flow and encrypts stored tokens. |
 | `SQUARE_ACCESS_TOKEN` | Static fallback token (staging and tests): served to the kiosk when no OAuth token is stored. |
-| `STAFF_PIN` | Staff sign-in for the dashboard and the staff iPad. Without it only `STAFF_TOKEN` signs in. |
+| `STAFF_PIN` | Staff sign-in for the staff pages in a browser. Without it only `STAFF_TOKEN` signs in. |
 
 One-time connection (per environment):
 
-1. In the Developer Console, open the application, pick *Production* (or *Sandbox* for staging), *OAuth*, and set the redirect URL to `https://techclub-icecream.adamxu.workers.dev/v1/square/oauth/callback` (staging: `https://techclub-icecream-staging.adamxu.workers.dev/v1/square/oauth/callback`).
+1. In the Developer Console, open the application, pick *Production* (or *Sandbox* for staging), *OAuth*, and set the redirect URL to `https://kiosk.jamboree.techclub.pw/v1/square/oauth/callback` (staging: `https://kiosk-staging.jamboree.techclub.pw/v1/square/oauth/callback`).
 2. `pnpm wrangler secret put SQUARE_APPLICATION_ID` and `pnpm wrangler secret put SQUARE_APPLICATION_SECRET` (add `--env staging` for staging).
-3. `set -a; . ~/.config/techclub-icecream/secrets.env; set +a; pnpm square` opens Square's authorize page; sign in as the seller and allow. `pnpm square status`, `pnpm square refresh` and `pnpm square revoke` manage it afterwards (staging: prefix `BOOTH_URL=https://techclub-icecream-staging.adamxu.workers.dev STAFF_TOKEN=$STAGING_STAFF_TOKEN`).
+3. `set -a; . ~/.config/techclub-icecream/secrets.env; set +a; pnpm square` opens Square's authorize page; sign in as the seller and allow. `pnpm square status`, `pnpm square refresh` and `pnpm square revoke` manage it afterwards (staging: prefix `BOOTH_URL=https://kiosk-staging.jamboree.techclub.pw STAFF_TOKEN=$STAGING_STAFF_TOKEN`).
 
 Staging currently runs on the sandbox personal access token as `SQUARE_ACCESS_TOKEN` (source `static`), so checkout works there without the OAuth step.
 
@@ -170,13 +197,15 @@ pnpm smoke --offline       # live end-to-end check of production (add --checkout
 pnpm chaos                 # staging: drops, half-open sockets, a redeploy, replays, clock skew, a long offline spell
 ```
 
+Right after the 2026-10-11 production deploy that added the order feed, `POST /v1/orders` answered `503 unavailable` (hub call failed) for about three minutes, then recovered with no change; the order is already in D1 by then and the kiosk's retry completes it. If `pnpm smoke` fails only at *order stored* right after a deploy, wait a few minutes and run it again.
+
 `pnpm smoke` leaves a few rows tagged `smoke-...` in production D1 (simulated orders, excluded from totals). `scripts/chaos-proxy.mjs` also runs on its own as a local proxy for testing the iPad app against staging (`node scripts/chaos-proxy.mjs`, then launch the app with `-boothURL http://127.0.0.1:8790 -boothToken <staging token>` and drive the proxy with `curl -X POST localhost:8791/mode/down`, `/mode/up`, `/mode/blackhole`, `/kill`).
 
 ## Not production-ready yet
 
 - Production needs the one-time Square OAuth connection above. Until then the kiosk uses the token baked into its bundle, which Square doesn't allow for production.
 - `MockReaderUI` is linked into every build. Remove it from the target before shipping.
-- Buyers must be offered a digital or printed receipt (EMV requirement). The confirmation screen shows an itemized receipt and suggests a photo. Every order has a receipt token and `/r/<token>` is routed, but the receipt page and QR code aren't built yet.
+- Digital receipts (the EMV requirement that buyers are offered one): the confirmation screen shows a QR code to `/r/<token>`, a mobile receipt page with items, tax, total, card and a Square receipt link. The QR code needs the backend URL (`BOOTH_URL`); without it the screen falls back to suggesting a photo. If the backend is down at payment time, the page shows "your receipt will appear shortly" until the order uploads (the kiosk retries). Not yet tried on a physical iPad with a real card.
 - Lock the iPad to the app with Guided Access (Settings → Accessibility).
 - The terms only allow attended use: the kiosk must be within staff line of sight and inaccessible outside business hours.
 

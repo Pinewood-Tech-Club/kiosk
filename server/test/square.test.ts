@@ -6,6 +6,7 @@ import { buildCatalog, clearCatalogMemory } from "../src/catalog";
 import { REFRESH_AFTER_MS, STATE_TTL_MS } from "../src/oauth";
 import { adHocLineItems, catalogLineItems, chargedLines, pricingMismatch, quote, scoopsTotal, type CartItem } from "../src/pricing";
 import type { ServerMessage } from "../src/protocol";
+import { itemPrices } from "../src/receipts";
 
 const KIOSK = "test-kiosk-token";
 const STAFF = "test-staff-token";
@@ -407,30 +408,116 @@ describe("checkout", () => {
   });
 });
 
-describe("receipts, dashboard and staff sessions", () => {
-  it("serves the receipt placeholder for a known token only", async () => {
-    mockSquare();
+describe("receipts", () => {
+  it("renders the receipt page, a pending page for unsynced tokens, and 404 for malformed ones", async () => {
+    mockSquare({
+      "/v2/payments/PAY1abcdefghij": () => ({ body: { payment: { id: "PAY1abcdefghij", receipt_url: "https://squareup.com/receipt/preview/PAY1" } } }),
+    });
     await connectSquare();
     const body = cart();
-    expect((await call(`/r/${body.receiptToken}`)).status).toBe(404);
-    expect((await call("/r/not-a-token!")).status).toBe(404);
+    const unknown = await call(`/r/${randomReceipt()}`);
+    expect(unknown.status).toBe(200);
+    expect(unknown.body).toContain("Your receipt will appear shortly");
+    expect(unknown.body).toContain('http-equiv="refresh"');
+    expect(unknown.headers.get("X-Robots-Tag")).toContain("noindex");
+    expect(unknown.body).toContain('name="robots" content="noindex');
+
+    const bad = await call("/r/not-a-token!");
+    expect(bad.status).toBe(404);
+    expect(bad.body).toContain("Receipt not found");
+    expect((await call("/r/short")).status).toBe(404);
+
     await call("/v1/checkout", { token: KIOSK, json: body });
     const pending = await call(`/r/${body.receiptToken}`);
     expect(pending.status).toBe(200);
-    expect(pending.body).toContain("Payment pending");
+    expect(pending.body).toContain("Your receipt will appear shortly");
+
+    const paidAt = Date.UTC(2026, 11, 5, 21, 2, 0);
     await call("/v1/orders", {
       token: KIOSK,
-      json: { orders: [{ id: body.id, orderNumber: 12, totalCents: 1100, receiptToken: body.receiptToken, items: body.items, paidAt: new Date().toISOString() }] },
+      json: {
+        orders: [{
+          id: body.id, orderNumber: 12, customerName: "Alex <b>", totalCents: 1100, subtotalCents: 1100, taxCents: 0,
+          squarePaymentId: "PAY1abcdefghij", card: "Visa 4242", receiptToken: body.receiptToken, items: body.items,
+          paidAt: new Date(paidAt).toISOString(),
+        }],
+      },
     });
     const paid = await call(`/r/${body.receiptToken}`);
-    expect(paid.body).toContain("Order #12");
-    expect(paid.body).toContain("Paid");
+    expect(paid.status).toBe(200);
+    expect(paid.headers.get("X-Robots-Tag")).toContain("noindex");
+    expect(paid.body).not.toContain('http-equiv="refresh"');
+    expect(paid.body).toContain("Tech Club Ice Cream");
+    expect(paid.body).toContain("Order 12");
+    expect(paid.body).toContain("Alex &lt;b&gt;");
+    expect(paid.body).toContain("Waffle Cone");
+    expect(paid.body).toContain("Vanilla, Chocolate");
+    expect(paid.body).toContain("Whipped Cream");
+    expect(paid.body).toContain("$11.00");
+    expect(paid.body).toContain("Visa 4242");
+    expect(paid.body).toContain("December 5, 2026 at 1:02");
+    expect(paid.body).toContain("https://squareup.com/receipt/preview/PAY1");
   });
+
+  it("renders the receipt without a Square link when Square can't be reached", async () => {
+    mockSquare();
+    const id = `rc-${crypto.randomUUID()}`;
+    const receiptToken = randomReceipt();
+    await call("/v1/orders", {
+      token: KIOSK,
+      json: { orders: [{ id, totalCents: 400, squarePaymentId: `P-${id}`, receiptToken, items: [{ vessel: "cup", flavors: ["cookies"] }], paidAt: new Date().toISOString() }] },
+    });
+    const page = await call(`/r/${receiptToken}`);
+    expect(page.status).toBe(200);
+    expect(page.body).toContain("Cookies &amp; Cream");
+    expect(page.body).toContain("$4.00");
+    expect(page.body).not.toContain("View Square receipt");
+  });
+
+  it("marks canceled orders and skips the Square lookup for ids that aren't Square payments", async () => {
+    mockSquare();
+    await connectSquare();
+    const id = `cx-${crypto.randomUUID()}`;
+    const receiptToken = randomReceipt();
+    await call("/v1/orders", {
+      token: KIOSK,
+      json: { orders: [{ id, totalCents: 400, squarePaymentId: "\u2014", receiptToken, items: [{ vessel: "cup", flavors: ["cookies"] }], paidAt: new Date().toISOString() }] },
+    });
+    expect((await call(`/r/${receiptToken}`)).body).not.toContain("This order was canceled");
+    await call("/v1/actions", { token: STAFF, json: { actions: [{ id: `a-${id}`, type: "setOrderStatus", orderId: id, status: "canceled" }] } });
+    const page = await call(`/r/${receiptToken}`);
+    expect(page.body).toContain("This order was canceled");
+    expect(calls.filter((c) => c.path.startsWith("/v2/payments"))).toHaveLength(0);
+  });
+
+  it("shows the refreshing page instead of a JSON error when the database is down", async () => {
+    const broken = { ...env, DB: { prepare: () => { throw new Error("D1 down"); } } } as unknown as Env;
+    const page = await call(`/r/${randomReceipt()}`, {}, broken);
+    expect(page.status).toBe(503);
+    expect(page.body).toContain("Your receipt will appear shortly");
+    expect(page.body).toContain('http-equiv="refresh"');
+    expect(page.headers.get("X-Robots-Tag")).toContain("noindex");
+  });
+
+  it("uses Square's per-item amounts only when they add up to the subtotal", () => {
+    const items = [{ vessel: "cone", flavors: ["vanilla"], toppings: [] }, { vessel: "cup", flavors: ["chocolate"], toppings: [] }];
+    const tagged = [
+      { title: "1 Scoop", detail: "#1 Cone: Vanilla", cents: 400 },
+      { title: "Waffle Cone", detail: "#1", cents: 150 },
+      { title: "2nd Scoop", detail: "#2 Cup: Chocolate", cents: 300 },
+    ];
+    expect(itemPrices(items, tagged, 850)).toEqual([550, 300]);
+    expect(itemPrices(items, tagged, 900)).toEqual(quote(items as CartItem[]).lines.map((l) => l.totalCents));
+    expect(itemPrices(items, [{ title: "Scoop", detail: "Vanilla", cents: 850 }], 850)).toEqual(quote(items as CartItem[]).lines.map((l) => l.totalCents));
+  });
+});
+
+describe("dashboard and staff sessions", () => {
 
   it("signs staff in with the PIN and keeps the cookie same-origin", async () => {
     const login = (pin: string, origin = BASE) =>
       call("/dashboard/login", { method: "POST", headers: { Origin: origin, "Content-Type": "application/x-www-form-urlencoded" }, body: `pin=${pin}` });
-    expect((await call("/dashboard")).body).toContain('name="pin"');
+    expect((await call("/staff/scooper")).body).toContain('name="pin"');
     expect((await login("1111")).status).toBe(401);
     expect((await login("2468", "https://evil.test")).status).toBe(403);
     const ok = await login("2468");
@@ -438,7 +525,7 @@ describe("receipts, dashboard and staff sessions", () => {
     const setCookie = ok.headers.get("Set-Cookie")!;
     expect(setCookie).toMatch(/HttpOnly; Secure; SameSite=Strict/);
     const cookie = setCookie.split(";")[0];
-    expect((await call("/dashboard", { headers: { Cookie: cookie } })).body).toContain("Coming soon");
+    expect((await call("/staff/scooper", { headers: { Cookie: cookie } })).body).toContain('id="make"');
     expect((await call("/v1/stats", { headers: { Cookie: cookie } })).status).toBe(200);
     expect((await call("/v1/square/refresh", { method: "POST", headers: { Cookie: cookie } })).status).toBe(403);
     expect((await call("/v1/events", { method: "POST", headers: { Cookie: cookie, Origin: BASE }, body: "{}" })).status).toBe(403);

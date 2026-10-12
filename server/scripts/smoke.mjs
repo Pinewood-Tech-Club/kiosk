@@ -1,13 +1,13 @@
 // Live end-to-end check of a deployed booth.
 //   set -a; . ~/.config/techclub-icecream/secrets.env; set +a
 //   node scripts/smoke.mjs [--offline]                                   # production
-//   BOOTH_URL=https://techclub-icecream-staging.adamxu.workers.dev BOOTH_TOKEN=$STAGING_BOOTH_TOKEN \
+//   BOOTH_URL=https://kiosk-staging.jamboree.techclub.pw BOOTH_TOKEN=$STAGING_BOOTH_TOKEN \
 //     STAFF_TOKEN=$STAGING_STAFF_TOKEN node scripts/smoke.mjs --checkout # staging
 // --checkout creates a real (unpaid) Square order through /v1/checkout; leave it off for production.
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 
-const base = (process.env.BOOTH_URL ?? "https://techclub-icecream.adamxu.workers.dev").replace(/\/$/, "");
+const base = (process.env.BOOTH_URL ?? "https://kiosk.jamboree.techclub.pw").replace(/\/$/, "");
 const kioskToken = process.env.BOOTH_TOKEN;
 const staffToken = process.env.STAFF_TOKEN;
 const waitForOffline = process.argv.includes("--offline");
@@ -112,6 +112,7 @@ await step("websockets", async () => {
   await Promise.all([kiosk.opened, staff.opened]);
   const snapshot = await kiosk.next("snapshot");
   check("kiosk got a snapshot", Array.isArray(snapshot.state.flavors), `rev ${snapshot.state.rev}`);
+  check("snapshot says whether the kiosk is open", typeof snapshot.state.kioskOpen?.open === "boolean", `open ${snapshot.state.kioskOpen?.open}`);
   await staff.next("snapshot");
   check("staff got a snapshot", true);
 });
@@ -214,7 +215,11 @@ await step("staff session and dashboard", async () => {
   check("staff session issued", session.status === 200 && session.json?.token?.startsWith("st1."));
   const stats = await http("/v1/stats", { token: session.json?.token, device: staffDevice });
   check("stats with a staff session", stats.status === 200 && typeof stats.json?.orders === "number", `${stats.json?.orders} orders in 24 h`);
-  check("dashboard page served", (await fetch(`${base}/dashboard`)).status === 200);
+  check("dashboard redirects to the staff page picker", (await fetch(`${base}/dashboard`, { redirect: "manual" })).headers.get("location") === "/staff");
+  for (const page of ["scooper", "toppings", "organizer", "board"]) {
+    const response = await fetch(`${base}/staff/${page}`, { headers: { Cookie: `booth_staff=${session.json?.token}` } });
+    check(`staff page ${page} served`, response.status === 200 && (await response.text()).includes("new WebSocket"));
+  }
 });
 
 await step("orders", async () => {

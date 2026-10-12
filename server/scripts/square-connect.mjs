@@ -1,11 +1,11 @@
 // Starts the one-time Square OAuth connection and opens Square's authorize page.
 //   set -a; . ~/.config/techclub-icecream/secrets.env; set +a
 //   node scripts/square-connect.mjs                 # production (STAFF_TOKEN)
-//   BOOTH_URL=https://techclub-icecream-staging.adamxu.workers.dev STAFF_TOKEN=$STAGING_STAFF_TOKEN node scripts/square-connect.mjs
+//   BOOTH_URL=https://kiosk-staging.jamboree.techclub.pw STAFF_TOKEN=$STAGING_STAFF_TOKEN node scripts/square-connect.mjs
 //   node scripts/square-connect.mjs status | refresh | revoke
 import { execFile } from "node:child_process";
 
-const base = (process.env.BOOTH_URL ?? "https://techclub-icecream.adamxu.workers.dev").replace(/\/$/, "");
+const base = (process.env.BOOTH_URL ?? "https://kiosk.jamboree.techclub.pw").replace(/\/$/, "");
 const token = process.env.STAFF_TOKEN;
 const command = process.argv[2] ?? "connect";
 if (!token) {

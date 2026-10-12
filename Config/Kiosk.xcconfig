@@ -9,5 +9,6 @@ BOOTH_URL =
 BOOTH_TOKEN =
 BOOTH_STAFF_TOKEN =
 KIOSK_ROLE =
+STAFF_PAGE =
 
 #include? "Local.xcconfig"

@@ -92,7 +92,6 @@ final class AppModel {
 
     let square = SquareService()
     let booth = BoothLink()
-    let staff = StaffLink()
     private(set) var role: DeviceRole?
     private var kioskServicesStarted = false
     @ObservationIgnored let stage = Stage()
@@ -223,7 +222,6 @@ final class AppModel {
     func chooseStaffRole() {
         guard canChooseStaff else { return }
         role = .staff
-        staff.start { [weak self] in self?.square.record($0) }
         withAnimation(.easeInOut(duration: 0.5)) { screen = .staff }
     }
 
@@ -232,8 +230,10 @@ final class AppModel {
         withAnimation(.easeInOut(duration: 0.35)) { screen = .roleSetup }
     }
 
-    func beginOrder() {
-        guard stageReady, !assetsFailed, screen == .attract else { return }
+    var orderingOpen: Bool { booth.kioskOpen }
+
+    func beginOrder(ignoringClosure: Bool = false) {
+        guard stageReady, !assetsFailed, screen == .attract, ignoringClosure || orderingOpen else { return }
         resetEverything()
         stage.restore(current: current, items: [], step: .vessel)
         builderVisible = true

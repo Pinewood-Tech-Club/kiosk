@@ -55,8 +55,15 @@ export interface OrderSummary {
   statusBy: string | null;
 }
 
+export interface KioskOpen {
+  open: boolean;
+  changedAt: number | null;
+  changedBy: string | null;
+}
+
 export interface BoothState {
   rev: number;
+  kioskOpen: KioskOpen;
   flavors: FlavorState[];
   kiosk: KioskState;
   alerts: Alert[];
@@ -68,7 +75,8 @@ export type Change =
   | { kind: "flavors"; flavors: FlavorState[] }
   | { kind: "alert"; alert: Alert }
   | { kind: "kiosk"; kiosk: KioskState }
-  | { kind: "order"; order: OrderSummary };
+  | { kind: "order"; order: OrderSummary }
+  | { kind: "kioskOpen"; kioskOpen: KioskOpen };
 
 export interface ApiError {
   code: string;

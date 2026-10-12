@@ -1,11 +1,12 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "techclub-icecream",
-  "account_id": "496fbe0bf0003addc2e0116caff5d215",
+  "account_id": "d1687fcac82d7199c8c8af57bbe570fc",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "workers_dev": true,
+  "workers_dev": false,
   "preview_urls": false,
+  "routes": [{ "pattern": "kiosk.jamboree.techclub.pw", "custom_domain": true }],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
@@ -18,7 +19,7 @@
     {
       "binding": "DB",
       "database_name": "techclub-icecream",
-      "database_id": "0944efa8-228f-4e2b-aa8b-8440f6aab7d0",
+      "database_id": "d33f27c2-ac0c-4650-bcb7-d6d559fa3952",
       "migrations_dir": "migrations"
     }
   ],
@@ -51,8 +52,9 @@
   "env": {
     "staging": {
       "name": "techclub-icecream-staging",
-      "workers_dev": true,
+      "workers_dev": false,
       "preview_urls": false,
+      "routes": [{ "pattern": "kiosk-staging.jamboree.techclub.pw", "custom_domain": true }],
       "observability": { "enabled": true, "head_sampling_rate": 1 },
       "durable_objects": {
         "bindings": [{ "name": "BOOTH", "class_name": "Booth" }]
@@ -61,7 +63,7 @@
         {
           "binding": "DB",
           "database_name": "techclub-icecream-staging",
-          "database_id": "041125c7-6bfa-4930-92e6-dbbe30ad4ee3",
+          "database_id": "8a4ee0e2-b810-4d69-8ea0-2f8437b27c8a",
           "migrations_dir": "migrations"
         }
       ],
