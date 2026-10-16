@@ -1,6 +1,7 @@
 import * as admin from "./admin";
 import * as checkout from "./checkout";
 import * as dashboard from "./dashboard";
+import * as giftcardBalance from "./giftcard-balance";
 import * as giftcards from "./giftcards";
 import { authenticate, callHub, errorResponse, hub, HttpError, json, match, readBody, type Route } from "./http";
 import * as logs from "./logs";
@@ -84,6 +85,7 @@ export const routes: Route[] = [
   ...receipts.routes,
   ...admin.routes,
   ...dashboard.routes,
+  ...giftcardBalance.routes,
 ];
 
 async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

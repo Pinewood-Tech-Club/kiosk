@@ -42,7 +42,7 @@ export function normalizeGan(input: string): string {
   return gan;
 }
 
-async function credentialsFor(env: Env): Promise<SquareCredentials> {
+export async function credentialsFor(env: Env): Promise<SquareCredentials> {
   const credentials = await resolveCredentials(env);
   if (!credentials) throw new HttpError(503, "not_configured", "No Square credentials on the server", {}, false);
   return credentials;
@@ -75,7 +75,7 @@ async function noteLookupFailure(env: Env, device: string, now: number): Promise
   );
 }
 
-async function lookupCard(env: Env, credentials: SquareCredentials, device: string, rawGan: string, now = Date.now()): Promise<SquareGiftCard & { last4: string }> {
+export async function lookupCard(env: Env, credentials: SquareCredentials, device: string, rawGan: string, now = Date.now()): Promise<SquareGiftCard & { last4: string }> {
   if ((await recentLookupFailures(env, device, now)) >= LOOKUP_FAILURE_LIMIT) {
     throw new HttpError(429, "rate_limited", "Too many failed gift card lookups, try again in a few minutes", { "Retry-After": "300" });
   }
