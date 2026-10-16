@@ -83,7 +83,7 @@ export function giftCardBody(): string {
     <video id="video" playsinline muted></video>
     <div class="sweep"></div>
   </div>
-  <p class="hint" id="scan-hint">Line up the barcode or QR code inside the square</p>
+  <p class="hint">Line up the barcode or QR code inside the square</p>
 </section>
 
 <section class="screen" id="s-result" hidden>
@@ -121,7 +121,7 @@ const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD
 
 let current = "s-idle", resetting = false, swallowClick = 0;
 let idleTimer = null, warnTimer = null, warnDeadline = 0;
-let stream = null, cameraOpening = null, cameraRetry = null, scanTimer = null, scanRun = 0, busy = false, hintTimer = null;
+let stream = null, cameraOpening = null, cameraRetry = null, scanTimer = null, scanRun = 0, busy = false;
 let engine = null, zxingLoading = null;
 
 $("idle-sub").textContent = matchMedia("(pointer: coarse)").matches ? "Tap anywhere to check your gift card balance" : "Click anywhere to check your gift card balance";
@@ -261,13 +261,6 @@ function swapToScan() {
   startScan();
 }
 
-function setHint(text, ms) {
-  clearTimeout(hintTimer);
-  $("scan-hint").textContent = text;
-  if (ms) hintTimer = setTimeout(() => { $("scan-hint").textContent = DEFAULT_HINT; }, ms);
-}
-const DEFAULT_HINT = "Line up the barcode or QR code inside the square";
-
 function fail(kind) {
   const cases = {
     denied: ["Camera is turned off", "Allow camera access for this page, then try again. Or ask at the table.", true],
@@ -305,7 +298,6 @@ function showResult(card) {
 async function lookup(gan) {
   busy = true;
   $("finder").classList.add("busy");
-  setHint("Checking balance");
   try {
     const res = await fetch("/giftcard/balance", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ gan }) });
     if (res.ok) { showResult(await res.json()); return; }
@@ -424,7 +416,6 @@ function openCamera() {
 async function startScan() {
   stopScan();
   const run = scanRun;
-  setHint(DEFAULT_HINT);
   try { await openCamera(); } catch (e) {
     if (run === scanRun) fail(cameraErrorKind(e));
     return;
@@ -435,7 +426,6 @@ async function startScan() {
   try { eng = await makeEngine(); } catch (e) { if (run === scanRun) fail("camera"); return; }
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  let lastOther = "";
   const loop = async () => {
     if (run !== scanRun) return;
     if (!busy && v.readyState >= 2 && v.videoWidth) {
@@ -446,10 +436,9 @@ async function startScan() {
       let values = [];
       try { values = await eng.detect(canvas); } catch (e) {}
       if (run !== scanRun) return;
-      let gan = null, other = null;
-      for (const raw of values) { gan = extractGan(raw); if (gan) break; other = raw; }
+      let gan = null;
+      for (const raw of values) { gan = extractGan(raw); if (gan) break; }
       if (gan) { bump(); await lookup(gan); return; }
-      if (other && other !== lastOther) { lastOther = other; setHint("That code isn't a gift card. Try the barcode on the card.", 3500); }
     }
     scanTimer = setTimeout(loop, SCAN_EVERY_MS);
   };
