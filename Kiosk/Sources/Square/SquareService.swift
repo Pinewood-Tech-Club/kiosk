@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreBluetooth
 import CoreLocation
+import DeviceCheck
 import Observation
 import SquareMobilePaymentsSDK
 import UIKit
@@ -100,7 +101,8 @@ final class SquareService: NSObject {
         sdk.readerManager.add(self)
         authorizationState = sdk.authorizationManager.state
         readers = sdk.readerManager.readers
-        record("SDK \(sdk.settingsManager.sdkSettings.version), environment: \(environmentName), credentials: \(credentials.sourceDescription)")
+        record("SDK \(sdk.settingsManager.sdkSettings.version), environment: \(environmentName), credentials: \(credentials.sourceDescription), App Attest supported: \(DCAppAttestService.shared.isSupported)")
+        for reader in readers { record("Reader present: \(Self.describe(reader))") }
         requestPermissions()
         guard let current = credentials.current else {
             record("Waiting for Square credentials from the booth")
@@ -644,17 +646,49 @@ extension SquareService: AuthorizationStateObserver {
 
 extension SquareService: ReaderObserver {
     func readerWasAdded(_ readerInfo: ReaderInfo) {
-        record("Reader added: \(readerInfo.name)")
+        record("Reader added: \(Self.describe(readerInfo))")
         readers = sdk.readerManager.readers
     }
 
     func readerWasRemoved(_ readerInfo: ReaderInfo) {
-        record("Reader removed: \(readerInfo.name)")
+        record("Reader removed: \(Self.describe(readerInfo))")
         readers = sdk.readerManager.readers
     }
 
     func readerDidChange(_ readerInfo: ReaderInfo, change: ReaderChange) {
+        switch change {
+        case .batteryLevelDidChange, .batteryDidBeginCharging, .batteryDidEndCharging, .firmwareUpdatePercentDidChange: break
+        default: record("Reader changed (\(Self.name(change))): \(Self.describe(readerInfo))")
+        }
         readers = sdk.readerManager.readers
+    }
+}
+
+extension SquareService {
+    private static func describe(_ reader: ReaderInfo) -> String {
+        var parts = [
+            "\(reader.name)",
+            "serial \(reader.serialNumber ?? "nil")",
+            "model \(Self.name(reader.model))",
+            "connection \(Self.name(reader.connectionType))",
+            "status \(Self.name(reader.statusInfo.status))",
+        ]
+        if let reason = reader.statusInfo.unavailableReasonInfo {
+            parts.append("reason \(Self.name(reason.reason)) \"\(reason.title)\" \"\(reason.detail)\" \(reason.dictionaryRepresentation)")
+        }
+        parts.append("statusInfo \(reader.statusInfo.dictionaryRepresentation)")
+        parts.append("retryable \(reader.isConnectionRetryable)")
+        if let firmware = reader.firmwareInfo {
+            parts.append("firmware \(firmware.version) \(Self.name(firmware.updateStatus)) \(firmware.updatePercentage)%")
+            if let failure = firmware.failureReason {
+                parts.append("firmwareFailure \((failure as NSError).domain) \((failure as NSError).code) \(failure.localizedDescription)")
+            }
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private static func name<T: RawRepresentable>(_ value: T) -> String {
+        "\(value)(\(value.rawValue))"
     }
 }
 
@@ -662,6 +696,6 @@ extension SquareService: ReaderObserver {
 
 extension SquareService: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        record("Bluetooth permission: \(CBManager.authorization == .allowedAlways ? "granted" : "not granted")")
+        record("Bluetooth permission: \(CBManager.authorization == .allowedAlways ? "granted" : "not granted"), state \(central.state.rawValue)")
     }
 }
