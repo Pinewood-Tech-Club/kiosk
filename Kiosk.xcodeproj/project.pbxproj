@@ -206,6 +206,7 @@
 		C47A1B344994FAF846FD449E /* StageConsistency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageConsistency.swift; sourceTree = "<group>"; };
 		C6EB437FE04FC84CEA440D1E /* ScatterPhysics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScatterPhysics.swift; sourceTree = "<group>"; };
 		CBB1DFC96A2B464467CC2110 /* StageActors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageActors.swift; sourceTree = "<group>"; };
+		CC36C7844469174D0B2C95FD /* Kiosk.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Kiosk.entitlements; sourceTree = "<group>"; };
 		CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-SemiBold.ttf"; sourceTree = "<group>"; };
 		D49DFEEF7AAC0DEB3EF85D86 /* KioskIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KioskIdentity.swift; sourceTree = "<group>"; };
@@ -312,6 +313,7 @@
 			isa = PBXGroup;
 			children = (
 				DF893650C7E0AA1ED76E777E /* Info.plist */,
+				CC36C7844469174D0B2C95FD /* Kiosk.entitlements */,
 				5F38733E14DF3870B6627B68 /* Resources */,
 				3B4402C1D6210C1AED87B8B8 /* Sources */,
 			);
@@ -796,6 +798,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
+				CODE_SIGN_ENTITLEMENTS = Kiosk/Kiosk.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -908,6 +911,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = NO;
+				CODE_SIGN_ENTITLEMENTS = Kiosk/Kiosk.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;

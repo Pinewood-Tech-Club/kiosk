@@ -35,6 +35,10 @@ targets:
         product: SquareMobilePaymentsSDK
       - package: SquareMobilePaymentsSDK
         product: MockReaderUI
+    entitlements:
+      path: Kiosk/Kiosk.entitlements
+      properties:
+        com.apple.developer.devicecheck.appattest-environment: production
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "2"

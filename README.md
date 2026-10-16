@@ -21,6 +21,16 @@ Self-order ice cream kiosk for the Tech Club fundraiser booth. SwiftUI + Reality
 
 `Kiosk/Resources/3D/` is a folder reference, so new or updated 3D assets are bundled without regenerating the project (do a clean build if Xcode misses a change). The Metal morph kernel is compiled at launch, so the separate Metal toolchain download isn't needed.
 
+## Building for the event
+
+Physical Square readers need Apple App Attest (Square Mobile Payments SDK 2.5.0 and later). Without it the reader shows "Unable to establish a secure connection to Square". App Attest needs a paid Apple Developer team; a personal team can't sign this app.
+
+1. Set the signing team to the paid team: `DEVELOPMENT_TEAM` in `Config/Local.xcconfig` (the team ID is in the Apple Developer account under Membership details). Nothing in `project.yml` or `Kiosk.xcodeproj` hard-codes a team.
+2. App Attest is already included: `project.yml` adds `Kiosk/Kiosk.entitlements` with `com.apple.developer.devicecheck.appattest-environment` = `production`, and automatic signing turns the capability on for the App ID.
+3. Bundle ID: `PRODUCT_BUNDLE_IDENTIFIER` in `Config/Local.xcconfig`. Bundle IDs are unique across all Apple teams, so if `com.adamxu.kiosk` is already registered to another team, pick a new one (for example `org.pinewoodtechclub.kiosk`).
+4. Register the new team ID plus bundle ID as an app signature under *Mobile Payments SDK* in Square's [Developer Console](https://developer.squareup.com/apps), on the production application. Until it matches the build, the reader won't connect.
+5. `xcodegen generate`, then build and run on the iPad.
+
 ## Flow
 
 1. **Role setup** (every launch, unless `KIOSK_ROLE` or `-kioskRole` picks one): *Start Kiosk* or *Staff*. Square and the kiosk's backend link start only when the kiosk role is chosen, so a staff iPad never reports itself as a kiosk. *Staff* opens the [staff page](#staff-pages); its *Exit staff mode* (after a confirmation) comes back here, and *Start Kiosk* then starts Square and the backend link without a relaunch. Once the kiosk has started, switching this iPad to staff needs a relaunch.
