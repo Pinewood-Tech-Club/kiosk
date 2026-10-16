@@ -27,7 +27,7 @@ p{margin:0}
 .corner{position:absolute;top:28px;left:32px}
 #s-scan{justify-content:flex-start;padding-top:max(32px,5vh)}
 #s-scan .ask{margin-bottom:0;padding:0 12vw}
-.finder{position:relative;width:min(62vh,86vw);height:min(62vh,86vw);margin-top:3.2vh;border:.09em solid var(--fg);background:#f3f3f3;overflow:hidden;flex:none}
+.finder{position:relative;width:min(62vh,86vw);height:min(62vh,86vw);margin-top:3.2vh;border:.09em solid var(--fg);border-radius:28px;background:#f3f3f3;overflow:hidden;flex:none;isolation:isolate}
 .finder video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s}
 .finder video.live{opacity:1}
 .finder video.mirror{transform:scaleX(-1)}
@@ -113,7 +113,7 @@ export function giftCardBody(): string {
 
 export function giftCardScript(): string {
   return String.raw`
-const IDLE_MS = 20000, WARN_AT_MS = 15000, SCAN_EVERY_MS = 140;
+const IDLE_MS = 20000, WARN_AT_MS = 15000, SCAN_EVERY_MS = 140, CAMERA_RETRY_MS = 3000;
 const FORMATS = ["qr_code", "code_128", "code_39", "code_93", "ean_13", "ean_8", "itf", "codabar", "upc_a", "upc_e", "data_matrix", "pdf417", "aztec"];
 const $ = (id) => document.getElementById(id);
 const SCREENS = ["s-idle", "s-scan", "s-result", "s-error"];
@@ -121,7 +121,7 @@ const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD
 
 let current = "s-idle", resetting = false, swallowClick = 0;
 let idleTimer = null, warnTimer = null, warnDeadline = 0;
-let stream = null, scanTimer = null, scanRun = 0, busy = false, hintTimer = null;
+let stream = null, cameraOpening = null, cameraRetry = null, scanTimer = null, scanRun = 0, busy = false, hintTimer = null;
 let engine = null, zxingLoading = null;
 
 $("idle-sub").textContent = matchMedia("(pointer: coarse)").matches ? "Tap anywhere to check your gift card balance" : "Click anywhere to check your gift card balance";
@@ -184,7 +184,7 @@ function show(id) {
   const leaving = current;
   current = id;
   for (const s of SCREENS) $(s).hidden = s !== id;
-  if (leaving === "s-scan" && id !== "s-scan") stopCamera();
+  if (leaving === "s-scan" && id !== "s-scan") stopScan();
   bump();
 }
 
@@ -199,7 +199,7 @@ function swap(from, to, tone) {
     { duration: 380, easing: "cubic-bezier(0, 0, .2, 1)" });
   out.onfinish = () => { out.cancel(); t.style.zIndex = ""; show(to); };
   current = to;
-  if (from === "s-scan") stopCamera();
+  if (from === "s-scan") stopScan();
   bump();
 }
 
@@ -209,7 +209,7 @@ function reset() {
   const from = SCREENS.map($).find((el) => !el.hidden);
   if (!from || from.id === "s-idle") { show("s-idle"); return; }
   resetting = true;
-  stopCamera();
+  stopScan();
   const out = from.animate(
     [{ transform: "scale(1)", filter: "blur(0px)", opacity: 1 }, { transform: "scale(1.1)", filter: "blur(14px)", opacity: 0 }],
     { duration: 380, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
@@ -369,42 +369,68 @@ async function makeEngine() {
   return engine;
 }
 
-function stopCamera() {
+function stopScan() {
   scanRun++;
   clearTimeout(scanTimer); scanTimer = null;
-  if (stream) { for (const t of stream.getTracks()) t.stop(); stream = null; }
-  const v = $("video");
-  v.pause(); v.srcObject = null; v.classList.remove("live", "mirror");
-  $("finder").classList.remove("live", "busy", "mirror");
+  $("finder").classList.remove("busy");
   busy = false;
 }
 
+function cameraErrorKind(e) {
+  const name = e && e.name;
+  return name === "NotAllowedError" || name === "SecurityError" ? "denied" : name === "NotFoundError" || name === "OverconstrainedError" ? "nocamera" : "camera";
+}
+
+function releaseCamera() {
+  if (stream) { for (const t of stream.getTracks()) { t.onended = null; t.stop(); } stream = null; }
+  const v = $("video");
+  v.pause(); v.srcObject = null; v.classList.remove("live", "mirror");
+  $("finder").classList.remove("live", "mirror");
+}
+
+function scheduleCameraRetry() {
+  if (cameraRetry) return;
+  cameraRetry = setTimeout(() => { cameraRetry = null; openCamera().catch(() => {}); }, CAMERA_RETRY_MS);
+}
+
+function openCamera() {
+  if (stream && stream.getVideoTracks().some((t) => t.readyState === "live")) return Promise.resolve();
+  if (cameraOpening) return cameraOpening;
+  cameraOpening = (async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error("no camera"), { name: "NotFoundError" });
+      releaseCamera();
+      const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      stream = media;
+      const track = media.getVideoTracks()[0];
+      track.onended = () => { releaseCamera(); scheduleCameraRetry(); };
+      try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (e) {}
+      const mirror = track.getSettings().facingMode !== "environment";
+      const v = $("video");
+      v.srcObject = media;
+      try { await v.play(); } catch (e) {}
+      v.classList.toggle("mirror", mirror); $("finder").classList.toggle("mirror", mirror);
+      v.classList.add("live"); $("finder").classList.add("live");
+    } catch (e) {
+      scheduleCameraRetry();
+      throw e;
+    } finally {
+      cameraOpening = null;
+    }
+  })();
+  return cameraOpening;
+}
+
 async function startScan() {
-  stopCamera();
+  stopScan();
   const run = scanRun;
   setHint(DEFAULT_HINT);
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { fail("nocamera"); return; }
-  let media;
-  try {
-    media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
-  } catch (e) {
-    if (run !== scanRun) return;
-    const name = e && e.name;
-    fail(name === "NotAllowedError" || name === "SecurityError" ? "denied" : name === "NotFoundError" || name === "OverconstrainedError" ? "nocamera" : "camera");
+  try { await openCamera(); } catch (e) {
+    if (run === scanRun) fail(cameraErrorKind(e));
     return;
   }
-  if (run !== scanRun) { for (const t of media.getTracks()) t.stop(); return; }
-  stream = media;
-  const track = media.getVideoTracks()[0];
-  try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (e) {}
-  const facing = track.getSettings().facingMode;
-  const v = $("video");
-  v.srcObject = media;
-  try { await v.play(); } catch (e) {}
   if (run !== scanRun) return;
-  const mirror = facing !== "environment";
-  v.classList.toggle("mirror", mirror); $("finder").classList.toggle("mirror", mirror);
-  v.classList.add("live"); $("finder").classList.add("live");
+  const v = $("video");
   let eng;
   try { eng = await makeEngine(); } catch (e) { if (run === scanRun) fail("camera"); return; }
   const canvas = document.createElement("canvas");
@@ -429,6 +455,8 @@ async function startScan() {
   };
   loop();
 }
+
+openCamera().catch(() => {});
 
 document.addEventListener("visibilitychange", () => { if (document.hidden && current === "s-scan") reset(); });
 `;
