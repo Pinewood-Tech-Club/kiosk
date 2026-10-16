@@ -33,7 +33,7 @@ p{margin:0}
 .finder video.mirror{transform:scaleX(-1)}
 .finder .sweep{position:absolute;left:0;right:0;top:0;height:3px;background:var(--accent);animation:sweep 2.4s ease-in-out infinite alternate;opacity:0;transition:opacity .3s}
 .finder.live .sweep{opacity:.85}
-.finder.busy video{filter:blur(6px) grayscale(1);transform:scale(1.04)}
+.finder.busy video{filter:blur(6px);transform:scale(1.04)}
 .finder.busy.mirror video{transform:scaleX(-1) scale(1.04)}
 .finder.busy .sweep{animation-play-state:paused;opacity:0}
 @keyframes sweep{from{top:0}to{top:calc(100% - 3px)}}
