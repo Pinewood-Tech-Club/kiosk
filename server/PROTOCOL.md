@@ -371,7 +371,7 @@ Clients that queue offline should keep only the newest unsent `setSoldOut`/`setS
   "giftCardPaymentId": "...", "giftCardCents": 500, "giftCardLast4": "1234",     // (added) optional, nullable: the gift card part of a split or gift-only order
   "epoch": 1,                                                                     // (added) optional: the reset epoch when it was queued
   "items": [{ "vessel": "cone", "flavors": ["vanilla", "chocolate"], "toppings": ["sprinkles"] }],   // toppings (added) optional
-  "lines": [{ "title": "1 Scoop", "detail": "#1 Waffle Cone: Vanilla", "cents": 400 }] }] }
+  "lines": [{ "title": "Ice Cream (First Scoop)", "detail": "#1 Waffle Cone: Vanilla", "cents": 400 }] }] }
 ```
 
 1 to 50 orders. Response: `{ "results": [{ "id": "...", "status": "ok" | "duplicate" | "stale" | "rejected" }] }`. `stale` *(added)*: the order was queued before the last reset (its `epoch` is older than the hub's); it is not stored, only written to Workers Logs (`order-dropped-before-reset`), and the kiosk drops it. Orders without `epoch` are always taken. An order is a duplicate if its `id`, its `squarePaymentId` or its `receiptToken` was stored before. Orders are never alerts. Every stored order (and a retried duplicate stored under the same `id`) is pushed into the hub's order feed, which ignores ones it already has; if the hub can't be reached the response is `503` and the kiosk's retry completes it.
@@ -424,10 +424,10 @@ Creates the Square order for a cart, priced by the server, and returns what the 
 { "id": "...", "status": "created", "squareOrderId": "...", "locationId": "L...", "environment": "sandbox", "referenceId": "kiosk-3F2A-12",
   "totalCents": 1100, "taxCents": 0, "subtotalCents": 1100, "expectedSubtotalCents": 1100, "priceMatches": true,
   "usedCatalog": true, "catalogError": null, "receiptToken": "...",
-  "lines": [{ "title": "1 Scoop", "detail": "#1 Waffle Cone: Vanilla", "quantity": 1, "baseCents": 400, "cents": 400 }] }
+  "lines": [{ "title": "Ice Cream (First Scoop)", "detail": "#1 Waffle Cone: Vanilla", "quantity": 1, "baseCents": 400, "cents": 400 }] }
 ```
 
-Pricing is the app's: each cup or cone priced on its own, scoops by position within the item ($4, $3, then $2; no discount across items), $1.50 per waffle cone, $0.50 per topping. Line items reference the catalog category `SQUARE_CATEGORY_NAME` (*1 Scoop*, *2nd Scoop*, *3rd+ Scoop*, *Waffle Cone*, *Topping*, cached 10 minutes, a stale copy up to a day old is used if Square fails); if it's missing or priced differently the order uses ad-hoc line items, exactly as the app does, and `catalogError` says why. Taxes are auto-applied by Square.
+Pricing is the app's: each cup or cone priced on its own, scoops by position within the item ($4, $3, then $2; no discount across items), $1.50 per waffle cone, $0.50 per topping. Line items reference the catalog category `SQUARE_CATEGORY_NAME` (*Ice Cream (First Scoop)*, *Ice Cream (Second Scoop)*, *Ice Cream (Third Scoop)*, *Waffle Cone*, *Ice Cream Toppings*, cached 10 minutes, a stale copy up to a day old is used if Square fails); if it's missing or priced differently the order uses ad-hoc line items, exactly as the app does, and `catalogError` says why. Taxes are auto-applied by Square.
 
 Idempotent by `id`: a retry returns the stored result with `status: "duplicate"` and no second Square call; the same `id` with a different cart is `409 conflict`. The Square idempotency key is the checkout id, so concurrent retries also get one Square order. The kiosk's own fallback uses `<id>-device`, so a slow backend answer and a device-created order never collide (an abandoned unpaid Square order is harmless).
 
@@ -511,7 +511,7 @@ Scripts can't pass Access without a service token, so `pnpm smoke` skips the adm
 | `POST /v1/admin/kiosks/<id>/control` | `{ "op": "attract" \| "reloadCatalog" \| "resync" }` relays a `control` message: `{ "id", "relayed": true }`; `409 kiosk_offline` if the kiosk has no socket. The kiosk's answer appears in its session `results` under that id. |
 | `POST /v1/admin/kiosks/<id>/debug`, `.../forget` | `{ "debug": true }`; forget is `removeKiosk`. |
 | `GET /v1/admin/logs` | Kiosk log lines from D1, newest first: `device`, `level` (minimum: `debug`, `info`, `warn`, `error`), `since`/`until` (ms), `q` (text in the message or context), `limit` (up to 200), `before` (the previous page's `next`). `{ "lines": [...], "next": "<cursor>" \| null, "devices": [{ "device", "lines", "lastTs" }] }` (`devices` on the first page only). |
-| `GET /v1/admin/square` | `/v1/square/status` plus `location`, `reachable` and a live catalog check of `SQUARE_CATEGORY_NAME`: each required item with its expected and found price (1 Scoop 400, 2nd Scoop 300, 3rd+ Scoop 200, Waffle Cone 150, Topping 50 cents) and the problem if any. |
+| `GET /v1/admin/square` | `/v1/square/status` plus `location`, `reachable` and a live catalog check of `SQUARE_CATEGORY_NAME`: each required item with its expected and found price (Ice Cream (First Scoop) 400, Ice Cream (Second Scoop) 300, Ice Cream (Third Scoop) 200, Waffle Cone 150, Ice Cream Toppings 50 cents) and the problem if any. |
 | `POST /v1/admin/square/refresh`, `.../connect` | Refresh the OAuth token now; start the connect flow (`{ "url" }` to open). |
 | `GET /v1/admin/orders?q=` | Search D1 orders by customer name (substring), receipt token or `/r/` link, order reference, order number, checkout id or Square order or payment id; empty `q` lists the 50 newest. Rows carry `receiptUrl` and `squareUrl` (the payment in the Square Dashboard, where refunds are done). |
 | `GET /v1/admin/orders/<id>`, `POST .../status` | Details with the checkout and gift card payments; `{ "status": "ready" }` sets the status through the hub (`via: "hub"`), or straight in D1 for an order no longer in the feed (`via: "d1"`). |

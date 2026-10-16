@@ -24,11 +24,11 @@ type Handler = (body: any) => { status?: number; body: unknown };
 let calls: SquareCall[] = [];
 
 const variations: Record<string, { name: string; cents: number }> = {
-  V1: { name: "1 Scoop", cents: 400 },
-  V2: { name: "2nd Scoop", cents: 300 },
-  V3: { name: "3rd+ Scoop", cents: 200 },
+  V1: { name: "Ice Cream (First Scoop)", cents: 400 },
+  V2: { name: "Ice Cream (Second Scoop)", cents: 300 },
+  V3: { name: "Ice Cream (Third Scoop)", cents: 200 },
   VC: { name: "Waffle Cone", cents: 150 },
-  VT: { name: "Topping", cents: 50 },
+  VT: { name: "Ice Cream Toppings", cents: 50 },
 };
 
 function catalogItems(only = Object.keys(variations)) {
@@ -78,7 +78,7 @@ const defaultHandlers: Record<string, Handler> = {
       ],
     },
   }),
-  "/v2/catalog/search": () => ({ body: { objects: [{ id: "CAT", type: "CATEGORY", category_data: { name: "TC" } }] } }),
+  "/v2/catalog/search": () => ({ body: { objects: [{ id: "CAT", type: "CATEGORY", category_data: { name: "Tech Club" } }] } }),
   "/v2/catalog/search-catalog-items": () => ({ body: { items: catalogItems() } }),
   "/v2/orders": echoOrder,
 };
@@ -187,7 +187,7 @@ describe("pricing", () => {
   });
 
   it("builds catalog lines, ad-hoc lines and receipt lines that agree", () => {
-    const catalog = buildCatalog("TC", catalogItems());
+    const catalog = buildCatalog("Tech Club", catalogItems());
     expect(pricingMismatch(catalog)).toBeNull();
     const q = quote([item("cone", ["vanilla", "chocolate"], ["sprinkles"]), item("cup", ["cookies"])]);
     expect(catalogLineItems(q, catalog)).toEqual([
@@ -198,11 +198,11 @@ describe("pricing", () => {
       { catalog_object_id: "V1", quantity: "1", note: "#2 Cup: Cookies & Cream" },
     ]);
     expect(chargedLines(q).map((l) => [l.title, l.detail, l.cents])).toEqual([
-      ["1 Scoop", "#1 Waffle Cone: Vanilla", 400],
-      ["2nd Scoop", "#1 Waffle Cone: Chocolate", 300],
+      ["Ice Cream (First Scoop)", "#1 Waffle Cone: Vanilla", 400],
+      ["Ice Cream (Second Scoop)", "#1 Waffle Cone: Chocolate", 300],
       ["Waffle Cone", "#1", 150],
-      ["Topping", "#1 Waffle Cone: Sprinkles", 50],
-      ["1 Scoop", "#2 Cup: Cookies & Cream", 400],
+      ["Ice Cream Toppings", "#1 Waffle Cone: Sprinkles", 50],
+      ["Ice Cream (First Scoop)", "#2 Cup: Cookies & Cream", 400],
     ]);
     const adHoc = adHocLineItems(q);
     const adHocTotal = adHoc.reduce((sum, line: any) => sum + line.base_price_money.amount + line.modifiers.reduce((s: number, m: any) => s + m.base_price_money.amount, 0), 0);
@@ -210,20 +210,20 @@ describe("pricing", () => {
   });
 
   it("bills both syrups on one item as separate toppings, by name", () => {
-    const catalog = buildCatalog("TC", catalogItems());
+    const catalog = buildCatalog("Tech Club", catalogItems());
     const q = quote([item("cup", ["vanilla"], ["chocolate", "caramel", "gummies"])]);
     expect(q.totalCents).toBe(550);
     expect(catalogLineItems(q, catalog).filter((l) => l.catalog_object_id === "VT").map((l) => l.note)).toEqual([
       "#1 Cup: Chocolate Syrup", "#1 Cup: Caramel Syrup", "#1 Cup: Gummy Bears",
     ]);
-    expect(chargedLines(q).filter((l) => l.title === "Topping").map((l) => [l.detail, l.cents])).toEqual([
+    expect(chargedLines(q).filter((l) => l.title === "Ice Cream Toppings").map((l) => [l.detail, l.cents])).toEqual([
       ["#1 Cup: Chocolate Syrup", 50], ["#1 Cup: Caramel Syrup", 50], ["#1 Cup: Gummy Bears", 50],
     ]);
   });
 
   it("rejects catalogs that are incomplete or priced differently", () => {
-    expect(() => buildCatalog("TC", catalogItems(["V1", "V2", "V3", "VC"]))).toThrow(/missing item\(s\): Topping/);
-    const expensive = buildCatalog("TC", catalogItems().map((i) => (i.id === "I-V3" ? { ...i, item_data: { ...i.item_data, variations: [{ ...i.item_data.variations[0], item_variation_data: { pricing_type: "FIXED_PRICING", price_money: { amount: 250 } } }] } } : i)));
+    expect(() => buildCatalog("Tech Club", catalogItems(["V1", "V2", "V3", "VC"]))).toThrow(/missing item\(s\): Ice Cream Toppings/);
+    const expensive = buildCatalog("Tech Club", catalogItems().map((i) => (i.id === "I-V3" ? { ...i, item_data: { ...i.item_data, variations: [{ ...i.item_data.variations[0], item_variation_data: { pricing_type: "FIXED_PRICING", price_money: { amount: 250 } } }] } } : i)));
     expect(pricingMismatch(expensive)).toMatch(/3 scoops/);
   });
 });
@@ -365,7 +365,7 @@ describe("checkout", () => {
       id: body.id, status: "created", squareOrderId: `SQ-${body.id}`, locationId: "LOC1", referenceId: "kiosk-0012",
       totalCents: 1300, subtotalCents: 1300, expectedSubtotalCents: 1300, priceMatches: true, usedCatalog: true, receiptToken: body.receiptToken,
     });
-    expect(first.body.lines.map((l: any) => l.title)).toEqual(["1 Scoop", "2nd Scoop", "Waffle Cone", "Topping", "1 Scoop"]);
+    expect(first.body.lines.map((l: any) => l.title)).toEqual(["Ice Cream (First Scoop)", "Ice Cream (Second Scoop)", "Waffle Cone", "Ice Cream Toppings", "Ice Cream (First Scoop)"]);
     const created = callsTo("/v2/orders")[0].body;
     expect(created.idempotency_key).toBe(body.id);
     expect(created.order).toMatchObject({ location_id: "LOC1", ticket_name: "Alex", reference_id: "kiosk-0012", metadata: { checkout_id: body.id } });
@@ -406,7 +406,7 @@ describe("checkout", () => {
     await connectSquare();
     const result = await call("/v1/checkout", { token: KIOSK, json: cart() });
     expect(result.body).toMatchObject({ usedCatalog: false, totalCents: 1300, priceMatches: true });
-    expect(result.body.catalogError).toMatch(/Topping/);
+    expect(result.body.catalogError).toMatch(/Ice Cream Toppings/);
     expect(callsTo("/v2/orders")[0].body.order.line_items[0].name).toBe("Ice cream, 2 scoops");
   });
 
@@ -556,9 +556,9 @@ describe("receipts", () => {
   it("uses Square's per-item amounts only when they add up to the subtotal", () => {
     const items = [{ vessel: "cone", flavors: ["vanilla"], toppings: [] }, { vessel: "cup", flavors: ["chocolate"], toppings: [] }];
     const tagged = [
-      { title: "1 Scoop", detail: "#1 Cone: Vanilla", cents: 400 },
+      { title: "Ice Cream (First Scoop)", detail: "#1 Cone: Vanilla", cents: 400 },
       { title: "Waffle Cone", detail: "#1", cents: 150 },
-      { title: "1 Scoop", detail: "#2 Cup: Chocolate", cents: 400 },
+      { title: "Ice Cream (First Scoop)", detail: "#2 Cup: Chocolate", cents: 400 },
     ];
     expect(itemPrices(items, tagged, 950)).toEqual([550, 400]);
     expect(itemPrices(items, tagged, 900)).toEqual(quote(items as CartItem[]).lines.map((l) => l.totalCents));

@@ -151,7 +151,7 @@ export function adHocLineItems(q: Quote): SquareLineItem[] {
 
 export function chargedLines(q: Quote): ReceiptLine[] {
   const lines: ReceiptLine[] = [];
-  const scoopName = (p: number) => (p === 1 ? "1 Scoop" : p === 2 ? "2nd Scoop" : "3rd+ Scoop");
+  const scoopName = (p: number) => (p === 1 ? "Ice Cream (First Scoop)" : p === 2 ? "Ice Cream (Second Scoop)" : "Ice Cream (Third Scoop)");
   q.lines.forEach((line, index) => {
     const label = `#${index + 1} ${vesselTitle(line.item.vessel)}`;
     for (const [scoop, flavor] of line.item.flavors.entries()) {
@@ -163,7 +163,7 @@ export function chargedLines(q: Quote): ReceiptLine[] {
       lines.push({ title: "Waffle Cone", detail: `#${index + 1}`, quantity: 1, baseCents: WAFFLE_CONE_CENTS, cents: WAFFLE_CONE_CENTS });
     }
     for (const topping of line.item.toppings) {
-      lines.push({ title: "Topping", detail: `${label}: ${toppingTitle(topping)}`, quantity: 1, baseCents: TOPPING_CENTS, cents: TOPPING_CENTS });
+      lines.push({ title: "Ice Cream Toppings", detail: `${label}: ${toppingTitle(topping)}`, quantity: 1, baseCents: TOPPING_CENTS, cents: TOPPING_CENTS });
     }
   });
   return lines;

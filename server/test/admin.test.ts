@@ -99,7 +99,7 @@ const order = (id: string, extra: Record<string, unknown> = {}) => ({
   totalCents: 900, subtotalCents: 900, taxCents: 0, card: "Visa 1111", simulated: false, paidAt: new Date().toISOString(),
   receiptToken: `${id.replace(/[^A-Za-z0-9]/g, "")}${"x".repeat(24)}`.slice(0, 40),
   items: [{ vessel: "cone", flavors: ["vanilla", "chocolate"], toppings: ["whip"] }],
-  lines: [{ title: "1 Scoop", detail: "#1 Waffle Cone: Vanilla", cents: 400 }],
+  lines: [{ title: "Ice Cream (First Scoop)", detail: "#1 Waffle Cone: Vanilla", cents: 400 }],
   ...extra,
 });
 
@@ -250,20 +250,20 @@ describe("admin tools", () => {
         })),
       },
     });
-    const good = [item("1 Scoop", 400), item("2nd Scoop", 300), item("3rd+ Scoop", 200), item("Waffle Cone", 150), item("Topping", 50), item("Bottled Water", 200)];
-    const ok = checkCatalogItems("TC", good);
+    const good = [item("Ice Cream (First Scoop)", 400), item("Ice Cream (Second Scoop)", 300), item("Ice Cream (Third Scoop)", 200), item("Waffle Cone", 150), item("Ice Cream Toppings", 50), item("Bottled Water", 200)];
+    const ok = checkCatalogItems("Tech Club", good);
     expect(ok.ok).toBe(true);
     expect(ok.extras).toEqual(["Bottled Water"]);
-    const bad = checkCatalogItems("TC", [item("1 Scoop", 450), item("2nd scoop", 300, 300), item("Waffle Cone", null), item("Topping", 50)]);
+    const bad = checkCatalogItems("Tech Club", [item("Ice Cream (First Scoop)", 450), item("ice cream (second scoop)", 300, 300), item("Waffle Cone", null), item("Ice Cream Toppings", 50)]);
     expect(bad.ok).toBe(false);
     expect(Object.fromEntries(bad.items.map((i) => [i.name, i.problem]))).toEqual({
-      "1 Scoop": "Wrong price",
-      "2nd Scoop": "Has 2 sellable variations, needs exactly one",
-      "3rd+ Scoop": "Missing from the category",
+      "Ice Cream (First Scoop)": "Wrong price",
+      "Ice Cream (Second Scoop)": "Has 2 sellable variations, needs exactly one",
+      "Ice Cream (Third Scoop)": "Missing from the category",
       "Waffle Cone": "Variable price, needs a fixed price",
-      Topping: null,
+      "Ice Cream Toppings": null,
     });
-    expect(bad.items.find((i) => i.name === "1 Scoop")).toMatchObject({ expectedCents: 400, foundCents: 450 });
+    expect(bad.items.find((i) => i.name === "Ice Cream (First Scoop)")).toMatchObject({ expectedCents: 400, foundCents: 450 });
   });
 
   it("exports a backup of orders, kiosks, alerts and stats", async () => {

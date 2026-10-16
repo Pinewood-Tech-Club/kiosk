@@ -4,7 +4,7 @@ import { squareRequest } from "./square";
 
 export const CATALOG_FRESH_MS = 10 * 60_000;
 export const CATALOG_STALE_MS = 24 * 60 * 60_000;
-export const REQUIRED_ITEMS = ["1 Scoop", "2nd Scoop", "3rd+ Scoop", "Waffle Cone", "Topping"];
+export const REQUIRED_ITEMS = ["Ice Cream (First Scoop)", "Ice Cream (Second Scoop)", "Ice Cream (Third Scoop)", "Waffle Cone", "Ice Cream Toppings"];
 
 export type CatalogResult = { catalog: Catalog; error: null } | { catalog: null; error: string };
 
@@ -31,11 +31,11 @@ export function buildCatalog(categoryName: string, items: Record<string, unknown
   const get = (n: string) => byName.get(n.toLowerCase())!;
   return {
     categoryName,
-    firstScoop: get("1 Scoop"),
-    secondScoop: get("2nd Scoop"),
-    additionalScoop: get("3rd+ Scoop"),
+    firstScoop: get("Ice Cream (First Scoop)"),
+    secondScoop: get("Ice Cream (Second Scoop)"),
+    additionalScoop: get("Ice Cream (Third Scoop)"),
     waffleCone: get("Waffle Cone"),
-    topping: get("Topping"),
+    topping: get("Ice Cream Toppings"),
   };
 }
 
@@ -73,11 +73,11 @@ export async function fetchCatalog(credentials: SquareCredentials, categoryName:
 }
 
 export const EXPECTED_PRICES: Record<string, number> = {
-  "1 Scoop": scoopCents(1),
-  "2nd Scoop": scoopCents(2),
-  "3rd+ Scoop": scoopCents(3),
+  "Ice Cream (First Scoop)": scoopCents(1),
+  "Ice Cream (Second Scoop)": scoopCents(2),
+  "Ice Cream (Third Scoop)": scoopCents(3),
   "Waffle Cone": WAFFLE_CONE_CENTS,
-  Topping: TOPPING_CENTS,
+  "Ice Cream Toppings": TOPPING_CENTS,
 };
 
 export interface CatalogItemCheck {

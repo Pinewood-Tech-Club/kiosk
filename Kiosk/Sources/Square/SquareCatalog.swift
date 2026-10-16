@@ -16,7 +16,7 @@ struct SquareCatalog: Sendable {
 
     var entries: [Entry] { [firstScoop, secondScoop, additionalScoop, waffleCone, topping] }
 
-    static let requiredNames = ["1 Scoop", "2nd Scoop", "3rd+ Scoop", "Waffle Cone", "Topping"]
+    static let requiredNames = ["Ice Cream (First Scoop)", "Ice Cream (Second Scoop)", "Ice Cream (Third Scoop)", "Waffle Cone", "Ice Cream Toppings"]
 
     func scoopEntry(atPosition position: Int) -> Entry {
         switch position {
@@ -74,11 +74,11 @@ struct SquareCatalog: Sendable {
         }
         return SquareCatalog(
             categoryName: categoryName,
-            firstScoop: byName["1 scoop"]!,
-            secondScoop: byName["2nd scoop"]!,
-            additionalScoop: byName["3rd+ scoop"]!,
+            firstScoop: byName["ice cream (first scoop)"]!,
+            secondScoop: byName["ice cream (second scoop)"]!,
+            additionalScoop: byName["ice cream (third scoop)"]!,
             waffleCone: byName["waffle cone"]!,
-            topping: byName["topping"]!
+            topping: byName["ice cream toppings"]!
         )
     }
 }

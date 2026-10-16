@@ -34,7 +34,7 @@ final class PricingTests: XCTestCase {
     func testReceiptAndCatalogLinesRestartPerItem() {
         let quote = Pricing.quote([item(.cup, [.vanilla, .chocolate]), item(.cup, [.vanilla, .chocolate, .cookies])])
         XCTAssertEqual(Receipt.chargedLines(for: quote).map(\.title),
-                       ["1 Scoop", "2nd Scoop", "1 Scoop", "2nd Scoop", "3rd+ Scoop"])
+                       ["Ice Cream (First Scoop)", "Ice Cream (Second Scoop)", "Ice Cream (First Scoop)", "Ice Cream (Second Scoop)", "Ice Cream (Third Scoop)"])
         XCTAssertEqual(Receipt.chargedLines(for: quote).map(\.cents), [400, 300, 400, 300, 200])
     }
 }

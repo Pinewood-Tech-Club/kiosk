@@ -57,7 +57,7 @@ struct Receipt: Sendable {
                 lines.append(Line(title: "Waffle Cone", detail: "#\(index + 1)", quantity: 1, baseCents: line.vesselCents, cents: line.vesselCents))
             }
             for topping in line.item.toppings {
-                lines.append(Line(title: "Topping", detail: "\(label): \(topping.title)", quantity: 1,
+                lines.append(Line(title: "Ice Cream Toppings", detail: "\(label): \(topping.title)", quantity: 1,
                                   baseCents: topping.priceCents, cents: topping.priceCents))
             }
         }
@@ -66,9 +66,9 @@ struct Receipt: Sendable {
 
     private static func scoopName(_ position: Int) -> String {
         switch position {
-        case 1: "1 Scoop"
-        case 2: "2nd Scoop"
-        default: "3rd+ Scoop"
+        case 1: "Ice Cream (First Scoop)"
+        case 2: "Ice Cream (Second Scoop)"
+        default: "Ice Cream (Third Scoop)"
         }
     }
 

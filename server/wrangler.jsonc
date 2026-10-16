@@ -42,7 +42,7 @@
     "LOG_RETENTION_DAYS": "30",
     "SQUARE_ENVIRONMENT": "production",
     "SQUARE_LOCATION_ID": "",
-    "SQUARE_CATEGORY_NAME": "TC",
+    "SQUARE_CATEGORY_NAME": "Tech Club",
     "ACCESS_TEAM_DOMAIN": "https://pinewoodtechclub.cloudflareaccess.com",
     "ACCESS_AUD": "24e628f37435490b7bbc82f99cfe9ba6a58bd93e3374675b6539686aea214004",
     "ADMIN_EMAILS": "28axu@pinewood.edu,28hkent@pinewood.edu,hmark@pinewood.edu"
@@ -87,7 +87,7 @@
         "LOG_RETENTION_DAYS": "7",
         "SQUARE_ENVIRONMENT": "sandbox",
         "SQUARE_LOCATION_ID": "LEAK1T7R20090",
-        "SQUARE_CATEGORY_NAME": "TC",
+        "SQUARE_CATEGORY_NAME": "Tech Club",
         "ACCESS_TEAM_DOMAIN": "https://pinewoodtechclub.cloudflareaccess.com",
         "ACCESS_AUD": "24e628f37435490b7bbc82f99cfe9ba6a58bd93e3374675b6539686aea214004",
         "ADMIN_EMAILS": "28axu@pinewood.edu,28hkent@pinewood.edu,hmark@pinewood.edu"
