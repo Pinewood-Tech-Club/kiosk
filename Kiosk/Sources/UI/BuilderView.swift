@@ -9,9 +9,8 @@ private let stepFade = AnyTransition.asymmetric(
 private let slotRadius: CGFloat = 26
 private let slotSize = CGSize(width: 100, height: 106)
 
-/// Outlines the slot of the item being built, whose mini the stage draws in it, or holds the place of the item that's
-/// out for editing. While editing, tapping it finishes the edit from any step, and a delete badge sits on the corner
-/// like a home-screen icon in edit mode.
+/// Holds the place of the item being built or edited. Tapping it finishes the item from any step, adding a new one to
+/// the order or saving an edit, and a delete badge sits on the corner like a home-screen icon in edit mode.
 /// Follows its slot every frame while the tray scrolls, clipped like the tiles; the controls show only while
 /// the whole slot is in view.
 private struct CurrentSlot: View {
@@ -34,37 +33,35 @@ private struct CurrentSlot: View {
                 .position(x: area.midX, y: area.midY)
                 .allowsHitTesting(false)
 
-            if isEditing {
-                Button { app.finishEditing(then: .newItem) } label: {
-                    LucideIcon(name: "check", size: 28)
-                        .foregroundStyle(Theme.text)
-                        .frame(width: 58, height: 58)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                        .frame(width: slotSize.width, height: slotSize.height)
-                        .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Done editing")
-                .opacity(inView ? 1 : 0)
-                .allowsHitTesting(inView)
-                .animation(.easeInOut(duration: 0.2), value: inView)
-                .position(x: x, y: Layout.trayCenterY)
-
-                Button { app.requestDelete(tile.id) } label: {
-                    LucideIcon(name: "minus", size: 15)
-                        .foregroundStyle(Theme.text)
-                        .frame(width: 30, height: 30)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                        .frame(width: 44, height: 44)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Remove this item")
-                .opacity(inView ? 1 : 0)
-                .allowsHitTesting(inView)
-                .animation(.easeInOut(duration: 0.2), value: inView)
-                .position(x: x + slotSize.width / 2 - 8, y: Layout.trayCenterY - slotSize.height / 2 + 8)
+            Button { isEditing ? app.finishEditing(then: .newItem) : app.addToOrder() } label: {
+                LucideIcon(name: "check", size: 28)
+                    .foregroundStyle(Theme.text)
+                    .frame(width: 58, height: 58)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .frame(width: slotSize.width, height: slotSize.height)
+                    .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isEditing ? "Done editing" : "Add to order")
+            .opacity(inView ? 1 : 0)
+            .allowsHitTesting(inView)
+            .animation(.easeInOut(duration: 0.2), value: inView)
+            .position(x: x, y: Layout.trayCenterY)
+
+            Button { app.requestDelete(tile.id) } label: {
+                LucideIcon(name: "minus", size: 15)
+                    .foregroundStyle(Theme.text)
+                    .frame(width: 30, height: 30)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .frame(width: 44, height: 44)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove this item")
+            .opacity(inView ? 1 : 0)
+            .allowsHitTesting(inView)
+            .animation(.easeInOut(duration: 0.2), value: inView)
+            .position(x: x + slotSize.width / 2 - 8, y: Layout.trayCenterY - slotSize.height / 2 + 8)
         }
     }
 }

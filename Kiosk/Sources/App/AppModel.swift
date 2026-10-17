@@ -141,7 +141,7 @@ final class AppModel {
         var basket = items
         if let editingID, let index = basket.firstIndex(where: { $0.id == editingID }) {
             basket[index] = current
-        } else if currentHasChoices {
+        } else {
             basket.append(current)
         }
         return Pricing.quote(basket)
@@ -151,7 +151,7 @@ final class AppModel {
 
     /// The tray shows the item being built or edited exactly when `liveQuote` counts it.
     private func syncTrayCurrent() {
-        let counted = screen == .builder && mode == .customize && (isEditing || currentHasChoices)
+        let counted = screen == .builder && mode == .customize
         stage.trayCurrentWanted = counted ? (current, editingID) : nil
     }
 
@@ -604,7 +604,12 @@ final class AppModel {
     }
 
     func discardCurrentItem() {
-        guard screen == .builder, mode == .customize, !isEditing, currentHasChoices else { return }
+        guard currentHasChoices else { return }
+        discardNewItem()
+    }
+
+    private func discardNewItem() {
+        guard screen == .builder, mode == .customize, !isEditing else { return }
         stage.dismissCurrentHero()
         current = freshItem()
         setStep(.vessel)
@@ -626,7 +631,12 @@ final class AppModel {
             }
             delete(editingID, presentNewItem: next == .newItem)
             if next != .newItem { proceed(to: next) }
-        case .deleteItem(let id): delete(id)
+        case .deleteItem(let id):
+            if id == current.id, !isEditing {
+                discardNewItem()
+            } else {
+                delete(id)
+            }
         case .startOver: resetToAttract()
         }
     }

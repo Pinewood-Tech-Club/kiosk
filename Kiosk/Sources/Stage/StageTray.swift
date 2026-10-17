@@ -1,28 +1,18 @@
 import RealityKit
 import SwiftUI
 
-/// A static mini of the item being built or edited, in its tray slot: the slot after the order's items for a new item,
-/// the edited item's own slot otherwise, where the mini stays hidden because the editing slot keeps its Done and
-/// remove controls. Kept out of `tray`, `heroes` and `liveScoops`, which hold only the order.
+/// The tray slot of the item being built or edited: the slot after the order's items for a new item, the edited
+/// item's own slot otherwise. Kept out of `tray`, which holds only the order.
 @MainActor
 final class TrayCurrent {
     let key: UUID
     let isEditing: Bool
-    let entry: TrayEntry
-    var baseMetrics: (top: Float, radius: Float)
-    var toppings: Entity?
-    var toppingsShown: Set<Topping> = []
-    var toppingsTop: Float?
-    var changedAt: Double
-    var opacity: Float = 0
-    var fade: Tween?
+    var index: Float
 
-    init(key: UUID, isEditing: Bool, entry: TrayEntry, baseMetrics: (top: Float, radius: Float)) {
+    init(key: UUID, isEditing: Bool, index: Float) {
         self.key = key
         self.isEditing = isEditing
-        self.entry = entry
-        self.baseMetrics = baseMetrics
-        self.changedAt = -.infinity
+        self.index = index
     }
 }
 
@@ -83,7 +73,11 @@ extension Stage {
     }
 
     func trayCenterX(_ entry: TrayEntry) -> CGFloat {
-        Layout.trayFirstCenterX + CGFloat(entry.index) * Layout.trayPitch - trayScroll
+        trayCenterX(index: entry.index)
+    }
+
+    private func trayCenterX(index: Float) -> CGFloat {
+        Layout.trayFirstCenterX + CGFloat(index) * Layout.trayPitch - trayScroll
     }
 
     /// Where a docked item sits for the sheet's current progress, and how far it's shown (scrolled out of
@@ -184,158 +178,36 @@ extension Stage {
             case .editing, .receipt, .removing: break
             }
         }
-        let current = trayCurrent.map { TrayTileModel.Tile(id: $0.key, x: trayCenterX($0.entry)) }
+        let current = trayCurrent.map { TrayTileModel.Tile(id: $0.key, x: trayCenterX(index: $0.index)) }
         trayTiles.update(tiles, current: current)
     }
-
-    private static let trayCurrentFade: Double = 0.2
-    /// Whip and syrup finish growing about this long after a tap; the mini copies the toppings only once they're done.
-    private static let trayToppingsSettle: Double = 1.2
 
     private func reconcileTrayCurrent() {
         let wanted = isBuilt ? trayCurrentWanted : nil
         let key = wanted.map { $0.editing ?? $0.item.id }
         if let current = trayCurrent, current.key != key {
-            fadeOutTrayCurrent(current)
+            releaseTrayCurrent(current)
         }
-        guard let wanted, let key else { return }
-        let current: TrayCurrent
-        if let existing = trayCurrent {
-            current = existing
-            let shown = current.entry.item
-            if shown.vessel != wanted.item.vessel || shown.flavors != wanted.item.flavors {
-                rebuildTrayCurrent(current, item: wanted.item)
-            } else if shown.toppings != wanted.item.toppings {
-                current.entry.item = wanted.item
-                current.changedAt = now
-            }
-        } else {
-            current = makeTrayCurrent(wanted.item, key: key, isEditing: wanted.editing != nil)
-            trayCurrent = current
-            if !current.isEditing, !summaryActive { animateTrayScroll(to: maxTrayScroll, duration: 0.4) }
-        }
-        syncTrayCurrentToppings(current)
+        guard let wanted, let key, trayCurrent == nil else { return }
+        let current = TrayCurrent(key: key, isEditing: wanted.editing != nil, index: Float(tray.count))
+        trayCurrent = current
+        if !current.isEditing, !summaryActive { animateTrayScroll(to: maxTrayScroll, duration: 0.4) }
     }
 
-    private func makeTrayCurrentRig(_ item: IceCreamItem) -> ItemRig {
-        let rig = makeRig(item.vessel)
-        rig.root.name = "tray-current"
-        guard let assets else { return rig }
-        for (index, flavor) in item.flavors.enumerated() {
-            let slot = index + 1
-            let key = placementKey(index: index, count: item.flavors.count, vessel: item.vessel)
-            let pose = assets.scoopSet(slot).resolve(finalPoseName(item.vessel, key: key))
-            let model = ModelEntity(mesh: assets.scoopSet(slot).staticMesh(pose), materials: [assets.material(slot: slot, flavor: flavor)])
-            applyLighting(model)
-            let holder = Entity()
-            holder.transform = slotLocal(item.vessel, key: key, height: 0)
-            holder.addChild(model)
-            rig.body.addChild(holder)
-        }
-        return rig
-    }
-
-    private func makeTrayCurrent(_ item: IceCreamItem, key: UUID, isEditing: Bool) -> TrayCurrent {
-        let rig = makeTrayCurrentRig(item)
-        let metrics = itemMetrics(item)
-        let entry = TrayEntry(item: item, rig: rig, index: Float(tray.count), metrics: metrics)
-        entry.mode = .docked
-        entry.spinYaw = 0
-        let current = TrayCurrent(key: key, isEditing: isEditing, entry: entry, baseMetrics: metrics)
-        rig.setOpacity(0)
-        root.addChild(rig.root)
-        current.fade = animate(duration: Self.trayCurrentFade) { p in
-            current.opacity = TimingCurve.swiftUIEaseInOut(p)
-        }
-        return current
-    }
-
-    private func rebuildTrayCurrent(_ current: TrayCurrent, item: IceCreamItem) {
-        current.entry.rig?.root.removeFromParent()
-        let rig = makeTrayCurrentRig(item)
-        rig.setOpacity(current.opacity)
-        root.addChild(rig.root)
-        current.entry.rig = rig
-        current.entry.item = item
-        current.toppings = nil
-        current.toppingsShown = []
-        current.toppingsTop = nil
-        current.baseMetrics = itemMetrics(item)
-        current.entry.setMetrics(current.baseMetrics)
-        current.changedAt = now
-    }
-
-    /// Toppings take a physics simulation to place, so the mini copies the hero's once they've settled rather than
-    /// placing its own.
-    private func syncTrayCurrentToppings(_ current: TrayCurrent) {
-        let item = current.entry.item
-        let wanted = Set(item.toppings)
-        guard wanted != current.toppingsShown || (current.toppings == nil) != wanted.isEmpty else { return }
-        if wanted.isEmpty {
-            setTrayCurrentToppings(current, nil, top: nil)
-            current.toppingsShown = []
-            return
-        }
-        guard now - current.changedAt >= Self.trayToppingsSettle, let hero = heroes[selectedVessel], hero.vessel == item.vessel,
-              let stack = hero.toppings, stack.isSettled(now: now), Set(stack.shownToppings) == wanted,
-              stack.scoopCount == item.flavors.count else { return }
-        let copy = stack.root.clone(recursive: true)
-        copy.transform = stack.root.transform
-        setTrayCurrentToppings(current, copy, top: stack.top)
-        current.toppingsShown = wanted
-    }
-
-    private func setTrayCurrentToppings(_ current: TrayCurrent, _ toppings: Entity?, top: Float?) {
-        current.toppings?.removeFromParent()
-        current.toppings = toppings
-        current.toppingsTop = top
-        if let toppings { current.entry.rig?.body.addChild(toppings) }
-        current.entry.setMetrics((max(current.baseMetrics.top, top ?? -.infinity), current.baseMetrics.radius))
-    }
-
-    private func fadeOutTrayCurrent(_ current: TrayCurrent) {
+    private func releaseTrayCurrent(_ current: TrayCurrent) {
         if trayCurrent === current { trayCurrent = nil }
-        trayCurrentLeaving.append(current)
-        current.fade?.cancel()
-        let from = current.opacity
-        current.fade = animate(duration: Self.trayCurrentFade) { p in
-            current.opacity = from * (1 - TimingCurve.swiftUIEaseInOut(p))
-        } completion: { [weak self] in
-            current.entry.rig?.root.removeFromParent()
-            self?.trayCurrentLeaving.removeAll { $0 === current }
-        }
         if !current.isEditing, !summaryActive, trayScroll > maxTrayScroll {
             animateTrayScroll(to: snappedTrayScroll(trayScroll), duration: 0.45)
         }
     }
 
-    /// The leaving minis stay where they were while they fade, even as the order's entry takes over the slot.
     private func placeTrayCurrent() {
-        if let current = trayCurrent {
-            if current.isEditing {
-                if let entry = tray.first(where: { $0.id == current.key }) { current.entry.index = entry.index }
-            } else {
-                current.entry.index = Float(tray.count)
-            }
+        guard let current = trayCurrent else { return }
+        if current.isEditing {
+            if let entry = tray.first(where: { $0.id == current.key }) { current.index = entry.index }
+        } else {
+            current.index = Float(tray.count)
         }
-        for current in [trayCurrent].compactMap({ $0 }) + trayCurrentLeaving {
-            guard let rig = current.entry.rig else { continue }
-            let docked = dockedPose(current.entry)
-            rig.pose = docked.pose
-            rig.scaleMultiplier = docked.edge
-            rig.apply()
-            rig.setOpacity(current.opacity)
-            rig.root.isEnabled = !current.isEditing && current.opacity > 0.002 && docked.edge > 0.01
-        }
-    }
-
-    private func discardTrayCurrent() {
-        for current in [trayCurrent].compactMap({ $0 }) + trayCurrentLeaving {
-            current.fade?.cancel()
-            current.entry.rig?.root.removeFromParent()
-        }
-        trayCurrent = nil
-        trayCurrentLeaving = []
     }
 
     func animateTrayScroll(to target: CGFloat, duration: Double = 0.5) {
@@ -669,7 +541,7 @@ extension Stage {
         staging = .builder
         for tween in tweens { tween.cancel() }
         tweens.removeAll()
-        discardTrayCurrent()
+        trayCurrent = nil
         for rig in Array(heroes.values) + leavingRigs { discard(rig) }
         heroes.removeAll()
         for scoop in scoops { discard(scoop) }

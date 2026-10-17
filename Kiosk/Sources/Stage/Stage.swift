@@ -94,7 +94,6 @@ final class Stage {
     /// The item being built or edited, whenever it counts toward the order's total; set by the app, shown in the tray.
     var trayCurrentWanted: (item: IceCreamItem, editing: UUID?)?
     var trayCurrent: TrayCurrent?
-    var trayCurrentLeaving: [TrayCurrent] = []
     var step: BuilderStep = .vessel
     var controlsVisible = true
     var staging = Staging.builder
