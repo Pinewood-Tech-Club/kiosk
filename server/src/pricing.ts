@@ -6,6 +6,7 @@ export const VESSEL_TITLES: Record<string, string> = { cup: "Cup", cone: "Waffle
 export const FLAVOR_TITLES: Record<string, string> = { vanilla: "Vanilla", chocolate: "Chocolate", cookies: "Cookies & Cream" };
 export const TOPPING_TITLES: Record<string, string> = {
   whip: "Whipped Cream",
+  fudge: "Hot Fudge",
   chocolate: "Chocolate Syrup",
   caramel: "Caramel Syrup",
   gummies: "Gummy Bears",

@@ -82,8 +82,8 @@ interface BoothState {
 
 interface Supply {                // (added)
   kind: "flavor" | "vessel" | "topping";
-  id: string;                     // flavor ids from the kiosk; vessels "cup", "cone"; toppings "whip", "chocolate", "caramel", "gummies", "mms", "sprinkles"
-  name: string;                   // "Vanilla", "Cups", "Waffle cones", "Whipped Cream", "Chocolate Syrup", "Caramel Syrup", "Gummy Bears", "M&M's", "Sprinkles"
+  id: string;                     // flavor ids from the kiosk; vessels "cup", "cone"; toppings "whip", "fudge", "chocolate", "caramel", "gummies", "mms", "sprinkles"
+  name: string;                   // "Vanilla", "Cups", "Waffle cones", "Whipped Cream", "Hot Fudge", "Chocolate Syrup", "Caramel Syrup", "Gummy Bears", "M&M's", "Sprinkles"
   soldOut: boolean;               // booth-wide: every kiosk follows it
 }
 

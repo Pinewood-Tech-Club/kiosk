@@ -59,6 +59,7 @@ const TITLES: Record<string, string> = {
   chocolate: "Chocolate",
   cookies: "Cookies & Cream",
   whip: "Whipped Cream",
+  fudge: "Hot Fudge",
   sprinkles: "Sprinkles",
   gummies: "Gummy Bears",
   mms: "M&M's",
