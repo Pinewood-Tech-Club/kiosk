@@ -126,17 +126,25 @@ enum CandyMeshes {
         return Built(mesh: try MeshResource.generate(from: [descriptor]), halfExtents: (hi - lo) / 2)
     }
 
-    /// `length` is overall, ends included; `bend` (radians) curves it in the XZ plane so it still lies flat.
-    /// The ends are domes `capDepth` radii deep: rounded off like an extruded jimmy, not a capsule's full hemisphere.
-    static func sprinkle(length: Float, radius: Float, bend: Float, capDepth: Float = 0.5, segments: Int = 10,
-                         bodyRows: Int = 8, capRows: Int = 4) throws -> Built {
+    /// `length` is overall, ends included; `bend` (radians) curves it in the XZ plane so it still lies flat, and `skew`
+    /// (-1...1) moves that curve toward one end. The ends are domes `capDepth` radii deep: rounded off like an extruded
+    /// jimmy, not a capsule's full hemisphere.
+    static func sprinkle(length: Float, radius: Float, bend: Float, skew: Float = 0, capDepth: Float = 0.5,
+                         segments: Int = 10, bodyRows: Int = 8, capRows: Int = 4) throws -> Built {
         let cap = radius * capDepth
         let body = max(length - 2 * cap, 0.0005)
         let curvature = bend / body
+        func angle(_ s: Float) -> Float { curvature * (s + skew * s * s / body) }
         func frame(_ s: Float) -> (point: SIMD3<Float>, tangent: SIMD3<Float>) {
             guard abs(curvature) > 1e-4 else { return ([s, 0, 0], [1, 0, 0]) }
-            let a = curvature * s
-            return ([sin(a) / curvature, 0, (1 - cos(a)) / curvature], [cos(a), 0, sin(a)])
+            let steps = 48
+            var point = SIMD3<Float>.zero
+            for k in 0..<steps {
+                let a = angle(s * (Float(k) + 0.5) / Float(steps))
+                point += SIMD3(cos(a), 0, sin(a)) * s / Float(steps)
+            }
+            let a = angle(s)
+            return (point, [cos(a), 0, sin(a)])
         }
         func ring(_ s: Float, along: Float, scale: Float) -> [SIMD3<Float>] {
             let (p, t) = frame(s)

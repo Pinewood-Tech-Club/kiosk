@@ -42,7 +42,7 @@ final class CandyLibrary {
                                             printUp: index.isMultiple(of: 2), rng: &shapes)
             }
             let rods = try Sprinkles.variants.map {
-                try CandyMeshes.sprinkle(length: $0.length * 0.001, radius: $0.diameter * 0.0005, bend: $0.bend)
+                try CandyMeshes.sprinkle(length: $0.length * 0.001, radius: $0.diameter * 0.0005, bend: $0.bend, skew: $0.skew)
             }
             let library = CandyLibrary(gummyBears: await GummyBears.make(shell: bear),
                                        candyLentils: await CandyLentils.make(pieces: lentils),
@@ -327,10 +327,20 @@ enum LentilPrint {
 }
 
 struct Sprinkles: ScatterKind {
-    static let variants: [(length: Float, diameter: Float, bend: Float)] = [
-        (6.2, 1.25, 0), (6.8, 1.35, 0), (7.4, 1.2, 0), (7.9, 1.4, 0), (8.0, 1.3, 0),
-        (7.2, 1.45, 0), (6.5, 1.2, 0), (7.6, 1.4, 0), (7.0, 1.3, 0.45), (7.8, 1.35, -0.35), (6.6, 1.25, 0.3),
-    ]
+    /// Millimeters and radians. Lengths within about 15% of 7.1 mm; about two in five are bent into a gentle curve,
+    /// sometimes more toward one end, and the rest are only just off straight.
+    static let variants: [(length: Float, diameter: Float, bend: Float, skew: Float)] = {
+        var rng = ToppingRandom(seed: 0x5915_C1E5)
+        return (0..<24).map { index in
+            let length = 7.1 * Float.random(in: 0.85...1.15, using: &rng)
+            let diameter = Float.random(in: 1.2...1.42, using: &rng)
+            let sign: Float = Bool.random(using: &rng) ? 1 : -1
+            let curved = index % 5 < 2
+            let bend = sign * (curved ? Float.random(in: 0.45...0.95, using: &rng) : Float.random(in: 0...0.12, using: &rng))
+            let skew = curved ? Float.random(in: -0.8...0.8, using: &rng) : 0
+            return (length, diameter, bend, skew)
+        }
+    }()
 
     let pieces: [CandyMeshes.Built]
     let materials: [PhysicallyBasedMaterial]
