@@ -26,9 +26,9 @@ export const routes: Route[] = [
   {
     method: "GET",
     path: "/giftcard",
-    async handle() {
+    async handle({ url }) {
       const nonce = randomToken(12);
-      return html(giftCardShell(giftCardBody(), nonce, giftCardScript()), 200, pageHeaders(nonce));
+      return html(giftCardShell(giftCardBody(), nonce, giftCardScript(url.searchParams.get("debug") === "1")), 200, pageHeaders(nonce));
     },
   },
   {

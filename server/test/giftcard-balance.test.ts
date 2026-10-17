@@ -56,6 +56,11 @@ describe("GET /giftcard", () => {
     expect(await response.text()).toContain("Gift Card Balance");
   });
 
+  it("turns on the simulated camera only for ?debug=1", async () => {
+    expect(await (await send("/giftcard")).text()).toContain("const DEBUG = false;");
+    expect(await (await send("/giftcard?debug=1")).text()).toContain("const DEBUG = true;");
+  });
+
   it("serves the vendored decoder", async () => {
     const response = await send("/giftcard/zxing.js");
     expect(response.status).toBe(200);

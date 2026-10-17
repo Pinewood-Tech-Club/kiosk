@@ -31,6 +31,7 @@ p{margin:0}
 .finder video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s}
 .finder video.live{opacity:1}
 .finder video.mirror{transform:scaleX(-1)}
+.finder canvas{position:absolute;inset:0;width:100%;height:100%}
 .finder .sweep{position:absolute;left:0;right:0;top:0;height:3px;background:var(--accent);animation:sweep 2.4s ease-in-out infinite alternate;opacity:0;transition:opacity .3s}
 .finder.live .sweep{opacity:.85}
 .stage{position:relative;width:min(62vh,86vw);height:min(62vh,86vw);margin-top:3.2vh;flex:none}
@@ -88,6 +89,7 @@ export function giftCardBody(): string {
   <div class="stage" id="stage">
     <div class="finder" id="finder">
       <video id="video" playsinline muted></video>
+      <canvas id="sim" hidden></canvas>
       <div class="sweep"></div>
     </div>
     <p class="checking" aria-live="polite">Checking your balance<i>.</i><i>.</i><i>.</i></p>
@@ -120,8 +122,8 @@ export function giftCardBody(): string {
 <template id="icon-camera-off">${ICON_CAMERA_OFF}</template>`;
 }
 
-export function giftCardScript(): string {
-  return String.raw`
+export function giftCardScript(debug = false): string {
+  return `const DEBUG = ${debug};` + String.raw`
 const IDLE_MS = 20000, WARN_AT_MS = 15000, SCAN_EVERY_MS = 140, CAMERA_RETRY_MS = 3000;
 const FORMATS = ["qr_code", "code_128", "code_39", "code_93", "ean_13", "ean_8", "itf", "codabar", "upc_a", "upc_e", "data_matrix", "pdf417", "aztec"];
 const $ = (id) => document.getElementById(id);
@@ -309,9 +311,10 @@ async function lookup(gan) {
   busy = true;
   const run = scanRun;
   $("stage").classList.add("busy");
-  const minimum = new Promise((resolve) => setTimeout(resolve, 600));
+  const minimum = new Promise((resolve) => setTimeout(resolve, DEBUG ? 1500 : 600));
   let outcome;
-  try {
+  if (DEBUG) outcome = { balanceCents: DEMO_BALANCE_CENTS, state: "ACTIVE" };
+  else try {
     const res = await fetch("/giftcard/balance", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ gan }) });
     outcome = res.ok ? await res.json() : res.status === 404 ? "notfound" : res.status === 429 ? "limit" : "network";
   } catch (e) {
@@ -428,6 +431,7 @@ function openCamera() {
 async function startScan() {
   stopScan();
   const run = scanRun;
+  if (DEBUG) { simulate(run); return; }
   try { await openCamera(); } catch (e) {
     if (run === scanRun) fail(cameraErrorKind(e));
     return;
@@ -457,7 +461,141 @@ async function startScan() {
   loop();
 }
 
-openCamera().catch(() => {});
+const DEMO_GAN = "7783320000001234", DEMO_BALANCE_CENTS = 1250;
+const SIM_ENTER = 450, SIM_SLIDE = 1250, SIM_SETTLE = 900, SIM_HOLD = 500;
+let simBars = null, simGrain = null;
+
+function simBarcode() {
+  if (simBars) return simBars;
+  let seed = 977;
+  const rand = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  const bars = [2, 1, 1, 2, 3, 2];
+  for (let i = 0; i < 54; i++) bars.push(1 + Math.floor(rand() * rand() * 4));
+  bars.push(2, 3, 3, 1, 1, 1, 2);
+  return (simBars = bars);
+}
+
+function simNoise() {
+  if (simGrain) return simGrain;
+  const n = document.createElement("canvas");
+  n.width = n.height = 128;
+  const g = n.getContext("2d"), img = g.createImageData(128, 128);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random() * 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return (simGrain = n);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawCard(ctx, u, found) {
+  const w = 100 * u, h = 63 * u, x = -w / 2, y = -h / 2;
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,.32)"; ctx.shadowBlur = 9 * u; ctx.shadowOffsetY = 4 * u;
+  roundRect(ctx, x, y, w, h, 4 * u);
+  const paper = ctx.createLinearGradient(x, y, x + w, y + h);
+  paper.addColorStop(0, "#fbfaf7"); paper.addColorStop(1, "#e9e6df");
+  ctx.fillStyle = paper; ctx.fill();
+  ctx.restore();
+  ctx.save();
+  roundRect(ctx, x, y, w, h, 4 * u); ctx.clip();
+  const band = ctx.createLinearGradient(x, y, x + w, y + 27 * u);
+  band.addColorStop(0, "#34414c"); band.addColorStop(1, "#26313a");
+  ctx.fillStyle = band; ctx.fillRect(x, y, w, 27 * u);
+  ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = 0.6 * u;
+  for (let i = -3; i < 9; i++) { ctx.beginPath(); ctx.arc(x + w * 0.86, y - 6 * u, (14 + i * 4.2) * u, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.fillStyle = "#f6f3ec"; ctx.textBaseline = "alphabetic";
+  ctx.font = "600 " + (8.4 * u) + 'px "Kiosk Serif", Georgia, serif';
+  ctx.fillText("Gift Card", x + 7 * u, y + 17.5 * u);
+  ctx.font = (3.1 * u) + 'px "Kiosk Serif", Georgia, serif'; ctx.globalAlpha = 0.7;
+  ctx.fillText("Redeemable for purchases", x + 7 * u, y + 22.5 * u);
+  ctx.globalAlpha = 1;
+  const bars = simBarcode(), modules = bars.reduce((a, b) => a + b, 0);
+  const bx = x + 12 * u, bw = 76 * u, by = y + 33 * u, bh = 16 * u, m = bw / modules;
+  ctx.fillStyle = "#16181a";
+  let cx = bx;
+  bars.forEach((wd, i) => { if (i % 2 === 0) ctx.fillRect(cx, by, wd * m + 0.15, bh); cx += wd * m; });
+  ctx.font = (3.6 * u) + "px ui-monospace, Menlo, monospace"; ctx.textAlign = "center";
+  ctx.fillText(DEMO_GAN.replace(/(\d{4})(?=\d)/g, "$1 "), 0, by + bh + 6 * u);
+  ctx.restore();
+  if (found > 0) {
+    const pad = 3.2 * u, l = 6 * u, x0 = bx - pad, y0 = by - pad, x1 = bx + bw + pad, y1 = by + bh + pad;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, found * 3);
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 1.3 * u; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath();
+    for (const [px, py, sx, sy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x1, y1, -1, -1], [x0, y1, 1, -1]]) {
+      ctx.moveTo(px, py + sy * l); ctx.lineTo(px, py); ctx.lineTo(px + sx * l, py);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawSim(canvas, t) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), W = canvas.clientWidth, H = canvas.clientHeight;
+  if (!W || !H) return;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#d3cec6"); bg.addColorStop(0.6, "#c0bab1"); bg.addColorStop(1, "#aaa49b");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W * 0.22, H * 0.1, 0, W * 0.22, H * 0.1, W * 0.75);
+  glow.addColorStop(0, "rgba(255,252,245,.55)"); glow.addColorStop(1, "rgba(255,252,245,0)");
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(60,52,44,.16)"; ctx.fillRect(0, H * 0.78, W, H * 0.22);
+
+  const k = Math.max(0, t - SIM_ENTER), p = Math.min(1, k / SIM_SLIDE), e = 1 - Math.pow(1 - p, 3);
+  const s = Math.min(1, Math.max(0, (k - SIM_SLIDE) / SIM_SETTLE)), calm = 1 - s * 0.7;
+  const shake = p < 1 ? 0 : 1;
+  const u = W * 0.72 / 100 * (1.1 - 0.1 * (e * 0.5 + s * 0.5));
+  const x = W / 2 + (1 - e) * W * 0.2 + shake * Math.sin(t / 210) * 2.2 * calm;
+  const y = H * 0.5 + (1 - e) * H * 0.95 + shake * Math.cos(t / 260) * 1.8 * calm;
+  const rot = (-17 + 13.5 * e + shake * Math.sin(t / 330) * 0.5 * calm) * Math.PI / 180;
+  const foundAt = SIM_ENTER + SIM_SLIDE + SIM_SETTLE;
+  const found = t >= foundAt ? (t - foundAt) / 1000 : 0;
+  if (k > 0) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    drawCard(ctx, u, found);
+    ctx.restore();
+  }
+  const vig = ctx.createRadialGradient(W / 2, H / 2, W * 0.3, W / 2, H / 2, W * 0.78);
+  vig.addColorStop(0, "rgba(0,0,0,0)"); vig.addColorStop(1, "rgba(0,0,0,.3)");
+  ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 0.05; ctx.globalCompositeOperation = "overlay";
+  ctx.fillStyle = ctx.createPattern(simNoise(), "repeat");
+  ctx.translate((t * 37) % 128, (t * 53) % 128); ctx.fillRect(-128, -128, W + 256, H + 256);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+  if (found > 0 && found < 0.3) { ctx.fillStyle = "rgba(255,255,255," + (0.55 * (1 - found / 0.3)) + ")"; ctx.fillRect(0, 0, W, H); }
+}
+
+function simulate(run) {
+  const canvas = $("sim"), finder = $("finder"), t0 = performance.now();
+  const foundAt = SIM_ENTER + SIM_SLIDE + SIM_SETTLE;
+  canvas.hidden = false;
+  finder.classList.add("live");
+  (function frame(now) {
+    if (run !== scanRun) return;
+    const t = now - t0;
+    drawSim(canvas, t);
+    if (t >= foundAt) finder.classList.remove("live");
+    if (t >= foundAt + SIM_HOLD && !busy) { bump(); lookup(DEMO_GAN); return; }
+    requestAnimationFrame(frame);
+  })(t0);
+}
+
+if (!DEBUG) openCamera().catch(() => {});
 
 document.addEventListener("visibilitychange", () => { if (document.hidden && current === "s-scan") reset(); });
 `;
