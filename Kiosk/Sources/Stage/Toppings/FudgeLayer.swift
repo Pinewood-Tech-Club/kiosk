@@ -59,7 +59,10 @@ final class FudgeLayer: ToppingLayer {
         isFinished = false
         liftsIn = animated && underToppings
         pourStart = animated ? now : now - 100
-        animationEnd = animated ? now + growDuration + 0.05 : now
+        let dripsEnd = resting.map { rest in
+            rest.drips.map { Double(Self.pourDuration) * 0.75 + Double($0.delay + $0.duration) }.max() ?? 0
+        } ?? 0
+        animationEnd = animated ? now + max(growDuration, liftsIn ? 0 : Self.streamLead + dripsEnd) + 0.05 : now
         if sheetMesh == nil, let mesh = FudgeSheetMesh() {
             sheetMesh = mesh
             sheet.model = ModelComponent(mesh: mesh.resource, materials: [FudgeStyle.material])
@@ -356,7 +359,7 @@ struct FudgeRest: Sendable {
             let isMajor = index < major
             let k = Self.ray(at: angle)
             let edge = cap[k]
-            let room = Float(reach[k] - 3) * Self.step - edge
+            let room = Float((-6...6).map { reach[(k + $0 + Self.rays) % Self.rays] }.min()! - 4) * Self.step - edge
             let halfWidth = isMajor ? Float.random(in: 0.0022...0.0031, using: &rng) : Float.random(in: 0.0016...0.0022, using: &rng)
             var bead = halfWidth * Float.random(in: 1.18...1.34, using: &rng)
             var swell = isMajor ? Float.random(in: 0.0004...0.0008, using: &rng) : 0.0002
@@ -590,7 +593,7 @@ struct FudgeRest: Sendable {
             + 0.08 * FudgeMath.smoothstep(state.pour, state.pour + 0.9, t)
         let active = settled ? 0 : t < state.pour ? FudgeMath.smoothstep(0, 0.1, t) : exp(-(t - state.pour) / 0.3)
         let runs = drips.map { drip in
-            settled ? 1 : FudgeMath.ooze(Ease.clamp01((t - state.pour * 0.62 - drip.delay) / drip.duration))
+            settled ? 1 : FudgeMath.ooze(Ease.clamp01((t - state.pour * 0.75 - drip.delay) / drip.duration))
         }
         return Moment(state: state, settled: settled, fill: fill, swollen: 1 + 0.3 * (1 - fill),
                       spot: settled ? .zero : state.landing.point(clock: max(t, 0), pour: state.pour, radius: crown),
@@ -611,7 +614,7 @@ struct FudgeRest: Sendable {
         for near in rayDrips[k] {
             let run = m.runs[near.drip]
             guard run > 0 else { continue }
-            let root = roots[near.drip]
+            let root = roots[near.drip] * m.fill
             guard s > root - 0.004 else { continue }
             let drip = drips[near.drip]
             let bead = drip.bead * (0.75 + 0.25 * run)
