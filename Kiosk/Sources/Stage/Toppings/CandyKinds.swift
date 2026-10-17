@@ -336,8 +336,8 @@ struct Sprinkles: ScatterKind {
             let diameter = Float.random(in: 1.2...1.42, using: &rng)
             let sign: Float = Bool.random(using: &rng) ? 1 : -1
             let curved = index % 5 < 2
-            let bend = sign * (curved ? Float.random(in: 0.45...0.95, using: &rng) : Float.random(in: 0...0.12, using: &rng))
-            let skew = curved ? Float.random(in: -0.8...0.8, using: &rng) : 0
+            let bend = sign * (curved ? Float.random(in: 0.4...0.85, using: &rng) : Float.random(in: 0...0.12, using: &rng))
+            let skew = curved ? Float.random(in: -0.5...0.5, using: &rng) : 0
             return (length, diameter, bend, skew)
         }
     }()
