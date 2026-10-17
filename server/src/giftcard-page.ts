@@ -22,7 +22,7 @@ p{margin:0}
 .btn:hover{background:var(--bg);color:var(--fg);border-color:var(--fg)}
 .link:hover{background:var(--fg);color:var(--bg)}
 .btn:active,.link:active{transform:scale(.97)}
-.btn:disabled,.link:disabled,.btn:disabled:hover,.link:disabled:hover{background:var(--bg);color:var(--fg);border-color:var(--fg);border-style:dashed;cursor:default;transform:none}
+.btn:disabled,.link:disabled{opacity:.4;cursor:default;transform:none}
 .actions.row{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:22px}
 @property --ft{syntax:"<length>";inherits:false;initial-value:0px}
 @property --fb{syntax:"<length>";inherits:false;initial-value:0px}
