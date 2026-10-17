@@ -221,6 +221,15 @@ describe("pricing", () => {
     ]);
   });
 
+  it("bills hot fudge as its own topping, apart from chocolate syrup", () => {
+    const catalog = buildCatalog("TC", catalogItems());
+    const q = quote([item("cone", ["chocolate", "vanilla"], ["fudge", "chocolate", "whip"])]);
+    expect(q.totalCents).toBe(400 + 300 + 150 + 3 * 50);
+    expect(catalogLineItems(q, catalog).filter((l) => l.catalog_object_id === "VT").map((l) => l.note)).toEqual([
+      "#1 Waffle Cone: Hot Fudge", "#1 Waffle Cone: Chocolate Syrup", "#1 Waffle Cone: Whipped Cream",
+    ]);
+  });
+
   it("rejects catalogs that are incomplete or priced differently", () => {
     expect(() => buildCatalog("Tech Club", catalogItems(["V1", "V2", "V3", "VC"]))).toThrow(/missing item\(s\): Ice Cream Toppings/);
     const expensive = buildCatalog("Tech Club", catalogItems().map((i) => (i.id === "I-V3" ? { ...i, item_data: { ...i.item_data, variations: [{ ...i.item_data.variations[0], item_variation_data: { pricing_type: "FIXED_PRICING", price_money: { amount: 250 } } }] } } : i)));

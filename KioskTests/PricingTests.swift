@@ -31,6 +31,15 @@ final class PricingTests: XCTestCase {
         XCTAssertEqual(quote.totalCents, 1900)
     }
 
+    func testHotFudgeIsPricedLikeEveryTopping() {
+        XCTAssertEqual(Topping.fudge.priceCents, 50)
+        XCTAssertEqual(Pricing.quote([item(.cup, [.vanilla], [.fudge, .chocolate])]).totalCents, 500)
+    }
+
+    func testHotFudgeStacksUnderEverythingElse() {
+        XCTAssertEqual(Topping.stacked([.sprinkles, .whip, .chocolate, .fudge]), [.fudge, .whip, .chocolate, .sprinkles])
+    }
+
     func testReceiptAndCatalogLinesRestartPerItem() {
         let quote = Pricing.quote([item(.cup, [.vanilla, .chocolate]), item(.cup, [.vanilla, .chocolate, .cookies])])
         XCTAssertEqual(Receipt.chargedLines(for: quote).map(\.title),
