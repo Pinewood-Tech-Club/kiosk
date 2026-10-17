@@ -225,6 +225,12 @@ const GiftCardGan = z.string().max(200);
 const GiftCardKey = z.string().min(1).max(45);
 
 export const GiftCardLookupBody = z.object({ gan: GiftCardGan });
+export const GiftCardDonateBody = z.object({
+  gan: GiftCardGan,
+  variationId: z.string().min(1).max(64),
+  amountCents: z.number().int().min(1).max(100_000),
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9-]{16,40}$/),
+});
 export const GiftCardChargeBody = z.object({ checkoutId: id, gan: GiftCardGan, idempotencyKey: GiftCardKey });
 export const CheckoutCompleteBody = z.object({ checkoutId: id, paymentIds: z.array(z.string().min(1).max(64)).min(1).max(3), idempotencyKey: GiftCardKey });
 export const CheckoutCancelBody = z.object({ checkoutId: id, paymentIds: z.array(z.string().min(1).max(64)).max(3).optional() });
@@ -256,3 +262,4 @@ export const AdminControlBody = z.object({ op: ControlOp, by: text(40).optional(
 export const AdminDebugBody = z.object({ debug: z.boolean(), by: text(40).optional() });
 export const AdminOrderStatusBody = z.object({ status: OrderStatus, by: text(40).optional() });
 export const AdminByBody = z.object({ by: text(40).optional() });
+export const AdminFeaturedBody = z.object({ ids: z.array(z.string().min(1).max(64)).max(200) });

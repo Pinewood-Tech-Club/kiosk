@@ -3,6 +3,7 @@ import { requireAccess } from "./access";
 import { adminBody, adminScript, adminStyle, forbiddenBody } from "./admin-page";
 import { catalogReport, type CatalogReport } from "./catalog";
 import { staffPage } from "./dashboard";
+import { refreshDonationOrgs, setFeatured, storedDonationOrgs, storedFeatured } from "./giftcard-donate";
 import { callHub, HttpError, hub, json, readBody, withRetry, type Route, type RouteContext } from "./http";
 import { resolveCredentials, refreshToken, squareStatus, startAuthorization, type SquareCredentials } from "./oauth";
 import type { ItemResult } from "./protocol";
@@ -10,6 +11,7 @@ import {
   AdminByBody,
   AdminControlBody,
   AdminDebugBody,
+  AdminFeaturedBody,
   AdminOrderStatusBody,
   AdminResetBody,
   DeviceId,
@@ -422,6 +424,18 @@ export const routes: Route[] = [
     return json(outcome, outcome.status === "failed" ? 502 : 200);
   }),
   adminRoute("POST", "/v1/admin/square/connect", async ({ env, url, admin }) => json(await startAuthorization(env, url.origin, admin.device))),
+  adminRoute("GET", "/v1/admin/donations", async ({ env }) => json({ list: await storedDonationOrgs(env), featured: await storedFeatured(env) })),
+  adminRoute("POST", "/v1/admin/donations/refresh", async ({ env, admin }) => {
+    const list = await refreshDonationOrgs(env, admin.email);
+    await audit(env, "refresh-donation-orgs", admin.email, { orgs: list.orgs.length, duplicates: list.duplicates, skipped: list.skipped.length, droppedFeatured: list.droppedFeatured });
+    return json({ list, featured: await storedFeatured(env) });
+  }),
+  adminRoute("POST", "/v1/admin/donations/featured", async ({ request, env, admin }) => {
+    const body = await readBody(request, AdminFeaturedBody, 8 * 1024);
+    const featured = await setFeatured(env, body.ids);
+    await audit(env, "set-featured-donation-orgs", admin.email, { featured });
+    return json({ featured });
+  }),
   adminRoute("GET", "/v1/admin/orders", async ({ env, url }) => json(await searchOrders(env, url))),
   adminRoute("GET", /^\/v1\/admin\/orders\/([A-Za-z0-9._:-]{1,64})$/, async ({ env, params }) => json(await orderDetail(env, params[0]))),
   adminRoute("POST", /^\/v1\/admin\/orders\/([A-Za-z0-9._:-]{1,64})\/status$/, async ({ request, env, params, admin }) => {

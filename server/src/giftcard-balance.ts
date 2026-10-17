@@ -1,5 +1,6 @@
 import { clientIp, html, HttpError, json, randomToken, readBody, type Route } from "./http";
 import { credentialsFor, lookupCard } from "./giftcards";
+import { donationCatalog } from "./giftcard-donate";
 import { giftCardBody, giftCardScript, giftCardShell } from "./giftcard-page";
 import { GiftCardLookupBody } from "./schema";
 import { ZXING_LIBRARY_JS } from "./zxing-lib";
@@ -23,9 +24,13 @@ export const routes: Route[] = [
   {
     method: "GET",
     path: "/giftcard",
-    async handle({ url }) {
+    async handle({ env, url }) {
       const nonce = randomToken(12);
-      return html(giftCardShell(giftCardBody(), nonce, giftCardScript(url.searchParams.get("debug") === "1")), 200, pageHeaders(nonce));
+      const catalog = await donationCatalog(env).catch((error) => {
+        console.error({ event: "donation-orgs-read-failed", error: String(error) });
+        return null;
+      });
+      return html(giftCardShell(giftCardBody(), nonce, giftCardScript(url.searchParams.get("debug") === "1", catalog)), 200, pageHeaders(nonce));
     },
   },
   {

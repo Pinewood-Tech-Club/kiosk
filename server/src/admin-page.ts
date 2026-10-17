@@ -16,6 +16,9 @@ const ICONS: Record<string, string> = {
   chevron: '<path d="m9 18 6-6-6-6"/>',
   chevronLeft: '<path d="m15 18-6-6 6-6"/>',
   chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  chevronUp: '<path d="m18 15-6-6-6 6"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  minus: '<path d="M5 12h14"/>',
   updown: '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -27,6 +30,7 @@ const ICONS: Record<string, string> = {
   loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+  heart: '<path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/>',
 };
 
 function icon(name: string, cls = ""): string {
@@ -38,6 +42,7 @@ const SECTIONS: { id: string; title: string; icon: string; group: number }[] = [
   { id: "logs", title: "Logs", icon: "scroll", group: 0 },
   { id: "square", title: "Square", icon: "card", group: 1 },
   { id: "orders", title: "Orders", icon: "receipt", group: 1 },
+  { id: "donations", title: "Donations", icon: "heart", group: 1 },
   { id: "selftest", title: "Self-test", icon: "stethoscope", group: 2 },
   { id: "cleanup", title: "Cleanup", icon: "eraser", group: 2 },
   { id: "reset", title: "Reset", icon: "rotate", group: 3 },
@@ -98,6 +103,14 @@ a.srow{color:inherit}
 .dot::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
 .dot.off::before{background:var(--label-3)}
 .dot.red::before{background:var(--red)}
+.acts{margin-left:auto;display:flex;align-items:center;gap:2px;flex:none}
+.ibtn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:var(--tint-ink);font-size:20px}
+.ibtn:disabled{opacity:.25}
+.ibtn.red{color:var(--red)}
+.ac .rank{width:26px;flex:none;color:var(--label-3);font-variant-numeric:tabular-nums}
+.ac .fname{flex:1;min-width:0;font-size:17px}
+.ac .fname small{display:block;font-size:13px;color:var(--label-3)}
+.tagf{font-size:14px;color:var(--label-3);margin-left:auto}
 .btnrow{display:flex;align-items:center;gap:14px;width:100%;min-height:50px;padding:11px 20px;text-align:left}
 .btnrow .k{font-size:17px;font-weight:500;color:var(--tint-ink);letter-spacing:-.01em}
 .btnrow.danger .k{color:var(--red)}
@@ -264,6 +277,7 @@ export function adminBody(email: string): string {
 </div><div class="gh"><span>Newest first</span><span class="r" id="logCount"></span></div><div id="logList"></div>`, `<button class="navbtn" type="button" id="logRefresh">${icon("refresh")}Refresh</button>`);
   const square = pane("square", "Square", `<div id="sqBody"></div>`, `<button class="navbtn" type="button" id="sqCheck">${icon("refresh")}Check again</button>`);
   const orders = pane("orders", "Orders", `<label class="search">${icon("search")}<input id="ordQ" type="search" placeholder="Name, receipt link, reference, number or payment ID" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="clear" type="button" id="ordQClear" hidden aria-label="Clear search">${icon("circleX")}</button></label><div class="gh"><span id="ordHead">Newest</span><span class="r" id="ordCount"></span></div><div id="ordList"></div>`);
+  const donations = pane("donations", "Donations", `<p class="lede">Clubs the gift card kiosk offers under Donate to Club. The list comes from Square items named Donation, each shown by its reporting category. The kiosk only uses the stored list, so refresh it after changing the catalog.</p><div id="donBody"></div>`);
   const selftest = pane("selftest", "Self-test", `<p class="lede">Checks that the booth can reach its database, the live hub, Square's API and the Square catalog. Takes a few seconds and changes nothing.</p><div class="group ag mt24"><button class="big" type="button" id="runTest">${icon("play")}Run self-test</button></div><div id="testBody"></div>`);
   const cleanup = pane("cleanup", "Cleanup", `<div id="cleanBody"></div>`);
   const reset = pane("reset", "Reset", `<div id="resetBody"></div>`);
@@ -273,7 +287,7 @@ export function adminBody(email: string): string {
 <dialog id="reset1" class="wide" aria-labelledby="r1Title"><h3 id="r1Title">Reset everything?</h3><div id="r1Body"></div><div class="dialog-actions"><button class="cancel" type="button" data-close="reset1">Cancel</button><button class="confirm danger" type="button" id="r1Go">Continue</button></div></dialog>
 <dialog id="reset2" aria-labelledby="r2Title"><h3 id="r2Title">Type RESET to confirm</h3><p>This can't be undone. Make sure no customer is paying on any kiosk.</p><label for="r2Input" class="vh">Type RESET</label><input id="r2Input" class="typed" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="RESET" enterkeyhint="done"><div class="swrow"><div class="grow"><div class="k">Download a backup first</div><div class="s">Orders, kiosks, alerts and stats as a JSON file.</div></div><button class="switch" role="switch" type="button" id="r2Backup" aria-checked="true" aria-label="Download a backup first"></button></div><div class="derr" id="r2Err" role="alert" hidden></div><div class="dialog-actions"><button class="cancel" type="button" id="r2Cancel">Cancel</button><button class="confirm danger" type="button" id="r2Go" disabled>Reset everything</button></div></dialog>
 <dialog id="reset3" class="wide" aria-labelledby="r3Title"><h3 id="r3Title">The booth was reset</h3><div id="r3Body"></div><div class="dialog-actions one"><button class="confirm" type="button" data-close="reset3">Done</button></div></dialog>`;
-  return `<div class="sv" id="app">${sidebar(email)}<main class="detail" id="detail">${kiosks}${logs}${square}${orders}${selftest}${cleanup}${reset}</main></div>${gate("expired", "Session ended", "Your admin sign-in has ended. Reload to sign in again.", "Reload", true)}${dialogs}`;
+  return `<div class="sv" id="app">${sidebar(email)}<main class="detail" id="detail">${kiosks}${logs}${square}${orders}${donations}${selftest}${cleanup}${reset}</main></div>${gate("expired", "Session ended", "Your admin sign-in has ended. Reload to sign in again.", "Reload", true)}${dialogs}`;
 }
 
 const SCRIPT = String.raw`
@@ -432,6 +446,7 @@ function enter(id){
   else if(id==="logs"){if(!state||Date.now()-stateAt>30000)loadState();if(!logs.loaded)loadLogs(true);}
   else if(id==="square"){if(!square)loadSquare();}
   else if(id==="orders"){if(!state)loadState();if(!orders.loaded)loadOrders();}
+  else if(id==="donations")loadDonations();
   else if(id==="cleanup")loadCleanup();
   else if(id==="reset")loadReset();
 }
@@ -857,6 +872,76 @@ function askStatus(s){
   },s==="canceled"?"Keep order":"Cancel");
 }
 
+var donations=null, featured=[], donLoaded=false, donRefresh=null, featSaving=false;
+function loadDonations(){
+  if(!donLoaded)$("donBody").innerHTML='<div class="group ag mt24">'+spinner()+"</div>";
+  get("/v1/admin/donations").then(function(r){donations=r.list;featured=r.featured||[];donLoaded=true;renderDonations();},function(e){if(e&&e.ended)return;$("donBody").innerHTML='<div class="mt24">'+errGroup(e.message)+"</div>";});
+}
+function orgName(id){var o=donations&&donations.orgs.filter(function(x){return x.id===id;})[0];return o?o.name:id;}
+function shared(name){return donations.duplicates.some(function(n){return n.toLowerCase()===name.toLowerCase();});}
+function renderDonations(){
+  var d=donations,html="";
+  $("sv-donations").textContent=d?String(d.orgs.length):"";
+  html+='<div class="group list ag mt24">';
+  if(d){
+    html+=row("Organizations",String(d.orgs.length),d.orgs.length?"":"warn");
+    html+=row("Last refreshed",esc(when(d.refreshedAt))+"<small>"+agoSpan(d.refreshedAt)+(d.refreshedBy?", by "+esc(d.refreshedBy):"")+"</small>","");
+    html+=row("Square",(d.environment==="sandbox"?"Sandbox":"Production")+'<small class="mono">'+esc(d.locationId)+"</small>","");
+  } else html+=row("Organizations","Never refreshed","warn","The kiosk hides Donate to Club until the list is refreshed.");
+  var res="";
+  if(donRefresh)res=donRefresh.pending?'<span class="res">'+ico("loader","spin")+"Refreshing</span>":'<span class="res '+(donRefresh.cls||"")+'">'+esc(donRefresh.text)+"</span>";
+  html+='<button class="btnrow" type="button" id="donRefresh"'+dis(donRefresh&&donRefresh.pending)+'><div class="grow"><div class="k">Refresh donation organizations</div><div class="s">Reads every Donation item from the Square catalog and stores the list. Featured picks are kept.</div></div>'+res+"</button></div>";
+  if(d&&d.droppedFeatured&&d.droppedFeatured.length){
+    html+=gh("Removed from featured",'<span class="warn">'+ico("alert")+" "+plural(d.droppedFeatured.length,"organization")+"</span>")+'<div class="group list ag">'+d.droppedFeatured.map(function(o){return row(o.name,'<span class="mono">'+esc(o.id)+"</span>","warn");}).join("")+'</div><p class="footnote">These were featured, but the last refresh no longer found their Donation item in Square.</p>';
+  }
+  if(d&&d.orgs.length){
+    html+=gh("Featured",featured.length?plural(featured.length,"organization"):"")+'<div class="group list ag">';
+    if(!featured.length)html+='<div class="aempty">None yet. The kiosk shows every organization A to Z until someone types.</div>';
+    featured.forEach(function(id,i){
+      html+='<div class="ac"><span class="rank">'+(i+1)+'</span><div class="fname">'+esc(orgName(id))+(shared(orgName(id))?"<small>Shared name</small>":"")+'</div><span class="acts"><button class="ibtn" type="button" data-fmove="'+i+'" data-dir="-1" aria-label="Move up"'+dis(featSaving||i===0)+">"+ico("chevronUp")+'</button><button class="ibtn" type="button" data-fmove="'+i+'" data-dir="1" aria-label="Move down"'+dis(featSaving||i===featured.length-1)+">"+ico("chevronDown")+'</button><button class="ibtn red" type="button" data-funfeature="'+esc(id)+'" aria-label="Remove from featured"'+dis(featSaving)+">"+ico("minus")+"</button></span></div>";
+    });
+    html+='</div><p class="footnote">The kiosk shows these first, in this order, before anything is typed. Typing searches every organization and lists featured matches first.</p>';
+  }
+  if(d&&d.duplicates.length){
+    html+=gh("Shared names",'<span class="warn">'+ico("alert")+" "+plural(d.duplicates.length,"name")+"</span>")+'<div class="group list ag">';
+    d.duplicates.forEach(function(n){
+      var ids=d.orgs.filter(function(o){return o.name.toLowerCase()===n.toLowerCase();});
+      html+=row(n,plural(ids.length,"item"),"warn",ids.map(function(o){return '<span class="mono">'+esc(o.id)+"</span>";}).join(", "));
+    });
+    html+='</div><p class="footnote">Both are kept, so the kiosk lists the name more than once. Rename a reporting category in Square to tell them apart.</p>';
+  }
+  if(d&&d.skipped.length){
+    html+=gh("Skipped",plural(d.skipped.length,"item"))+'<div class="group list ag">'+d.skipped.map(function(x){return row(x.itemId,esc(x.reason),"warn");}).join("")+"</div>";
+  }
+  if(d&&d.orgs.length){
+    html+=gh("All organizations",plural(d.orgs.length,"organization"))+'<div class="group list ag">'+d.orgs.map(function(o){
+      var on=featured.indexOf(o.id)>=0;
+      return '<div class="ac"><div class="fname">'+esc(o.name)+'<small class="mono">'+esc(o.id)+"</small></div>"+(on?'<span class="tagf">Featured</span>':'<span class="acts"><button class="ibtn" type="button" data-ffeature="'+esc(o.id)+'" aria-label="Feature '+esc(o.name)+'"'+dis(featSaving)+">"+ico("plus")+"</button></span>")+"</div>";
+    }).join("")+"</div>";
+  }
+  $("donBody").innerHTML=html;
+}
+function saveFeatured(next){
+  var before=featured;
+  featured=next;featSaving=true;renderDonations();
+  post("/v1/admin/donations/featured",{ids:next}).then(function(r){featured=r.featured;featSaving=false;renderDonations();},function(e){featured=before;featSaving=false;renderDonations();fail(e);});
+}
+function moveFeatured(i,dir){
+  var j=i+dir;if(j<0||j>=featured.length)return;
+  var next=featured.slice();var t=next[i];next[i]=next[j];next[j]=t;saveFeatured(next);
+}
+function refreshDonations(){
+  donRefresh={pending:true};renderDonations();
+  post("/v1/admin/donations/refresh",{}).then(function(r){
+    donations=r.list;featured=r.featured||[];donLoaded=true;
+    donRefresh={text:"Stored "+plural(r.list.orgs.length,"organization"),cls:"good"};
+    renderDonations();
+  },function(e){
+    if(e&&e.ended)return;
+    donRefresh={text:"Failed: "+e.message,cls:"bad"};renderDonations();
+  });
+}
+
 var testing=false;
 function runTest(){
   if(testing)return;
@@ -1053,6 +1138,10 @@ document.addEventListener("click",function(e){
   if(el.id==="osDone"){hideDialog($("orderSheet"));return;}
   if(d.status){askStatus(d.status);return;}
   if(el.id==="ordQClear"){$("ordQ").value="";orders.q="";loadOrders();renderOrders();return;}
+  if(el.id==="donRefresh"){refreshDonations();return;}
+  if(d.fmove!=null){moveFeatured(Number(d.fmove),Number(d.dir));return;}
+  if(d.funfeature){saveFeatured(featured.filter(function(x){return x!==d.funfeature;}));return;}
+  if(d.ffeature){if(featured.indexOf(d.ffeature)<0)saveFeatured(featured.concat([d.ffeature]));return;}
   if(el.id==="runTest"){runTest();return;}
   if(el.id==="delTest"){askDeleteTest();return;}
   if(el.id==="ackAll"){ackAll();return;}

@@ -22,6 +22,33 @@ p{margin:0}
 .link:hover{background:var(--fg);color:var(--bg)}
 .btn:active,.link:active{transform:scale(.97)}
 .btn:disabled,.link:disabled{opacity:.4;cursor:default;transform:none}
+.actions.row{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:22px}
+.field{display:inline-block;position:relative;max-width:92vw}
+.field input{font:inherit;font-size:inherit;font-weight:inherit;line-height:1.15;text-align:center;border:0;border-bottom:.07em solid var(--accent);background:transparent;color:var(--fg);padding:0 .1em .05em;margin:0;outline:none;border-radius:0;-webkit-appearance:none;min-width:0;max-width:92vw;user-select:text}
+.field input::placeholder{color:var(--fg);opacity:.25}
+.field .m{position:absolute;visibility:hidden;white-space:pre;left:0;top:0;padding:0 .1em;font:inherit;font-size:inherit;font-weight:inherit}
+.big{font-size:clamp(48px,7vw,96px);font-weight:700}
+.screen.name{justify-content:flex-start;padding:0}
+.top{height:40vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;flex:none}
+.top .ask{margin-bottom:10px}
+.top .hint{margin:18px 0 0;height:1.4em}
+.results{list-style:none;margin:22px 0 0;padding:0 0 30vh;width:min(92vw,680px);flex:1;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;-webkit-mask-image:linear-gradient(#000 calc(100% - 80px),transparent);mask-image:linear-gradient(#000 calc(100% - 80px),transparent)}
+.results::-webkit-scrollbar{display:none}
+.results button{display:block;width:100%;min-height:64px;text-align:center;font:inherit;background:var(--bg);color:var(--fg);border:0;padding:14px 20px 15px;cursor:pointer;line-height:1.15;transition:background .08s,color .08s}
+.results button.hl,.results button:active{background:var(--accent);color:var(--bg)}
+.results .n{font-size:clamp(24px,2.8vw,34px);display:block}
+.results .none{padding:8px 20px;font-size:clamp(18px,2vw,22px)}
+.who{font-size:clamp(40px,6vw,80px);font-weight:700;line-height:1.1;margin:0;max-width:90vw}
+.choices{margin-top:48px;display:flex;flex-wrap:wrap;justify-content:center;gap:22px}
+.choice{font:inherit;min-width:clamp(150px,17vw,220px);padding:20px 26px 18px;border:.09em solid var(--fg);background:var(--bg);color:var(--fg);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;outline:none;transition:background .12s,color .12s,transform .12s}
+.choice:hover{background:var(--fg);color:var(--bg)}
+.choice.all{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.choice.all:hover{background:var(--bg);color:var(--fg);border-color:var(--fg)}
+.choice:active{transform:scale(.97)}
+.choice b{font-size:clamp(40px,5.4vw,72px);line-height:1.05;font-weight:700;font-variant-numeric:lining-nums}
+.choice span{font-size:clamp(16px,1.8vw,22px);min-height:1.4em}
+.amount.mid{font-size:clamp(64px,11vw,150px);margin:0}
+.thanks-ask{margin:44px 0 6px}
 .small{font-size:clamp(15px,1.6vw,20px);padding:.4em 1em}
 .corner{position:absolute;top:28px;left:32px}
 #s-scan{justify-content:flex-start;padding-top:max(32px,5vh)}
@@ -127,7 +154,38 @@ export function giftCardBody(): string {
   <p class="ask" id="result-ask">Your gift card balance is</p>
   <p class="amount" id="result-amount"></p>
   <p class="sub" id="result-sub"></p>
-  <div class="actions"><button class="btn" id="result-done">Done</button></div>
+  <div class="actions row"><button class="link" id="result-donate" hidden>Donate to Club</button><button class="btn" id="result-done">Done</button></div>
+</section>
+
+<section class="screen name" id="s-org" hidden>
+  <button class="link small corner" id="back-org">Back</button>
+  <div class="top">
+    <p class="ask">Who should get your donation?</p>
+    <span class="field big"><input type="text" id="org" placeholder="Tech Club" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="search" data-1p-ignore data-lpignore="true"><span class="m">Tech Club</span></span>
+    <p class="hint">Type a club name, then pick it</p>
+  </div>
+  <ul class="results" id="org-results"></ul>
+</section>
+
+<section class="screen" id="s-amount" hidden>
+  <button class="link small corner" id="back-amount">Back</button>
+  <p class="ask">How much would you like to give to</p>
+  <p class="who" id="amount-org"></p>
+  <div class="choices" id="amount-choices"></div>
+</section>
+
+<section class="screen" id="s-confirm" hidden>
+  <p class="who" id="confirm-text"></p>
+  <p class="sub" style="margin-top:18px">It comes off your gift card balance.</p>
+  <div class="actions"><button class="btn" id="confirm-yes">Confirm</button><button class="link small" id="confirm-no">Cancel</button></div>
+</section>
+
+<section class="screen" id="s-thanks" hidden>
+  <h1>Thank you</h1>
+  <p class="sub" id="thanks-sub"></p>
+  <p class="ask thanks-ask">Your gift card balance is now</p>
+  <p class="amount mid" id="thanks-amount"></p>
+  <div class="actions"><button class="btn" id="thanks-done">Done</button></div>
 </section>
 
 <section class="screen" id="s-error" hidden>
@@ -148,18 +206,20 @@ export function giftCardBody(): string {
 <template id="icon-camera-off">${ICON_CAMERA_OFF}</template>`;
 }
 
-export function giftCardScript(debug = false): string {
-  return `const DEBUG = ${debug};` + String.raw`
+export function giftCardScript(debug = false, catalog: { orgs: { id: string; name: string }[]; featured: string[] } | null = null): string {
+  const inline = JSON.stringify(catalog).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+  return `const DEBUG = ${debug};\nconst ORGS_INIT = ${inline};` + String.raw`
 const IDLE_MS = 20000, WARN_AT_MS = 15000, SCAN_EVERY_MS = 140, CAMERA_RETRY_MS = 3000;
 const FORMATS = ["qr_code", "code_128", "code_39", "code_93", "ean_13", "ean_8", "itf", "codabar", "upc_a", "upc_e", "data_matrix", "pdf417", "aztec"];
 const $ = (id) => document.getElementById(id);
-const SCREENS = ["s-scan", "s-keypad", "s-result", "s-error"];
+const SCREENS = ["s-scan", "s-keypad", "s-result", "s-error", "s-org", "s-amount", "s-confirm", "s-thanks"];
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 let current = "s-scan", resetting = false, swallowClick = 0, retryAction = null, lookupRun = 0;
 let idleTimer = null, warnTimer = null, warnDeadline = 0;
 let stream = null, cameraOpening = null, cameraRetry = null, scanTimer = null, scanRun = 0, busy = false;
 let engine = null, zxingLoading = null;
+let card = null, donation = null, donating = false;
 
 
 const cur = $("cursor");
@@ -244,7 +304,8 @@ function swap(from, to, tone) {
 function reset() {
   if (resetting) return;
   stopWarning();
-  retryAction = null;
+  retryAction = null; card = null; donation = null;
+  refreshOrgs();
   const from = SCREENS.map($).find((el) => !el.hidden && el.id !== "s-scan");
   if (!from) { if (current !== "s-scan") { show("s-scan"); startScan(); } return; }
   resetting = true;
@@ -264,6 +325,7 @@ function reset() {
 }
 
 $("result-done").onclick = reset;
+$("thanks-done").onclick = reset;
 $("error-done").onclick = reset;
 $("error-retry").onclick = () => {
   const again = retryAction;
@@ -286,6 +348,9 @@ function fail(kind) {
     camera: ["Camera won't start", "Something else may be using it. Try again, or ask at the table.", true],
     notfound: ["Card not found", "We couldn't find that gift card. Check that it is the right card and try again.", true],
     network: ["Couldn't check right now", "Something went wrong on our end. Try again, or ask at the table.", true],
+    donate: ["Donation didn't go through", "No money was taken from your card. Try again, or ask at the table.", true],
+    short: ["Not enough on the card", "Your balance is lower than that amount. Ask at the table.", false],
+    unconfirmed: ["We couldn't confirm it", "Try again. You won't be charged twice.", true],
   };
   const [title, sub, retry] = cases[kind] || cases.network;
   $("error-icon").replaceChildren(kind === "denied" || kind === "nocamera" || kind === "camera" ? document.getElementById("icon-camera-off").content.cloneNode(true) : "");
@@ -300,6 +365,8 @@ function fail(kind) {
 
 function showResult(found, gan, from) {
   const active = found.state === "ACTIVE";
+  card = active ? { gan, balanceCents: found.balanceCents } : null;
+  $("result-donate").hidden = !(card && card.balanceCents > 0 && orgs.length);
   const notes = { PENDING: "This card hasn't been activated yet. Ask at the table.", BLOCKED: "This card is blocked. Ask at the table.", DEACTIVATED: "This card has been turned off. Ask at the table." };
   if (active) {
     $("result-ask").textContent = "Your gift card balance is";
@@ -382,6 +449,195 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); flash("back"); press("back"); }
   else if (e.key === "Enter") { e.preventDefault(); checkTyped(); }
 });
+
+const ORGS_REFRESH_MS = 3 * 60000;
+const DEMO_FEATURED = ["demo-8", "demo-6", "demo-7", "demo-3"];
+const DEMO_ORGS = ["Astronomy Club", "Climbing Club", "Finance Club", "Freshman StuCo", "Korean Culture Club", "Math Club", "PPA", "Robotics", "Tech Club", "Yearbook"].map((name, i) => ({ id: "demo-" + i, name }));
+const fold = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/ +/g, " ").trim();
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function prepOrgs(list) {
+  return list.map((o) => ({ ...o, tokens: fold(o.name).split(" "), full: fold(o.name) }));
+}
+
+let orgs = [], orgsAt = 0, orgsRefreshing = false;
+function takeOrgs(catalog) {
+  const list = catalog && Array.isArray(catalog.orgs) && catalog.orgs.length ? catalog : DEBUG ? { orgs: DEMO_ORGS, featured: DEMO_FEATURED } : { orgs: [], featured: [] };
+  const rank = new Map((list.featured || []).map((id, i) => [id, i]));
+  orgs = prepOrgs(list.orgs).map((o) => ({ ...o, rank: rank.has(o.id) ? rank.get(o.id) : -1 }));
+  orgsAt = Date.now();
+}
+function refreshOrgs() {
+  if (orgsRefreshing || Date.now() - orgsAt < ORGS_REFRESH_MS) return;
+  orgsRefreshing = true;
+  fetch("/giftcard/orgs")
+    .then((res) => (res.ok ? res.json() : null))
+    .then((body) => { if (body && Array.isArray(body.orgs)) takeOrgs(body); }, () => {})
+    .finally(() => { orgsRefreshing = false; });
+}
+takeOrgs(ORGS_INIT);
+
+const byRank = (a, b) => a.rank - b.rank;
+function searchOrgs(query) {
+  const words = fold(query).split(" ").filter(Boolean);
+  if (!words.length) {
+    const featured = orgs.filter((o) => o.rank >= 0).sort(byRank);
+    return featured.length ? featured : orgs.slice();
+  }
+  const initials = (o) => o.tokens.map((t) => t[0]).join("");
+  const out = [];
+  for (const o of orgs) {
+    let score = 0;
+    for (const w of words) {
+      if (o.tokens[0].startsWith(w)) score += 3;
+      else if (o.tokens.some((t) => t.startsWith(w))) score += 2;
+      else if (o.full.includes(w) || (w.length > 1 && initials(o).startsWith(w))) score += 1;
+      else { score = 0; break; }
+    }
+    if (score) out.push({ score, o });
+  }
+  out.sort((a, b) => (a.o.rank >= 0) !== (b.o.rank >= 0) ? (a.o.rank >= 0 ? -1 : 1) : a.o.rank >= 0 ? a.o.rank - b.o.rank : b.score - a.score || a.o.name.localeCompare(b.o.name));
+  return out.map((x) => x.o);
+}
+
+function fit(input) {
+  const m = input.nextElementSibling;
+  m.textContent = input.value || input.placeholder;
+  input.style.width = (m.offsetWidth + 2) + "px";
+}
+
+let hl = -1;
+const orgItems = () => [...$("org-results").querySelectorAll("button")];
+function highlight(i, scroll = false) {
+  const list = orgItems();
+  hl = list.length ? Math.max(0, Math.min(list.length - 1, i)) : -1;
+  list.forEach((b, j) => b.classList.toggle("hl", j === hl));
+  if (scroll && hl >= 0) list[hl].scrollIntoView({ block: "nearest" });
+}
+
+function renderOrgs() {
+  const q = $("org").value.trim();
+  const results = searchOrgs(q);
+  const ul = $("org-results");
+  ul.replaceChildren();
+  if (!results.length) {
+    const li = document.createElement("li"); li.className = "none";
+    li.textContent = "No club by that name. Check the spelling or ask at the table.";
+    ul.appendChild(li);
+  }
+  for (const o of results) {
+    const li = document.createElement("li"), b = document.createElement("button"), n = document.createElement("span");
+    n.className = "n"; n.textContent = o.name;
+    b.append(n); b.onclick = () => pickOrg(o); b.onmouseenter = () => highlight(orgItems().indexOf(b));
+    li.appendChild(b); ul.appendChild(li);
+  }
+  ul.scrollTop = 0;
+  const hovered = ul.querySelector("button:hover");
+  highlight(hovered ? orgItems().indexOf(hovered) : q ? 0 : -1);
+}
+
+function openOrgs(from) {
+  $("org").value = "";
+  renderOrgs();
+  swap(from, "s-org", from === "s-amount" ? "back" : "forward");
+  fit($("org"));
+  $("org").focus();
+}
+
+$("result-donate").onclick = () => { if (card && orgs.length && current === "s-result") openOrgs("s-result"); };
+$("org").addEventListener("input", () => { fit($("org")); renderOrgs(); });
+$("org").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); if (hl >= 0) orgItems()[hl]?.click(); }
+  if (e.key === "ArrowDown") { e.preventDefault(); highlight(hl + 1, true); }
+  if (e.key === "ArrowUp") { e.preventDefault(); highlight(hl - 1, true); }
+});
+$("org").addEventListener("blur", () => { if (current === "s-org") setTimeout(() => { if (current === "s-org") $("org").focus(); }, 0); });
+$("org-results").addEventListener("mousedown", (e) => e.preventDefault());
+$("back-org").addEventListener("mousedown", (e) => e.preventDefault());
+$("org-results").addEventListener("scroll", bump, { passive: true });
+$("back-org").onclick = () => { $("org").blur(); swap("s-org", "s-result", "back"); };
+
+function pickOrg(o) {
+  if (!card || current !== "s-org") return;
+  donation = { org: o };
+  $("amount-org").textContent = o.name;
+  const box = $("amount-choices");
+  box.replaceChildren();
+  const options = [500, 1000].filter((c) => c < card.balanceCents).map((c) => [c, ""]);
+  options.push([card.balanceCents, "Donate it all"]);
+  for (const [cents, label] of options) {
+    const b = document.createElement("button"), amt = document.createElement("b"), cap = document.createElement("span");
+    b.className = "choice" + (label ? " all" : "");
+    amt.textContent = cents % 100 ? money.format(cents / 100) : "$" + cents / 100;
+    cap.textContent = label;
+    b.append(amt, cap);
+    b.onclick = () => pickAmount(cents);
+    box.appendChild(b);
+  }
+  $("org").blur();
+  swap("s-org", "s-amount", "forward");
+}
+$("back-amount").onclick = () => openOrgs("s-amount");
+
+function newKey() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function pickAmount(cents) {
+  if (!donation || current !== "s-amount") return;
+  donation.cents = cents;
+  donation.key = newKey();
+  $("confirm-text").textContent = "Donate " + money.format(cents / 100) + " to " + donation.org.name + "?";
+  swap("s-amount", "s-confirm", "forward");
+}
+$("confirm-no").onclick = () => { if (!donating) { donation = null; swap("s-confirm", "s-result", "back"); } };
+
+function confirmBusy(on) {
+  donating = on;
+  $("confirm-yes").disabled = on; $("confirm-no").disabled = on;
+  $("confirm-yes").textContent = on ? "Donating..." : "Confirm";
+}
+
+async function sendDonation(d) {
+  if (DEBUG) return { balanceCents: card.balanceCents - d.cents };
+  try {
+    const res = await fetch("/giftcard/donate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ gan: card.gan, variationId: d.org.id, amountCents: d.cents, idempotencyKey: d.key }),
+    });
+    const body = await res.json().catch(() => null);
+    if (res.ok && body && typeof body.balanceCents === "number") return body;
+    const code = body && body.error && body.error.code;
+    if (res.status === 429) return "limit";
+    if (code === "insufficient_balance") return "short";
+    if (["donation_failed", "giftcard_inactive", "unknown_organization", "giftcard_not_found", "invalid_gan", "bad_request"].includes(code)) return "donate";
+    return "unconfirmed";
+  } catch (e) {
+    return "unconfirmed";
+  }
+}
+
+$("confirm-yes").onclick = async () => {
+  if (!donation || !card || donating || current !== "s-confirm") return;
+  const d = donation;
+  confirmBusy(true);
+  const [outcome] = await Promise.all([sendDonation(d), wait(DEBUG ? 1200 : 600)]);
+  confirmBusy(false);
+  if (donation !== d || current !== "s-confirm") return;
+  if (typeof outcome === "string") {
+    if (outcome === "donate") d.key = newKey();
+    retryAction = () => { swap("s-error", "s-confirm", "back"); };
+    fail(outcome);
+    return;
+  }
+  card.balanceCents = outcome.balanceCents;
+  $("thanks-sub").textContent = "You gave " + money.format(d.cents / 100) + " to " + d.org.name + ".";
+  $("thanks-amount").textContent = money.format(outcome.balanceCents / 100);
+  donation = null;
+  swap("s-confirm", "s-thanks", "forward");
+};
 
 function extractGan(raw) {
   let text = String(raw);
