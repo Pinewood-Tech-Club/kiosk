@@ -1,20 +1,33 @@
 import RealityKit
 import SwiftUI
 
-/// A topping card's live 3D icon: holder (card position, press, step visibility) → scaler (pop, squish) →
-/// spinner (idle turn) → fitted model.
+/// A topping card's live 3D icon: holder (card position, press, step visibility) → presence (hidden while pieces
+/// return to it) → scaler (pop, squish) → spinner (idle turn) → fitted model.
 /// Layers that store `cardIcon` drive it: `takeOut()` as their pieces leave the card, `putBack(after:)` to refill it,
 /// `react()` for a squish while an invisible dispenser works on the item. Otherwise the stack plays `playTap`.
+/// Candy taken off the item comes home the way a scoop flies back to its flavor card: the icon shrinks away as the
+/// pieces leave (`beginReturn`), they land on the live poses of the icon's own pieces (`slotMatrices`), and
+/// `completeReturn` swaps them for the icon in one frame.
 @MainActor
 final class ToppingCardIcon {
     let topping: Topping
     let holder = Entity()
+    let presence = Entity()
     let scaler = Entity()
     let spinner = Entity()
-    let jiggling: [Entity]
-    private let jiggleRest: [Transform]
+    let slots: [ModelEntity]
+    let slotLooks: [ScatterLook]
+    private let jiggles: Bool
+    private let slotRest: [Transform]
+    private let slotModels: [ModelComponent?]
+    /// The slots show pieces that came home rather than the icon's own; put back the next time the icon is out of sight.
+    private var borrowed = false
+    private var slotGrowth: [Int: Double] = [:]
     var restOrientation = simd_quatf(angle: 0.5, axis: [1, 0, 0])
-    var appear: Float = 1
+    private(set) var appear: Float = 1
+    private var appearMotion: (start: Double, from: Float, to: Float, duration: Double, curve: TimingCurve)?
+    private weak var returner: AnyObject?
+    private var returnAlive: (() -> Bool)?
     private(set) var clock: Double = 0
     private var outAt: Double?
     private var backAt: Double?
@@ -23,14 +36,21 @@ final class ToppingCardIcon {
     static let popDuration = 0.18
     static let refillDuration = 0.36
     static let squishDuration = 0.55
+    static let hideDuration = 0.2
+    static let showDuration = 0.26
+    static let slotGrowDuration = 0.22
 
     init(topping: Topping, candy: CandyLibrary?) {
         self.topping = topping
-        let (model, jiggling) = ToppingFactory.iconModel(topping, candy: candy)
-        self.jiggling = jiggling
-        jiggleRest = jiggling.map(\.transform)
+        let (model, slots, jiggles) = ToppingFactory.iconModel(topping, candy: candy)
+        self.slots = slots
+        self.jiggles = jiggles
+        slotLooks = slots.map { $0.components[ScatterLookComponent.self]?.look ?? ScatterLook() }
+        slotRest = slots.map(\.transform)
+        slotModels = slots.map(\.model)
         holder.name = "topping-\(topping.rawValue)"
-        holder.addChild(scaler)
+        holder.addChild(presence)
+        presence.addChild(scaler)
         scaler.addChild(spinner)
         let bounds = model.visualBounds(relativeTo: nil)
         let fit = Entity()
@@ -57,6 +77,14 @@ final class ToppingCardIcon {
         outAt = nil
         backAt = nil
         reactAt = nil
+        returner = nil
+        returnAlive = nil
+        appearMotion = nil
+        appear = 1
+        slotGrowth = [:]
+        if borrowed { restoreSlotModels() }
+        applyPresence()
+        poseSlots(force: true)
     }
 
     func playTap(for topping: Topping, layer: any ToppingLayer) {
@@ -68,8 +96,63 @@ final class ToppingCardIcon {
         }
     }
 
+    /// `owner`'s pieces are on their way back, so the icon shrinks away until they land. A later return takes over.
+    func beginReturn(_ owner: AnyObject, alive: @escaping () -> Bool) {
+        returner = owner
+        returnAlive = alive
+        animateAppear(to: 0, duration: Self.hideDuration, curve: .swiftUIEaseIn)
+    }
+
+    func isReturning(_ owner: AnyObject) -> Bool { returner === owner }
+
+    /// Each slot's world transform as the icon shows it, leaving out only the hiding in `presence`.
+    func slotMatrices() -> [simd_float4x4] {
+        guard let parent = slots.first?.parent else { return [] }
+        var above = matrix_identity_float4x4
+        var entity: Entity? = parent
+        while let current = entity, current !== presence {
+            above = current.transform.matrix * above
+            entity = current.parent
+        }
+        let base = holder.transformMatrix(relativeTo: nil) * above
+        return slots.map { base * $0.transform.matrix }
+    }
+
+    /// The returning pieces have landed: each slot takes on the model of the piece resting in it, slots nothing
+    /// landed in grow back, and the icon shows again in the same frame.
+    func completeReturn(_ owner: AnyObject, models: [Int: ModelComponent]) {
+        guard returner === owner else { return }
+        returner = nil
+        returnAlive = nil
+        for index in slots.indices {
+            if let model = models[index] {
+                slots[index].model = model
+                borrowed = true
+            } else {
+                slotGrowth[index] = clock
+            }
+        }
+        appearMotion = nil
+        appear = 1
+        applyPresence()
+        poseSlots(force: true)
+    }
+
     func update(now: Double) {
         clock = now
+        if returner == nil || returnAlive?() != true {
+            returner = nil
+            returnAlive = nil
+            if appear < 1 || appearMotion != nil {
+                animateAppear(to: 1, duration: Self.showDuration, curve: .swiftUIEaseOut)
+            }
+        }
+        if let motion = appearMotion {
+            let t = motion.duration > 0 ? Float((now - motion.start) / motion.duration) : 1
+            appear = lerp(motion.from, motion.to, motion.curve(Ease.clamp01(t)))
+            if t >= 1 { appearMotion = nil }
+        }
+        applyPresence()
         guard holder.isEnabled else { return }
         var size: Float = 1
         if let outAt {
@@ -97,14 +180,44 @@ final class ToppingCardIcon {
         let xz = size * (1 + squash * 0.5)
         scaler.scale = [max(xz, 1e-4), max(y, 1e-4), max(xz, 1e-4)]
         scaler.isEnabled = size > 0.001
+        if borrowed, !scaler.isEnabled || !presence.isEnabled { restoreSlotModels() }
         spinner.orientation = simd_quatf(angle: Float((now * 0.35).truncatingRemainder(dividingBy: 2 * .pi)), axis: [0, 1, 0])
-        for (i, piece) in jiggling.enumerated() {
-            let phase = Float(i) * 1.7
-            let w = Float(now) * 5.2 + phase
-            let s = 0.05 * sin(w)
-            var t = jiggleRest[i]
-            t.scale = jiggleRest[i].scale * SIMD3(1 - s * 0.5, 1 + s, 1 - s * 0.5)
-            piece.transform = t
+        poseSlots()
+    }
+
+    private func animateAppear(to target: Float, duration: Double, curve: TimingCurve) {
+        if let motion = appearMotion {
+            if motion.to == target { return }
+        } else if appear == target {
+            return
+        }
+        appearMotion = (clock, appear, target, duration, curve)
+    }
+
+    private func restoreSlotModels() {
+        for (slot, model) in zip(slots, slotModels) { slot.model = model }
+        borrowed = false
+    }
+
+    private func applyPresence() {
+        presence.scale = .init(repeating: max(appear, 1e-5))
+        presence.isEnabled = appear > 0.001
+    }
+
+    private func poseSlots(force: Bool = false) {
+        guard force || jiggles || !slotGrowth.isEmpty else { return }
+        for index in slots.indices {
+            var transform = slotRest[index]
+            if jiggles {
+                let s = 0.05 * sin(Float(clock) * 5.2 + Float(index) * 1.7)
+                transform.scale *= SIMD3(1 - s * 0.5, 1 + s, 1 - s * 0.5)
+            }
+            if let grownAt = slotGrowth[index] {
+                let t = Ease.clamp01(Float((clock - grownAt) / Self.slotGrowDuration))
+                transform.scale *= max(TimingCurve.swiftUIEaseOut(t), 1e-4)
+                if t >= 1 { slotGrowth[index] = nil }
+            }
+            slots[index].transform = transform
         }
     }
 
@@ -146,17 +259,17 @@ extension Stage {
         return (position, Float(min(icon.width, icon.height)) * 0.001 * 0.82 * press)
     }
 
+    /// Placed even while hidden, so candy flying home to a card scrolled out of view still lands where it is.
     func updateToppingIcons() {
         for (topping, icon) in toppingIcons {
             let shown = iconShown[.topping(topping)] ?? 0
             let card = toppingCardFrame(topping)
             icon.holder.isEnabled = shown > 0.001 && card.maxX > viewFrame.minX && card.minX < viewFrame.maxX
             icon.update(now: now)
-            guard icon.holder.isEnabled else { continue }
             let placement = toppingIconPlacement(topping)
             icon.holder.position = placement.position
             icon.holder.orientation = icon.restOrientation
-            icon.holder.scale = .init(repeating: max(placement.scale * shown * icon.appear, 1e-5))
+            icon.holder.scale = .init(repeating: max(placement.scale * shown, 1e-5))
         }
     }
 

@@ -80,6 +80,23 @@ struct ScatterPiece {
     let materials: [any RealityKit.Material]
     /// Half extents of the local bounding box; lying flat, the piece rests on its local -Y face.
     let halfExtents: SIMD3<Float>
+    var look = ScatterLook()
+}
+
+/// Which of its kind's meshes and materials a piece uses. `family` groups meshes that read the same in a card icon
+/// (an M&M's print side), so a returning piece can stand in for an icon piece.
+struct ScatterLook: Equatable {
+    var mesh = 0
+    var family = 0
+    var material = 0
+
+    func likeness(to other: ScatterLook) -> Int {
+        (material == other.material ? 4 : 0) + (family == other.family ? 2 : 0) + (mesh == other.mesh ? 1 : 0)
+    }
+}
+
+struct ScatterLookComponent: Component {
+    let look: ScatterLook
 }
 
 /// A kind of scattered topping (gummy bears, M&M's, sprinkles): how many land and what each one looks like.

@@ -194,6 +194,7 @@ final class ToppingStack {
             entry.layer.launchPoint = tap?.point
             entry.layer.cardIcon = tap?.icon
             (entry.layer as? ScatterLayer)?.ceiling = tap?.ceiling
+            (entry.layer as? ScatterLayer)?.home = tap?.icon
             (entry.layer as? WhipLayer)?.underToppings = animated && staying.contains { $0.topping.stackRank > entry.topping.stackRank }
             entry.layer.remove(now: now)
             leaving.append(entry.layer)
@@ -293,18 +294,18 @@ enum ToppingFactory {
         candy?.kind(topping) ?? PlaceholderScatterKind(shape: topping == .gummies ? .gummy : topping == .mms ? .lentil : .sprinkle)
     }
 
-    static func iconModel(_ topping: Topping, candy: CandyLibrary?) -> (model: Entity, jiggling: [Entity]) {
+    static func iconModel(_ topping: Topping, candy: CandyLibrary?) -> (model: Entity, pieces: [ModelEntity], jiggles: Bool) {
         switch topping {
         case .whip:
-            return (WhipLayer.makeIconDollop(), [])
+            return (WhipLayer.makeIconDollop(), [], false)
         case .fudge:
-            return (FudgeIcon.make(), [])
+            return (FudgeIcon.make(), [], false)
         case .chocolate, .caramel:
-            return (DrizzleLayer.makeIcon(style: topping.drizzleStyle ?? .chocolate), [])
+            return (DrizzleLayer.makeIcon(style: topping.drizzleStyle ?? .chocolate), [], false)
         case .gummies, .mms, .sprinkles:
             var random = ToppingRandom(seed: ToppingSeed.layer(item: 0x5EED, topping: topping))
             let pile = scatterKind(topping, candy: candy).makeIconPile(rng: &random)
-            return (pile, topping == .gummies ? Array(pile.children) : [])
+            return (pile, pile.children.compactMap { $0 as? ModelEntity }, topping == .gummies)
         }
     }
 }

@@ -30,6 +30,8 @@ final class ScatterLayer: ToppingLayer {
     var launchPoint: (() -> SIMD3<Float>)?
     /// Height in the layer's parent space that tossed and returning pieces stay under; read every frame.
     var ceiling: (() -> Float)?
+    /// The card icon that removed pieces fly back into and become; set before `remove`.
+    var home: ToppingCardIcon?
 
     private enum Motion {
         case none
@@ -37,11 +39,18 @@ final class ScatterLayer: ToppingLayer {
         /// From where it's shown to its next rest, aimed at `guess` until that rest is worked out.
         case glide(from: ScatterPose, guess: ScatterPose, start: Double, duration: Double)
         case leave(from: ScatterPose, start: Double)
+        /// `stays` pieces become icon piece `slot`; the others shrink away into it.
+        case home(from: Transform, start: Double, slot: Int, stays: Bool)
+    }
+
+    private enum Homing {
+        case moving, parked, gone
     }
 
     private struct Piece {
         let model: ModelEntity
         let shape: ScatterShape
+        let look: ScatterLook
         let meshCenter: SIMD3<Float>
         var delay: Double
         let flight: Double
@@ -122,6 +131,8 @@ final class ScatterLayer: ToppingLayer {
     private var jobs: [Job] = []
     private var animating = false
     private var tossed: (real: Double, settle: Double, held: Bool)?
+    private var isHoming = false
+    private var homeLostAt: Double?
 
     /// Simulated seconds shown per real second: slower than life so a fall on a small scoop reads.
     static let playbackRate: Float = 0.6
@@ -134,6 +145,9 @@ final class ScatterLayer: ToppingLayer {
     static let popGrow = 0.08
     static let popShrink = 0.13
     static let returnDuration = 0.42
+    /// As long as a scoop's flight back to its flavor card.
+    static let homeDuration = 0.78
+    static let homeLostFade = 0.2
     enum Serving {
         /// Fewer pieces on a small top or one shared with other candy, so they lie in one loose layer.
         case fitToRoom
@@ -184,7 +198,7 @@ final class ScatterLayer: ToppingLayer {
             let aim = apexXZ + candidates[0] * radius
             let ground = surface.sample(x: aim.x, z: aim.y)?.height ?? surface.apex.y
             let guess = ScatterPose(position: [aim.x, ground + ScatterPlanner.dropHeight + shape.bound, aim.y], rotation: orientation)
-            var piece = Piece(model: model, shape: shape, meshCenter: spec.mesh.bounds.center,
+            var piece = Piece(model: model, shape: shape, look: spec.look, meshCenter: spec.mesh.bounds.center,
                               delay: Double(pinch) * 0.1 + Double.random(in: 0...0.08, using: &rng),
                               flight: Double.random(in: 0.36...0.48, using: &rng),
                               arcHeight: radius * Float.random(in: 0.5...1.0, using: &rng),
@@ -360,7 +374,7 @@ final class ScatterLayer: ToppingLayer {
             finish(work.run(below: settledBeneath(), prior: landings), of: work, final: true, now: now)
             for index in pieces.indices {
                 switch pieces[index].motion {
-                case .leave: continue
+                case .leave, .home: continue
                 case .arrive where !pieces[index].model.isEnabled: continue
                 default: break
                 }
@@ -375,7 +389,7 @@ final class ScatterLayer: ToppingLayer {
         for index in pieces.indices {
             var piece = pieces[index]
             switch piece.motion {
-            case .leave: continue
+            case .leave, .home: continue
             case .arrive where !piece.model.isEnabled: continue
             default: break
             }
@@ -398,15 +412,61 @@ final class ScatterLayer: ToppingLayer {
         }
         jobs = []
         tossed = nil
-        for index in pieces.indices {
-            pieces[index].motion = .leave(from: pieces[index].shown, start: now + pieces[index].removeDelay)
+        if let home, !home.slots.isEmpty {
+            sendHome(to: home, now: now)
+        } else {
+            for index in pieces.indices {
+                pieces[index].motion = .leave(from: pieces[index].shown, start: now + pieces[index].removeDelay)
+            }
         }
         resting = []
         animating = true
     }
 
+    /// Every piece in sight gets one of the icon's pieces to land on, the closest look first; spares follow the icon
+    /// piece most like them and shrink into it. Icon pieces nothing lands on grow back after the handoff.
+    private func sendHome(to icon: ToppingCardIcon, now: Double) {
+        icon.beginReturn(self) { [weak self] in self?.entity.scene != nil }
+        isHoming = true
+        homeLostAt = nil
+        var free: [Int] = []
+        for index in pieces.indices {
+            if pieces[index].model.isEnabled, !pieces[index].lost {
+                free.append(index)
+            } else {
+                pieces[index].motion = .none
+                pieces[index].model.isEnabled = false
+            }
+        }
+        var slotOf: [Int: Int] = [:]
+        for slot in icon.slotLooks.indices {
+            guard let best = free.indices.max(by: {
+                icon.slotLooks[slot].likeness(to: pieces[free[$0]].look) < icon.slotLooks[slot].likeness(to: pieces[free[$1]].look)
+            }) else { break }
+            slotOf[free.remove(at: best)] = slot
+        }
+        var spares = [Int](repeating: 0, count: icon.slotLooks.count)
+        for index in free {
+            let look = pieces[index].look
+            let slot = icon.slotLooks.indices.max {
+                (icon.slotLooks[$0].likeness(to: look), -spares[$0]) < (icon.slotLooks[$1].likeness(to: look), -spares[$1])
+            } ?? 0
+            spares[slot] += 1
+            pieces[index].motion = .home(from: pieces[index].model.transform, start: now + pieces[index].removeDelay,
+                                         slot: slot, stays: false)
+        }
+        for (index, slot) in slotOf {
+            pieces[index].motion = .home(from: pieces[index].model.transform, start: now + pieces[index].removeDelay,
+                                         slot: slot, stays: true)
+        }
+    }
+
     func update(now: Double) {
         guard animating || !jobs.isEmpty else { return }
+        if let home, isHoming {
+            updateHome(home, now: now)
+            return
+        }
         collect(now: now)
         var active = false
         var leaving = false
@@ -424,6 +484,8 @@ final class ScatterLayer: ToppingLayer {
             case let .leave(from, start):
                 leaving = true
                 active = stepLeave(index, from: from, t: now - start, launch: launch, ceiling: ceiling) || active
+            case .home:
+                continue
             }
             place(pieces[index])
         }
@@ -573,6 +635,74 @@ final class ScatterLayer: ToppingLayer {
             return false
         }
         return true
+    }
+
+    /// Landed pieces keep following their icon piece until the last one is in, then the icon takes their place in the
+    /// same frame. If another return took the icon over, or it was reset, they shrink away instead.
+    private func updateHome(_ icon: ToppingCardIcon, now: Double) {
+        let toLayer = entity.transformMatrix(relativeTo: nil).inverse
+        let slots = icon.slotMatrices().map { Transform(matrix: toLayer * $0) }
+        let ceiling = self.ceiling?() ?? .infinity
+        let owned = icon.isReturning(self)
+        if !owned, homeLostAt == nil { homeLostAt = now }
+        let fade = homeLostAt.map { 1 - Ease.inQuad(Ease.clamp01(Float((now - $0) / Self.homeLostFade))) } ?? 1
+        var landed: [Int: ModelComponent] = [:]
+        var waiting = false
+        for index in pieces.indices {
+            guard case let .home(from, start, slot, stays) = pieces[index].motion, slot < slots.count else { continue }
+            switch stepHome(index, from: from, t: now - start, to: slots[slot], stays: stays, fade: fade, ceiling: ceiling) {
+            case .moving: waiting = true
+            case .parked: if let model = pieces[index].model.model { landed[slot] = model }
+            case .gone: break
+            }
+        }
+        guard !waiting, owned || landed.isEmpty || fade <= 0 else { return }
+        if owned { icon.completeReturn(self, models: landed) }
+        for index in pieces.indices {
+            pieces[index].motion = .none
+            pieces[index].model.isEnabled = false
+        }
+        isHoming = false
+        animating = false
+        isFinished = true
+    }
+
+    /// Timed like a scoop flying home to its flavor card. The tumble is whole turns so the piece ends on the icon
+    /// piece's exact orientation.
+    private func stepHome(_ index: Int, from: Transform, t: Double, to target: Transform, stays: Bool, fade: Float,
+                          ceiling: Float) -> Homing {
+        let piece = pieces[index]
+        guard t >= 0 else {
+            if fade < 1 {
+                piece.model.transform.scale = from.scale * max(fade, 1e-4)
+                if fade <= 0 { return gone(index) }
+            }
+            return .moving
+        }
+        let p = Float(min(t / Self.homeDuration, 1))
+        let e = TimingCurve.flight(p)
+        var lifted = (from.translation + target.translation) / 2 + SIMD3(0, piece.arcHeight * 0.8, 0)
+        lifted.y = min(lifted.y, max(ceiling - piece.shape.bound, from.translation.y, target.translation.y))
+        let u = 1 - e
+        let position = u * u * from.translation + 2 * u * e * lifted + e * e * target.translation
+        let turns = max((piece.tumble / (2 * .pi)).rounded(), 1) * 2 * .pi
+        let rotation = simd_slerp(from.rotation, target.rotation, e) * simd_quatf(angle: turns * e, axis: piece.tumbleAxis)
+        var shrink = fade
+        if !stays {
+            let s = Ease.clamp01((p - 0.35) / 0.55)
+            shrink *= 1 - s * s * (3 - 2 * s)
+        }
+        let scale = simd_mix(from.scale, target.scale, SIMD3(repeating: TimingCurve.standard(p))) * shrink
+        piece.model.transform = Transform(scale: simd_max(scale, SIMD3(repeating: 1e-6)), rotation: rotation, translation: position)
+        piece.model.isEnabled = shrink > 0.001
+        if shrink <= 0.001, !stays || fade <= 0.001 { return gone(index) }
+        return stays && p >= 1 ? .parked : .moving
+    }
+
+    private func gone(_ index: Int) -> Homing {
+        pieces[index].motion = .none
+        pieces[index].model.isEnabled = false
+        return .gone
     }
 
     private func place(_ piece: Piece) {
