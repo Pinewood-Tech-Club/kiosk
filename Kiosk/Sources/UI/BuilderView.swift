@@ -9,8 +9,9 @@ private let stepFade = AnyTransition.asymmetric(
 private let slotRadius: CGFloat = 26
 private let slotSize = CGSize(width: 100, height: 106)
 
-/// Outlines the slot of the item being built or edited, whose mini the stage draws in it. While editing, tapping it
-/// finishes the edit from any step, and a delete badge sits on the corner like a home-screen icon in edit mode.
+/// Outlines the slot of the item being built, whose mini the stage draws in it, or holds the place of the item that's
+/// out for editing. While editing, tapping it finishes the edit from any step, and a delete badge sits on the corner
+/// like a home-screen icon in edit mode.
 /// Follows its slot every frame while the tray scrolls, clipped like the tiles; the controls show only while
 /// the whole slot is in view.
 private struct CurrentSlot: View {
@@ -35,13 +36,18 @@ private struct CurrentSlot: View {
 
             if isEditing {
                 Button { app.finishEditing(then: .newItem) } label: {
-                    Color.clear
+                    LucideIcon(name: "check", size: 28)
+                        .foregroundStyle(Theme.text)
+                        .frame(width: 58, height: 58)
+                        .glassEffect(.regular.interactive(), in: .circle)
                         .frame(width: slotSize.width, height: slotSize.height)
                         .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Done editing")
+                .opacity(inView ? 1 : 0)
                 .allowsHitTesting(inView)
+                .animation(.easeInOut(duration: 0.2), value: inView)
                 .position(x: x, y: Layout.trayCenterY)
 
                 Button { app.requestDelete(tile.id) } label: {
@@ -248,8 +254,6 @@ struct BuilderForeground: View {
 
             previousStepButton
             primaryButton
-
-            HelpButton(booth: app.booth)
         }
     }
 

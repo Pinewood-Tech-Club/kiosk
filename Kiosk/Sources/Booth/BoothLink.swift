@@ -3,7 +3,6 @@ import Observation
 import UIKit
 
 enum HelpReason: String, Sendable {
-    case button
     case paymentFailed = "payment_failed"
     case noReader = "no_reader"
     case idle
@@ -60,7 +59,6 @@ final class BoothLink {
     private(set) var kioskOpen: Bool
     private(set) var debugEnabled: Bool
     private(set) var kioskName: String?
-    private(set) var helpBannerVisible = false
     private(set) var serverFeatures: Set<String> = []
     @ObservationIgnored private(set) var api: BoothAPI?
     private(set) var assistActive = false
@@ -71,7 +69,6 @@ final class BoothLink {
     @ObservationIgnored private var connection: BoothConnection?
     @ObservationIgnored private var shipper: LogShipper?
     @ObservationIgnored private let outbox = BoothOutbox()
-    @ObservationIgnored private var bannerTask: Task<Void, Never>?
     @ObservationIgnored private var lastUpload = Date.distantPast
     @ObservationIgnored private var lastTouch = Date()
     @ObservationIgnored private var idleSent = false
@@ -121,22 +118,10 @@ final class BoothLink {
         Task { [weak self] in await self?.bootstrap(config) }
     }
 
-    func tapHelpButton() {
-        guard !helpBannerVisible else { return }
-        helpBannerVisible = true
-        requestHelp(.button, message: "Customer pressed the help button on the \(app?.screen.boothName ?? "builder") screen")
-        bannerTask?.cancel()
-        bannerTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(6))
-            guard !Task.isCancelled else { return }
-            self?.helpBannerVisible = false
-        }
-    }
-
     func requestHelp(_ reason: HelpReason, message: String) {
         guard isEnabled else { return }
         let now = Date()
-        if reason != .button, let last = lastHelpSent[reason], now.timeIntervalSince(last) < Self.helpRateLimit { return }
+        if let last = lastHelpSent[reason], now.timeIntervalSince(last) < Self.helpRateLimit { return }
         lastHelpSent[reason] = now
         log("Booth: help requested (\(reason.rawValue)): \(message)")
         let outbox = outbox

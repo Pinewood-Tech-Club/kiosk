@@ -31,7 +31,6 @@
 		4AFE52D6F8375FB36B7DA613 /* PhotoColumns.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55113BE6466FFE8F66055F2 /* PhotoColumns.swift */; };
 		4BC227CBF102A437BF69488A /* Cards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C66F22C19A9D84CCE143692 /* Cards.swift */; };
 		51C89CB794FD18FF76D5DFE7 /* ScoopSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A5C513CA4EED620DB0C9835 /* ScoopSurface.swift */; };
-		536DCDE99FE4949A7CD2BFC7 /* HelpButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3D9A0CFAC70BA8E576B608E /* HelpButton.swift */; };
 		565858834D2F23FCC9892AE8 /* LaunchOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5212A82265C88FFEC5453F08 /* LaunchOptions.swift */; };
 		5C03C19E8737AD328AC9C08E /* MockReaderUI in Frameworks */ = {isa = PBXBuildFile; productRef = 71F7D5957E77382361776981 /* MockReaderUI */; };
 		5C4E87910C7013DDFEBDB6ED /* SummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BF79193415195B4A4327886 /* SummaryView.swift */; };
@@ -219,7 +218,6 @@
 		DA6A389708A39F1AE5EF6B91 /* StageAttract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StageAttract.swift; sourceTree = "<group>"; };
 		DB0DA4F8DE9BABDB3650043A /* JellyMaterial.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JellyMaterial.swift; sourceTree = "<group>"; };
 		DF893650C7E0AA1ED76E777E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		E3D9A0CFAC70BA8E576B608E /* HelpButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpButton.swift; sourceTree = "<group>"; };
 		E4E0633E63DF36928FB3A1C8 /* AssistBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistBadge.swift; sourceTree = "<group>"; };
 		E9721FACFC12CCD01F6EF74E /* FudgeIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FudgeIcon.swift; sourceTree = "<group>"; };
 		EC0881B5135769503EB56D68 /* BoothConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothConfig.swift; sourceTree = "<group>"; };
@@ -390,7 +388,6 @@
 				51AC43E1339B441E1F8BD95F /* BoothLink.swift */,
 				C3AEC6884C72D6B8F7390440 /* BoothOutbox.swift */,
 				48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */,
-				E3D9A0CFAC70BA8E576B608E /* HelpButton.swift */,
 				D49DFEEF7AAC0DEB3EF85D86 /* KioskIdentity.swift */,
 				989E4F9F6FFDC723DDD4BEA7 /* LogShipper.swift */,
 			);
@@ -693,7 +690,6 @@
 				748392E4FC58F16DE650E259 /* GiftCardScanner.swift in Sources */,
 				671DD6E8074DB0373D2C6FC5 /* GiftCardView.swift in Sources */,
 				DF96ED4630E78827B560EDCB /* Glass.swift in Sources */,
-				536DCDE99FE4949A7CD2BFC7 /* HelpButton.swift in Sources */,
 				C033344B7405F23C4D5BFF0E /* JellyMaterial.swift in Sources */,
 				0DB3FAFF3FEE7F0C6F1B9A36 /* Keychain.swift in Sources */,
 				1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */,

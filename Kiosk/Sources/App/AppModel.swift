@@ -80,6 +80,10 @@ final class AppModel {
     private var startVessel: Vessel = .cup {
         didSet { syncTrayCurrent() }
     }
+    /// Tapping a vessel card or moving past the Vessel step picks the vessel, even the one the item started as.
+    private var vesselChosen = false {
+        didSet { syncTrayCurrent() }
+    }
     private(set) var items: [IceCreamItem] = []
     private(set) var editingID: UUID? {
         didSet { syncTrayCurrent() }
@@ -151,12 +155,13 @@ final class AppModel {
         stage.trayCurrentWanted = counted ? (current, editingID) : nil
     }
 
-    var currentHasChoices: Bool { current.hasChoices(startingFrom: startVessel) }
+    var currentHasChoices: Bool { vesselChosen || current.hasChoices(startingFrom: startVessel) }
 
     var defaultVessel: Vessel { booth.isSoldOut(.cup) && !booth.isSoldOut(.cone) ? .cone : .cup }
 
     private func freshItem() -> IceCreamItem {
         startVessel = defaultVessel
+        vesselChosen = false
         return IceCreamItem(vessel: startVessel)
     }
 
@@ -405,7 +410,9 @@ final class AppModel {
     }
 
     func selectVessel(_ vessel: Vessel) {
-        guard screen == .builder, mode == .customize, step == .vessel, vessel != current.vessel, !booth.isSoldOut(vessel) else { return }
+        guard screen == .builder, mode == .customize, step == .vessel, !booth.isSoldOut(vessel) else { return }
+        vesselChosen = true
+        guard vessel != current.vessel else { return }
         current.vessel = vessel
         stage.swapVessel(to: vessel)
     }
@@ -474,6 +481,7 @@ final class AppModel {
     }
 
     private func setStep(_ newStep: BuilderStep) {
+        if step == .vessel, newStep != .vessel { vesselChosen = true }
         if newStep == .toppings, step != .toppings {
             toppingsScroll = ScrollPosition(idType: Topping.self)
             stage.reportToppingScroll(0)

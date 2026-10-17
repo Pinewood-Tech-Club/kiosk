@@ -2,7 +2,8 @@ import RealityKit
 import SwiftUI
 
 /// A static mini of the item being built or edited, in its tray slot: the slot after the order's items for a new item,
-/// the edited item's own slot otherwise. Kept out of `tray`, `heroes` and `liveScoops`, which hold only the order.
+/// the edited item's own slot otherwise, where the mini stays hidden because the editing slot keeps its Done and
+/// remove controls. Kept out of `tray`, `heroes` and `liveScoops`, which hold only the order.
 @MainActor
 final class TrayCurrent {
     let key: UUID
@@ -324,7 +325,7 @@ extension Stage {
             rig.scaleMultiplier = docked.edge
             rig.apply()
             rig.setOpacity(current.opacity)
-            rig.root.isEnabled = current.opacity > 0.002 && docked.edge > 0.01
+            rig.root.isEnabled = !current.isEditing && current.opacity > 0.002 && docked.edge > 0.01
         }
     }
 
