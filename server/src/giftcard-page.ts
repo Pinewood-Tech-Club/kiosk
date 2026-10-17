@@ -29,12 +29,11 @@ p{margin:0}
 .screen.name{justify-content:flex-start;padding:0 0 calc(max(16px,2.2vh) + 52px)}
 .top{flex:none;padding:max(104px,13vh) 24px 0}
 .top .ask{margin-bottom:max(18px,2.6vh)}
-.results{list-style:none;margin:0;padding:6px 0 18px;width:min(92vw,680px);flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:none;--ft:0px;--fb:0px;-webkit-mask-image:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);mask-image:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);transition:--ft .2s,--fb .2s}
+.results{list-style:none;margin:0;padding:6px 0 18px;width:min(92vw,680px);flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;--ft:0px;--fb:0px;-webkit-mask-image:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);mask-image:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);transition:--ft .2s,--fb .2s}
 .results.ft{--ft:64px}
 .results.fb{--fb:64px}
 .results::-webkit-scrollbar{display:none}
 .results button{display:block;width:100%;min-height:64px;text-align:center;font:inherit;background:var(--bg);color:var(--fg);border:0;padding:14px 20px 15px;cursor:pointer;line-height:1.15;outline:none;transition:background .08s,color .08s}
-.results button.press{background:var(--accent);color:var(--bg)}
 @media (hover:hover){.results:not(.still) button:hover{background:var(--accent);color:var(--bg)}}
 .results .n{font-size:clamp(24px,2.8vw,34px);display:block}
 .results .sep{margin:18px 20px 8px;padding-top:14px;border-top:1px solid rgba(0,0,0,.14);font-size:clamp(14px,1.4vw,18px);font-weight:400;opacity:.55;letter-spacing:.02em}
@@ -412,41 +411,15 @@ function edgeFades() {
   orgList.classList.toggle("fb", orgList.scrollTop < max - 1);
 }
 
-let press = null, lastScroll = 0, openAt = { x: 0, y: 0 }, resumeAt = 0;
-function endPress() {
-  if (!press) return;
-  clearTimeout(press.timer);
-  press.b?.classList.remove("press");
-  press.dead = true;
-}
-orgList.addEventListener("pointerdown", (e) => {
-  endPress();
-  const b = e.target.closest("button");
-  // A touch that lands while the list is still gliding only stops the scroll; it must not pick the row under it.
-  const stopper = performance.now() - lastScroll < 140;
-  press = { b, x: e.clientX, y: e.clientY, top: orgList.scrollTop, dead: !b || stopper, timer: 0 };
-  if (!press.dead && e.pointerType !== "mouse") press.timer = setTimeout(() => { if (!press.dead) b.classList.add("press"); }, 90);
-});
+let openAt = { x: 0, y: 0 }, resumeAt = 0;
 orgList.addEventListener("pointermove", (e) => {
-  if (e.pointerType === "mouse" && (e.clientX !== openAt.x || e.clientY !== openAt.y)) orgList.classList.remove("still");
-  if (press && !press.dead && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) endPress();
+  if (e.clientX !== openAt.x || e.clientY !== openAt.y) orgList.classList.remove("still");
 });
-orgList.addEventListener("pointercancel", endPress);
-orgList.addEventListener("pointerup", (e) => {
-  if (press && !press.dead && e.pointerType !== "mouse") { clearTimeout(press.timer); press.b.classList.add("press"); }
-});
-orgList.addEventListener("scroll", () => {
-  lastScroll = performance.now();
-  if (press && Math.abs(orgList.scrollTop - press.top) > 4) endPress();
-  edgeFades();
-  bump();
-}, { passive: true });
+orgList.addEventListener("scroll", () => { edgeFades(); bump(); }, { passive: true });
 orgList.addEventListener("wheel", bump, { passive: true });
 orgList.addEventListener("click", (e) => {
   const b = e.target.closest("button");
-  const p = press;
-  press = null;
-  if (!b || !p || p.dead || p.b !== b || Math.abs(orgList.scrollTop - p.top) > 4) { b?.classList.remove("press"); return; }
+  if (!b) return;
   resumeAt = orgList.scrollTop;
   pickOrg(b.org);
 });
@@ -454,7 +427,6 @@ window.addEventListener("resize", () => { if (current === "s-org") edgeFades(); 
 
 function openOrgs(from) {
   const keep = from === "s-amount" ? resumeAt : 0;
-  endPress(); press = null;
   renderOrgs();
   openAt = { x: c.x, y: c.y };
   orgList.classList.add("still");
