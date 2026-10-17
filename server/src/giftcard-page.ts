@@ -58,11 +58,11 @@ p{margin:0}
 .thanks-left{margin-top:5vh;margin-bottom:6px}
 .thanks-amount{font-size:clamp(64px,9vw,128px);font-variant-numeric:lining-nums}
 #s-thanks .actions{margin-top:5vh}
-.finder{position:relative;width:100%;height:100%;border:.09em solid var(--fg);border-radius:28px;background:var(--bg);overflow:hidden;flex:none;isolation:isolate}
-.finder video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s}
+.finder{position:relative;width:100%;height:100%;border:.18em solid var(--fg);border-radius:56px;background:var(--bg);overflow:hidden;flex:none;isolation:isolate}
+.finder video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s;border-radius:calc(56px - .18em)}
 .finder video.live{opacity:1}
 .finder video.mirror{transform:scaleX(-1)}
-.finder canvas{position:absolute;inset:0;width:100%;height:100%}
+.finder canvas{position:absolute;inset:0;width:100%;height:100%;border-radius:calc(56px - .18em)}
 .stage{position:relative;width:min(58vh,86vw);height:min(58vh,86vw);margin-top:3.2vh;flex:none}
 .stage .finder{margin:0}
 .away{opacity:0;pointer-events:none;transition:opacity .35s ease}
