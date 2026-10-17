@@ -18,7 +18,7 @@ final class PhotoColumnsView: UIView {
     static let photoArea: CGFloat = 60_000
     static let border: CGFloat = 6
     static let gap: CGFloat = 34
-    static let speed: CGFloat = 26
+    static let speed: CGFloat = 52
     /// How far above the screen each column's prints begin, so rotated corners never show a gap at the top edge.
     static let lead: CGFloat = 360
     private static let epoch = CACurrentMediaTime()
