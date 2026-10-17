@@ -119,7 +119,7 @@ export function giftCardBody(): string {
       <canvas id="sim" hidden></canvas>
     </div>
   </div>
-  <p class="hint">Line up the barcode or QR code inside the square</p>
+  <p class="hint">Line up the barcode inside the square</p>
   <button class="link" id="scan-type">Enter card number</button>
 </section>
 
