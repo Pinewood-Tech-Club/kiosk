@@ -3,7 +3,7 @@ import { NOTO_SERIF_REGULAR_WOFF2, NOTO_SERIF_SEMIBOLD_WOFF2 } from "./staff-fon
 const STYLE = String.raw`
 @font-face{font-family:"Kiosk Serif";src:url(data:font/woff2;base64,${NOTO_SERIF_SEMIBOLD_WOFF2}) format("woff2");font-weight:500 700;font-display:block}
 @font-face{font-family:"Kiosk Serif";src:url(data:font/woff2;base64,${NOTO_SERIF_REGULAR_WOFF2}) format("woff2");font-weight:400;font-display:block}
-:root{--bg:#fff;--fg:#000;--accent:#000;--serif:"Kiosk Serif","Noto Serif",Georgia,serif}
+:root{--bg:#fff;--fg:#000;--accent:#000;--btn:clamp(22px,2.6vw,34px);--serif:"Kiosk Serif","Noto Serif",Georgia,serif}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font-family:var(--serif);font-weight:600;font-size:24px;line-height:1.4;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overflow:hidden;user-select:none;touch-action:manipulation}
@@ -17,17 +17,17 @@ p{margin:0}
 .amount{font-size:clamp(88px,18vw,260px);font-weight:700;line-height:1;margin:0 0 18px;font-variant-numeric:lining-nums}
 .glyph{width:clamp(56px,7vw,96px);height:clamp(56px,7vw,96px);margin-bottom:26px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .actions{margin-top:48px;display:flex;flex-direction:column;align-items:center;gap:18px}
-.btn,.link{outline:none;font:inherit;font-size:clamp(22px,2.6vw,34px);line-height:1.2;padding:.45em 1.3em;border:.09em solid var(--fg);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,color .12s,transform .12s}
+.btn,.link{outline:none;font:inherit;font-size:var(--btn);line-height:1.2;padding:.45em 1.3em;border:.09em solid var(--fg);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,color .12s,transform .12s}
 .btn{background:var(--accent);color:var(--bg);border-color:var(--accent)}
 .btn:hover{background:var(--bg);color:var(--fg);border-color:var(--fg)}
 .link:hover{background:var(--fg);color:var(--bg)}
 .btn:active,.link:active{transform:scale(.97)}
-.btn:disabled,.link:disabled{opacity:.4;cursor:default;transform:none}
+.btn:disabled,.link:disabled,.btn:disabled:hover,.link:disabled:hover{background:var(--bg);color:var(--fg);border-color:var(--fg);border-style:dashed;cursor:default;transform:none}
 .actions.row{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:22px}
 @property --ft{syntax:"<length>";inherits:false;initial-value:0px}
 @property --fb{syntax:"<length>";inherits:false;initial-value:0px}
 .screen.name{justify-content:flex-start;padding:0 0 calc(max(16px,2.2vh) + 52px)}
-.top{flex:none;padding:max(104px,13vh) 24px 0}
+.top{flex:none;padding:max(136px,16vh) 24px 0}
 .top .ask{margin-bottom:max(18px,2.6vh)}
 .results{list-style:none;margin:0;padding:6px 0 18px;width:min(92vw,680px);flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;--ft:0px;--fb:0px;-webkit-mask-image:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);mask-image:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);transition:--ft .2s,--fb .2s}
 .results.ft{--ft:64px}
@@ -35,7 +35,7 @@ p{margin:0}
 .results::-webkit-scrollbar{display:none}
 .results button{display:block;width:100%;min-height:64px;text-align:center;font:inherit;background:var(--bg);color:var(--fg);border:0;padding:14px 20px 15px;cursor:pointer;line-height:1.15;outline:none;transition:background .08s,color .08s}
 @media (hover:hover){.results:not(.still) button:hover{background:var(--accent);color:var(--bg)}}
-.results .n{font-size:clamp(24px,2.8vw,34px);display:block}
+.results .n{font-size:var(--btn);display:block}
 .who{font-size:clamp(40px,6vw,80px);font-weight:700;line-height:1.1;margin:0;max-width:90vw}
 .choices{margin-top:48px;display:flex;flex-wrap:wrap;justify-content:center;gap:22px}
 .choice{font:inherit;min-width:clamp(150px,17vw,220px);padding:20px 26px 18px;border:.09em solid var(--fg);background:var(--bg);color:var(--fg);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;outline:none;transition:background .12s,color .12s,transform .12s}
@@ -45,18 +45,25 @@ p{margin:0}
 .choice:active{transform:scale(.97)}
 .choice b{font-size:clamp(40px,5.4vw,72px);line-height:1.05;font-weight:700;font-variant-numeric:lining-nums}
 .choice span{font-size:clamp(16px,1.8vw,22px);min-height:1.4em}
-.small-note{font-size:clamp(15px,1.6vw,20px);opacity:.6}
-.small{font-size:clamp(15px,1.6vw,20px);padding:.4em 1em}
-.corner{position:absolute;top:28px;left:32px}
+.corner{position:absolute;top:28px;left:32px;z-index:3}
+.screen.step{justify-content:flex-start;padding:0 24px calc(max(16px,2.2vh) + 52px)}
+.step .body{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:max(136px,16vh)}
+.foot{flex:none;display:flex;flex-direction:column;align-items:center;gap:18px;padding-top:24px}
+.pair{min-width:7.5em}
 #s-scan{justify-content:flex-start;padding-top:max(32px,5vh)}
 #s-scan .ask{margin-bottom:0;padding:0 12vw}
 #s-scan .hint{margin-top:2.4vh}
-.finder{position:relative;width:100%;height:100%;border:.09em solid var(--fg);border-radius:28px;background:#f3f3f3;overflow:hidden;flex:none;isolation:isolate}
+#scan-type{margin-top:2vh}
+.gan{font:inherit;font-size:clamp(40px,6vw,84px);font-weight:700;font-variant-numeric:tabular-nums lining-nums;letter-spacing:.02em;width:min(92vw,12.5em);text-align:center;color:var(--fg);background:var(--bg);border:0;border-bottom:.06em solid var(--fg);border-radius:0;padding:.1em 0 .15em;outline:none;caret-color:var(--fg);user-select:text;-webkit-user-select:text}
+.thanks-left{margin-top:5vh;margin-bottom:6px}
+.thanks-amount{font-size:clamp(64px,9vw,128px);font-variant-numeric:lining-nums}
+#s-thanks .actions{margin-top:5vh}
+.finder{position:relative;width:100%;height:100%;border:.09em solid var(--fg);border-radius:28px;background:var(--bg);overflow:hidden;flex:none;isolation:isolate}
 .finder video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s}
 .finder video.live{opacity:1}
 .finder video.mirror{transform:scaleX(-1)}
 .finder canvas{position:absolute;inset:0;width:100%;height:100%}
-.stage{position:relative;width:min(62vh,86vw);height:min(62vh,86vw);margin-top:3.2vh;flex:none}
+.stage{position:relative;width:min(58vh,86vw);height:min(58vh,86vw);margin-top:3.2vh;flex:none}
 .stage .finder{margin:0;transition:opacity .35s ease}
 .stage.busy .finder{opacity:0}
 .checking{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-size:clamp(26px,3.4vw,44px);opacity:0;pointer-events:none;transition:opacity .3s ease}
@@ -64,10 +71,10 @@ p{margin:0}
 .checking i{font-style:normal;animation:dot 1.2s infinite both}
 .checking i:nth-child(2){animation-delay:.2s}
 .checking i:nth-child(3){animation-delay:.4s}
-@keyframes dot{0%,60%,100%{opacity:.2}30%{opacity:1}}
-.credit{position:fixed;left:0;right:0;bottom:max(16px,2.2vh);z-index:21;margin:0;text-align:center;font-size:clamp(15px,1.6vw,20px);font-weight:400;opacity:.6;pointer-events:none}
+@keyframes dot{0%,75%,100%{visibility:hidden}25%{visibility:visible}}
+.credit{position:fixed;left:0;right:0;bottom:max(16px,2.2vh);z-index:21;margin:0;text-align:center;font-size:clamp(15px,1.6vw,20px);font-weight:400;pointer-events:none}
 .credit b{font-weight:700}
-#warn{position:fixed;inset:0;z-index:20;background:rgba(255,255,255,.93);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+#warn{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
 #warn[hidden]{display:none}
 #warn .count{font-size:clamp(120px,24vw,320px);font-weight:700;line-height:1;margin:8px 0 22px;font-variant-numeric:lining-nums}
 #cursor{display:none;position:fixed;left:0;top:0;width:56px;height:56px;pointer-events:none;z-index:9999;opacity:0;transition:opacity .2s;transform-origin:3px 3px;will-change:transform}
@@ -111,52 +118,71 @@ export function giftCardBody(): string {
     <p class="checking" aria-live="polite">Checking your balance<i>.</i><i>.</i><i>.</i></p>
   </div>
   <p class="hint">Line up the barcode or QR code inside the square</p>
+  <button class="link" id="scan-type">Enter card number</button>
+</section>
+
+<section class="screen step" id="s-type" hidden>
+  <button class="link corner start-over">Start Over</button>
+  <div class="body">
+    <p class="ask">Type your gift card number</p>
+    <input class="gan" id="type-gan" inputmode="numeric" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Gift card number">
+  </div>
+  <div class="foot"><button class="btn pair" id="type-check" disabled>Check balance</button><button class="link pair" id="back-type">Back</button></div>
 </section>
 
 <section class="screen" id="s-result" hidden>
+  <button class="link corner start-over">Start Over</button>
   <p class="ask" id="result-ask">Your gift card balance is</p>
   <p class="amount" id="result-amount"></p>
   <p class="sub" id="result-sub"></p>
-  <div class="actions row"><button class="link" id="result-donate" hidden>Donate to Club</button><button class="btn" id="result-done">Done</button></div>
+  <div class="actions row"><button class="link" id="result-donate" hidden>Donate to Club</button></div>
 </section>
 
 <section class="screen name" id="s-org" hidden>
-  <button class="link small corner" id="back-org">Back</button>
+  <button class="link corner start-over">Start Over</button>
   <div class="top">
     <p class="ask">Who should get your donation?</p>
   </div>
   <ul class="results" id="org-results"></ul>
+  <div class="foot"><button class="link pair" id="back-org">Back</button></div>
 </section>
 
-<section class="screen" id="s-amount" hidden>
-  <button class="link small corner" id="back-amount">Back</button>
-  <p class="ask">How much would you like to give to</p>
-  <p class="who" id="amount-org"></p>
-  <div class="choices" id="amount-choices"></div>
+<section class="screen step" id="s-amount" hidden>
+  <button class="link corner start-over">Start Over</button>
+  <div class="body">
+    <p class="ask">How much would you like to give to</p>
+    <p class="who" id="amount-org"></p>
+    <div class="choices" id="amount-choices"></div>
+  </div>
+  <div class="foot"><button class="link pair" id="back-amount">Back</button></div>
 </section>
 
-<section class="screen" id="s-confirm" hidden>
-  <p class="who" id="confirm-text"></p>
-  <p class="sub" style="margin-top:18px">It comes off your gift card balance.</p>
-  <div class="actions"><button class="btn" id="confirm-yes">Confirm</button><button class="link small" id="confirm-no">Cancel</button></div>
+<section class="screen step" id="s-confirm" hidden>
+  <button class="link corner start-over" id="confirm-restart">Start Over</button>
+  <div class="body">
+    <p class="who" id="confirm-text"></p>
+    <p class="sub" style="margin-top:18px">It comes off your gift card balance.</p>
+  </div>
+  <div class="foot"><button class="btn pair" id="confirm-yes">Confirm</button><button class="link pair" id="back-confirm">Back</button></div>
 </section>
 
 <section class="screen" id="s-thanks" hidden>
+  <button class="link corner start-over">Start Over</button>
   <h1>Thank you.</h1>
   <p class="sub" id="thanks-sub"></p>
-  <div class="actions">
-    <button class="btn" id="thanks-done">Done</button>
-    <p class="small-note" id="thanks-balance"></p>
-  </div>
+  <p class="ask thanks-left">Your gift card balance is now</p>
+  <p class="who thanks-amount" id="thanks-balance"></p>
+  <div class="actions row"><button class="link" id="thanks-donate" hidden>Donate to Club</button><button class="btn" id="thanks-done">Done</button></div>
 </section>
 
 <section class="screen" id="s-error" hidden>
+  <button class="link corner start-over">Start Over</button>
   <span id="error-icon"></span>
   <h1 id="error-title"></h1>
   <p class="sub" id="error-sub"></p>
   <div class="actions">
     <button class="btn" id="error-retry">Try again</button>
-    <button class="link small" id="error-done">Start over</button>
+    <button class="link" id="error-done">Start over</button>
   </div>
 </section>
 
@@ -175,7 +201,7 @@ export function giftCardScript(debug = false, catalog: { orgs: { id: string; nam
 const IDLE_MS = 20000, WARN_AT_MS = 15000, SCAN_MAX_SIDE = 1920, CAMERA_RETRY_MS = 3000;
 const FORMATS = ["qr_code", "code_128", "code_39", "code_93", "itf", "codabar", "data_matrix", "pdf417", "aztec"];
 const $ = (id) => document.getElementById(id);
-const SCREENS = ["s-scan", "s-result", "s-error", "s-org", "s-amount", "s-confirm", "s-thanks"];
+const SCREENS = ["s-scan", "s-type", "s-result", "s-error", "s-org", "s-amount", "s-confirm", "s-thanks"];
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 let current = "s-scan", resetting = false, swallowClick = 0, retryAction = null, lookupRun = 0;
@@ -243,7 +269,7 @@ function show(id) {
   const leaving = current;
   current = id;
   for (const s of SCREENS) $(s).hidden = s !== id;
-  $("stage").classList.remove("busy");
+  if (!busy) $("stage").classList.remove("busy");
   if (leaving === "s-scan" && id !== "s-scan") stopScan();
   bump();
 }
@@ -286,7 +312,7 @@ function reset() {
   };
 }
 
-$("result-done").onclick = reset;
+for (const b of document.querySelectorAll(".start-over")) b.onclick = () => { if (!donating) reset(); };
 $("thanks-done").onclick = reset;
 $("error-done").onclick = reset;
 $("error-retry").onclick = () => {
@@ -363,6 +389,34 @@ async function lookup(gan) {
 
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") reset(); });
 
+const ganInput = $("type-gan");
+function typedDigits() {
+  return ganInput.value.trim().replace(/^sqgc:\/\//i, "").replace(/\D/g, "").slice(0, 16);
+}
+function paintTyped() {
+  const digits = typedDigits();
+  ganInput.value = digits.replace(/(\d{4})(?=\d)/g, "$1 ");
+  $("type-check").disabled = digits.length !== 16;
+}
+function submitTyped() {
+  const digits = typedDigits();
+  if (digits.length !== 16 || busy || current !== "s-type") return;
+  ganInput.blur();
+  swap("s-type", "s-scan", "back");
+  lookup(digits);
+}
+ganInput.addEventListener("input", () => { paintTyped(); bump(); });
+ganInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submitTyped(); } });
+$("type-check").onclick = submitTyped;
+$("scan-type").onclick = () => {
+  if (current !== "s-scan" || busy) return;
+  ganInput.value = "";
+  paintTyped();
+  swap("s-scan", "s-type", "forward");
+  ganInput.focus();
+};
+$("back-type").onclick = () => { if (current === "s-type") { swap("s-type", "s-scan", "back"); startScan(); } };
+
 const ORGS_REFRESH_MS = 3 * 60000;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const collate = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
@@ -430,6 +484,7 @@ function openOrgs(from) {
 }
 
 $("result-donate").onclick = () => { if (card && orgs.length && current === "s-result") openOrgs("s-result"); };
+$("thanks-donate").onclick = () => { if (card && card.balanceCents > 0 && orgs.length && current === "s-thanks") openOrgs("s-thanks"); };
 $("back-org").onclick = () => swap("s-org", "s-result", "back");
 
 function pickOrg(o) {
@@ -478,11 +533,11 @@ function pickAmount(cents) {
   $("confirm-text").textContent = "Donate " + money.format(cents / 100) + " to " + donation.org.name + "?";
   swap("s-amount", "s-confirm", "forward");
 }
-$("confirm-no").onclick = () => { if (!donating) { donation = null; swap("s-confirm", "s-result", "back"); } };
+$("back-confirm").onclick = () => { if (!donating && current === "s-confirm") swap("s-confirm", "s-amount", "back"); };
 
 function confirmBusy(on) {
   donating = on;
-  $("confirm-yes").disabled = on; $("confirm-no").disabled = on;
+  $("confirm-yes").disabled = on; $("back-confirm").disabled = on; $("confirm-restart").disabled = on;
   $("confirm-yes").textContent = on ? "Donating..." : "Confirm";
 }
 
@@ -521,7 +576,11 @@ $("confirm-yes").onclick = async () => {
   }
   card.balanceCents = outcome.balanceCents;
   $("thanks-sub").textContent = "Your " + money.format(d.cents / 100) + " donation to " + d.org.name + " went through.";
-  $("thanks-balance").textContent = "Your gift card balance is now " + money.format(outcome.balanceCents / 100);
+  $("thanks-balance").textContent = money.format(outcome.balanceCents / 100);
+  $("thanks-donate").hidden = !(outcome.balanceCents > 0 && orgs.length);
+  $("result-amount").textContent = money.format(outcome.balanceCents / 100);
+  $("result-sub").textContent = outcome.balanceCents === 0 ? "This card is empty." : "";
+  $("result-donate").hidden = !(outcome.balanceCents > 0 && orgs.length);
   donation = null;
   swap("s-confirm", "s-thanks", "forward");
   celebrate();
