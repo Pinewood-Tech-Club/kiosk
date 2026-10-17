@@ -24,21 +24,20 @@ p{margin:0}
 .btn:active,.link:active{transform:scale(.97)}
 .btn:disabled,.link:disabled{opacity:.4;cursor:default;transform:none}
 .actions.row{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:22px}
-.field{display:inline-block;position:relative;max-width:92vw}
-.field input{font:inherit;font-size:inherit;font-weight:inherit;line-height:1.15;text-align:center;border:0;border-bottom:.07em solid var(--accent);background:transparent;color:var(--fg);padding:0 .1em .05em;margin:0;outline:none;border-radius:0;-webkit-appearance:none;min-width:0;max-width:92vw;user-select:text}
-.field input::placeholder{color:var(--fg);opacity:.25}
-.field .m{position:absolute;visibility:hidden;white-space:pre;left:0;top:0;padding:0 .1em;font:inherit;font-size:inherit;font-weight:inherit}
-.big{font-size:clamp(48px,7vw,96px);font-weight:700}
-.screen.name{justify-content:flex-start;padding:0}
-.top{height:40vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;flex:none}
-.top .ask{margin-bottom:10px}
-.top .hint{margin:18px 0 0;height:1.4em}
-.results{list-style:none;margin:22px 0 0;padding:0 0 30vh;width:min(92vw,680px);flex:1;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;-webkit-mask-image:linear-gradient(#000 calc(100% - 80px),transparent);mask-image:linear-gradient(#000 calc(100% - 80px),transparent)}
+@property --ft{syntax:"<length>";inherits:false;initial-value:0px}
+@property --fb{syntax:"<length>";inherits:false;initial-value:0px}
+.screen.name{justify-content:flex-start;padding:0 0 calc(max(16px,2.2vh) + 52px)}
+.top{flex:none;padding:max(104px,13vh) 24px 0}
+.top .ask{margin-bottom:max(18px,2.6vh)}
+.results{list-style:none;margin:0;padding:6px 0 18px;width:min(92vw,680px);flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:none;--ft:0px;--fb:0px;-webkit-mask-image:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);mask-image:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);transition:--ft .2s,--fb .2s}
+.results.ft{--ft:64px}
+.results.fb{--fb:64px}
 .results::-webkit-scrollbar{display:none}
-.results button{display:block;width:100%;min-height:64px;text-align:center;font:inherit;background:var(--bg);color:var(--fg);border:0;padding:14px 20px 15px;cursor:pointer;line-height:1.15;transition:background .08s,color .08s}
-.results button.hl,.results button:active{background:var(--accent);color:var(--bg)}
+.results button{display:block;width:100%;min-height:64px;text-align:center;font:inherit;background:var(--bg);color:var(--fg);border:0;padding:14px 20px 15px;cursor:pointer;line-height:1.15;outline:none;transition:background .08s,color .08s}
+.results button.press{background:var(--accent);color:var(--bg)}
+@media (hover:hover){.results:not(.still) button:hover{background:var(--accent);color:var(--bg)}}
 .results .n{font-size:clamp(24px,2.8vw,34px);display:block}
-.results .none{padding:8px 20px;font-size:clamp(18px,2vw,22px)}
+.results .sep{margin:18px 20px 8px;padding-top:14px;border-top:1px solid rgba(0,0,0,.14);font-size:clamp(14px,1.4vw,18px);font-weight:400;opacity:.55;letter-spacing:.02em}
 .who{font-size:clamp(40px,6vw,80px);font-weight:700;line-height:1.1;margin:0;max-width:90vw}
 .choices{margin-top:48px;display:flex;flex-wrap:wrap;justify-content:center;gap:22px}
 .choice{font:inherit;min-width:clamp(150px,17vw,220px);padding:20px 26px 18px;border:.09em solid var(--fg);background:var(--bg);color:var(--fg);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;outline:none;transition:background .12s,color .12s,transform .12s}
@@ -127,8 +126,6 @@ export function giftCardBody(): string {
   <button class="link small corner" id="back-org">Back</button>
   <div class="top">
     <p class="ask">Who should get your donation?</p>
-    <span class="field big"><input type="text" id="org" placeholder="Tech Club" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="search" data-1p-ignore data-lpignore="true"><span class="m">Tech Club</span></span>
-    <p class="hint">Type a club name, then pick it</p>
   </div>
   <ul class="results" id="org-results"></ul>
 </section>
@@ -369,18 +366,14 @@ async function lookup(gan) {
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") reset(); });
 
 const ORGS_REFRESH_MS = 3 * 60000;
-const fold = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/ +/g, " ").trim();
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function prepOrgs(list) {
-  return list.map((o) => ({ ...o, tokens: fold(o.name).split(" "), full: fold(o.name) }));
-}
+const collate = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
 
 let orgs = [], orgsAt = 0, orgsRefreshing = false;
 function takeOrgs(catalog) {
   const list = catalog && Array.isArray(catalog.orgs) ? catalog : { orgs: [], featured: [] };
   const rank = new Map((list.featured || []).map((id, i) => [id, i]));
-  orgs = prepOrgs(list.orgs).map((o) => ({ ...o, rank: rank.has(o.id) ? rank.get(o.id) : -1 }));
+  orgs = list.orgs.map((o) => ({ ...o, rank: rank.has(o.id) ? rank.get(o.id) : -1 }));
   orgsAt = Date.now();
 }
 function refreshOrgs() {
@@ -393,85 +386,85 @@ function refreshOrgs() {
 }
 takeOrgs(ORGS_INIT);
 
-const byRank = (a, b) => a.rank - b.rank;
-function searchOrgs(query) {
-  const words = fold(query).split(" ").filter(Boolean);
-  if (!words.length) {
-    const featured = orgs.filter((o) => o.rank >= 0).sort(byRank);
-    return featured.length ? featured : orgs.slice();
-  }
-  const initials = (o) => o.tokens.map((t) => t[0]).join("");
-  const out = [];
-  for (const o of orgs) {
-    let score = 0;
-    for (const w of words) {
-      if (o.tokens[0].startsWith(w)) score += 3;
-      else if (o.tokens.some((t) => t.startsWith(w))) score += 2;
-      else if (o.full.includes(w) || (w.length > 1 && initials(o).startsWith(w))) score += 1;
-      else { score = 0; break; }
-    }
-    if (score) out.push({ score, o });
-  }
-  out.sort((a, b) => (a.o.rank >= 0) !== (b.o.rank >= 0) ? (a.o.rank >= 0 ? -1 : 1) : a.o.rank >= 0 ? a.o.rank - b.o.rank : b.score - a.score || a.o.name.localeCompare(b.o.name));
-  return out.map((x) => x.o);
-}
-
-function fit(input) {
-  const m = input.nextElementSibling;
-  m.textContent = input.value || input.placeholder;
-  input.style.width = (m.offsetWidth + 2) + "px";
-}
-
-let hl = -1;
-const orgItems = () => [...$("org-results").querySelectorAll("button")];
-function highlight(i, scroll = false) {
-  const list = orgItems();
-  hl = list.length ? Math.max(0, Math.min(list.length - 1, i)) : -1;
-  list.forEach((b, j) => b.classList.toggle("hl", j === hl));
-  if (scroll && hl >= 0) list[hl].scrollIntoView({ block: "nearest" });
-}
-
+const orgList = $("org-results");
 function renderOrgs() {
-  const q = $("org").value.trim();
-  const results = searchOrgs(q);
-  const ul = $("org-results");
-  ul.replaceChildren();
-  if (!results.length) {
-    const li = document.createElement("li"); li.className = "none";
-    li.textContent = "No club by that name. Check the spelling or ask at the table.";
-    ul.appendChild(li);
-  }
-  for (const o of results) {
+  const featured = orgs.filter((o) => o.rank >= 0).sort((a, b) => a.rank - b.rank);
+  const rest = orgs.filter((o) => o.rank < 0).sort((a, b) => collate(a.name, b.name));
+  const row = (o) => {
     const li = document.createElement("li"), b = document.createElement("button"), n = document.createElement("span");
     n.className = "n"; n.textContent = o.name;
-    b.append(n); b.onclick = () => pickOrg(o); b.onmouseenter = () => highlight(orgItems().indexOf(b));
-    li.appendChild(b); ul.appendChild(li);
+    b.append(n); b.org = o;
+    li.appendChild(b);
+    return li;
+  };
+  const items = featured.map(row);
+  if (featured.length && rest.length) {
+    const sep = document.createElement("li"); sep.className = "sep"; sep.textContent = "All clubs";
+    items.push(sep);
   }
-  ul.scrollTop = 0;
-  const hovered = q && ul.querySelector("button:hover");
-  highlight(hovered ? orgItems().indexOf(hovered) : q ? 0 : -1);
+  items.push(...rest.map(row));
+  orgList.replaceChildren(...items);
 }
 
+function edgeFades() {
+  const max = orgList.scrollHeight - orgList.clientHeight;
+  orgList.classList.toggle("ft", orgList.scrollTop > 1);
+  orgList.classList.toggle("fb", orgList.scrollTop < max - 1);
+}
+
+let press = null, lastScroll = 0, openAt = { x: 0, y: 0 }, resumeAt = 0;
+function endPress() {
+  if (!press) return;
+  clearTimeout(press.timer);
+  press.b?.classList.remove("press");
+  press.dead = true;
+}
+orgList.addEventListener("pointerdown", (e) => {
+  endPress();
+  const b = e.target.closest("button");
+  // A touch that lands while the list is still gliding only stops the scroll; it must not pick the row under it.
+  const stopper = performance.now() - lastScroll < 140;
+  press = { b, x: e.clientX, y: e.clientY, top: orgList.scrollTop, dead: !b || stopper, timer: 0 };
+  if (!press.dead && e.pointerType !== "mouse") press.timer = setTimeout(() => { if (!press.dead) b.classList.add("press"); }, 90);
+});
+orgList.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "mouse" && (e.clientX !== openAt.x || e.clientY !== openAt.y)) orgList.classList.remove("still");
+  if (press && !press.dead && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) endPress();
+});
+orgList.addEventListener("pointercancel", endPress);
+orgList.addEventListener("pointerup", (e) => {
+  if (press && !press.dead && e.pointerType !== "mouse") { clearTimeout(press.timer); press.b.classList.add("press"); }
+});
+orgList.addEventListener("scroll", () => {
+  lastScroll = performance.now();
+  if (press && Math.abs(orgList.scrollTop - press.top) > 4) endPress();
+  edgeFades();
+  bump();
+}, { passive: true });
+orgList.addEventListener("wheel", bump, { passive: true });
+orgList.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  const p = press;
+  press = null;
+  if (!b || !p || p.dead || p.b !== b || Math.abs(orgList.scrollTop - p.top) > 4) { b?.classList.remove("press"); return; }
+  resumeAt = orgList.scrollTop;
+  pickOrg(b.org);
+});
+window.addEventListener("resize", () => { if (current === "s-org") edgeFades(); });
+
 function openOrgs(from) {
-  $("org").value = "";
+  const keep = from === "s-amount" ? resumeAt : 0;
+  endPress(); press = null;
   renderOrgs();
+  openAt = { x: c.x, y: c.y };
+  orgList.classList.add("still");
   swap(from, "s-org", from === "s-amount" ? "back" : "forward");
-  fit($("org"));
-  $("org").focus();
+  orgList.scrollTop = keep;
+  edgeFades();
 }
 
 $("result-donate").onclick = () => { if (card && orgs.length && current === "s-result") openOrgs("s-result"); };
-$("org").addEventListener("input", () => { fit($("org")); renderOrgs(); });
-$("org").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); if (hl >= 0) orgItems()[hl]?.click(); }
-  if (e.key === "ArrowDown") { e.preventDefault(); highlight(hl + 1, true); }
-  if (e.key === "ArrowUp") { e.preventDefault(); highlight(hl - 1, true); }
-});
-$("org").addEventListener("blur", () => { if (current === "s-org") setTimeout(() => { if (current === "s-org") $("org").focus(); }, 0); });
-$("org-results").addEventListener("mousedown", (e) => e.preventDefault());
-$("back-org").addEventListener("mousedown", (e) => e.preventDefault());
-$("org-results").addEventListener("scroll", bump, { passive: true });
-$("back-org").onclick = () => { $("org").blur(); swap("s-org", "s-result", "back"); };
+$("back-org").onclick = () => swap("s-org", "s-result", "back");
 
 function pickOrg(o) {
   if (!card || current !== "s-org") return;
@@ -490,7 +483,6 @@ function pickOrg(o) {
     b.onclick = () => pickAmount(cents);
     box.appendChild(b);
   }
-  $("org").blur();
   swap("s-org", "s-amount", "forward");
 }
 $("back-amount").onclick = () => openOrgs("s-amount");

@@ -61,6 +61,13 @@ describe("GET /giftcard", () => {
     expect(await (await send("/giftcard?debug=1")).text()).toContain("const DEBUG = true;");
   });
 
+  it("shows the club picker as a scrollable list with no search box", async () => {
+    const page = await (await send("/giftcard")).text();
+    expect(page).toContain("Who should get your donation?");
+    expect(page).toContain('"All clubs"');
+    expect(page).not.toMatch(/<input[^>]*id="org"/);
+  });
+
   it("serves the vendored decoder and confetti", async () => {
     for (const path of ["/giftcard/zxing.js", "/giftcard/confetti.js"]) {
       const response = await send(path);
