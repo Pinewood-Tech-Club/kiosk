@@ -532,7 +532,7 @@ function renderOrgs() {
     li.appendChild(b); ul.appendChild(li);
   }
   ul.scrollTop = 0;
-  const hovered = ul.querySelector("button:hover");
+  const hovered = q && ul.querySelector("button:hover");
   highlight(hovered ? orgItems().indexOf(hovered) : q ? 0 : -1);
 }
 
