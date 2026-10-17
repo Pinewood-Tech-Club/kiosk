@@ -69,6 +69,16 @@ describe("GET /giftcard", () => {
     expect(page).not.toMatch(/<input[^>]*id="org"/);
   });
 
+  it("counts every mouse and keyboard input as idle activity and never mentions touch", async () => {
+    const page = await (await send("/giftcard")).text();
+    for (const type of ["pointermove", "mousemove", "pointerdown", "pointerup", "mousedown", "mouseup", "click", "wheel", "scroll", "keydown"]) {
+      expect(page).toContain(`"${type}"`);
+    }
+    expect(page).toContain("Move the mouse or press any key to keep going");
+    const text = page.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/g, "");
+    expect(text).not.toMatch(/\b(tap|tapping|touch)\b/i);
+  });
+
   it("serves the scanner worker, its decoder wasm and confetti", async () => {
     for (const path of ["/giftcard/scan-worker.js", "/giftcard/confetti.js"]) {
       const response = await send(path);

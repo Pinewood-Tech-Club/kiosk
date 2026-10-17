@@ -80,7 +80,7 @@ p{margin:0}
 #warn{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
 #warn[hidden]{display:none}
 #warn .count{font-size:clamp(120px,24vw,320px);font-weight:700;line-height:1;margin:8px 0 22px;font-variant-numeric:lining-nums}
-#cursor{display:none;position:fixed;left:0;top:0;width:56px;height:56px;pointer-events:none;z-index:9999;opacity:0;transition:opacity .2s;transform-origin:3px 3px;will-change:transform}
+#cursor{display:none;position:fixed;left:0;top:0;width:56px;height:56px;pointer-events:none;z-index:9999;opacity:0;transition:opacity .2s;transform-origin:0 0;overflow:visible;will-change:transform}
 #cursor.on{opacity:1}
 #cursor.down path{fill:var(--accent)}
 #cursor path{fill:var(--bg);stroke:var(--fg);stroke-width:2.8;stroke-linejoin:round;stroke-linecap:round;transition:fill .1s}
@@ -109,7 +109,7 @@ ${body}
 }
 
 export function giftCardBody(): string {
-  return `<svg id="cursor" viewBox="0 0 56 56" aria-hidden="true"><path d="M3.85 5.46 Q3.00 3.00 5.23 4.34 L41.92 26.38 Q44.14 27.72 42.12 29.36 L20.65 46.75 Q18.63 48.38 17.78 45.93 Z"/></svg>
+  return `<svg id="cursor" viewBox="3 3 56 56" aria-hidden="true"><path d="M3.85 5.46 Q3.00 3.00 5.23 4.34 L41.92 26.38 Q44.14 27.72 42.12 29.36 L20.65 46.75 Q18.63 48.38 17.78 45.93 Z"/></svg>
 
 <section class="screen" id="s-scan">
   <p class="ask">Hold your gift card up to the camera</p>
@@ -251,19 +251,20 @@ function bump() {
   stopWarning();
   if (current !== "s-scan") idleTimer = setTimeout(startWarning, WARN_AT_MS);
 }
+const MOVES = ["pointermove", "mousemove"], NUDGES = ["wheel", "scroll"], PRESSES = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "keydown"];
 let lastMove = { x: NaN, y: NaN };
 function onActivity(e) {
-  if (e.type === "pointermove") {
+  if (MOVES.includes(e.type)) {
+    // Browsers fire a synthetic move at the same spot when the warning appears under a still pointer.
     if (e.clientX === lastMove.x && e.clientY === lastMove.y) return;
     lastMove = { x: e.clientX, y: e.clientY };
-  } else if (!$("warn").hidden && (e.type === "pointerdown" || e.type === "keydown" || e.type === "touchstart")) {
-    e.stopPropagation(); e.preventDefault();
+  } else if (!$("warn").hidden && PRESSES.includes(e.type)) {
+    if (e.type === "keydown") e.stopPropagation();
     swallowClick = Date.now() + 500;
   }
   bump();
 }
-for (const type of ["pointerdown", "keydown", "touchstart"]) document.addEventListener(type, onActivity, true);
-for (const type of ["pointermove", "wheel", "scroll"]) document.addEventListener(type, onActivity, { capture: true, passive: true });
+for (const type of [...MOVES, ...NUDGES, ...PRESSES]) document.addEventListener(type, onActivity, { capture: true, passive: true });
 document.addEventListener("click", (e) => { if (Date.now() < swallowClick) { e.stopPropagation(); e.preventDefault(); } }, true);
 
 function show(id) {
