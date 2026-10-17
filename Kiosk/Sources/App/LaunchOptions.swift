@@ -398,6 +398,37 @@ struct ScriptRunner {
                 await toggle(topping)
                 await wait(2.5)
             }
+        case "toppings-spam":
+            await openToppings()
+            await wait(1.5)
+            let before = toppingEntityCount()
+            for topping in [Topping.gummies, .mms, .sprinkles] {
+                log("spam \(topping.rawValue)")
+                for gap in [0.15, 0.2, 0.35, 0.1, 0.5, 0.25, 0.6] {
+                    await toggle(topping)
+                    await wait(gap)
+                }
+                await wait(2.5)
+            }
+            log("deselect under a toss")
+            await toggle(.sprinkles)
+            await wait(0.2)
+            await toggle(.gummies)
+            await wait(0.3)
+            await toggle(.mms)
+            await wait(2.5)
+            await toggle(.gummies)
+            await toggle(.mms)
+            await wait(3.0)
+            var waited = 0.0
+            while !app.stage.isSettled, waited < 8 {
+                await wait(0.1)
+                waited += 0.1
+            }
+            let after = toppingEntityCount()
+            let issues = app.stage.consistencyIssues(current: app.current, items: app.items, editingID: app.editingID, showsCards: true)
+            log("toppings-spam: topping entities \(before) before, \(after) after, toppings \(app.current.toppings.map(\.rawValue)), "
+                + (issues.isEmpty ? "consistent" : "FAIL: " + issues.joined(separator: "; ")))
         case "remove-middle":
             await wait(0.6)
             app.removeScoop(.chocolate)

@@ -24,6 +24,7 @@ final class CandyLibrary {
     }
 
     static func load(gummyBearURL: URL?) async -> (CandyLibrary?, [String]) {
+        ScatterLookComponent.registerComponent()
         var report: [String] = []
         do {
             let bear: CandyMeshes.Built
@@ -41,7 +42,7 @@ final class CandyLibrary {
                                             printUp: index.isMultiple(of: 2), rng: &shapes)
             }
             let rods = try Sprinkles.variants.map {
-                try CandyMeshes.sprinkle(length: $0.length * 0.001, radius: $0.diameter * 0.0005, bend: $0.bend)
+                try CandyMeshes.sprinkle(length: $0.length * 0.001, radius: $0.diameter * 0.0005, bend: $0.bend, skew: $0.skew)
             }
             let library = CandyLibrary(gummyBears: await GummyBears.make(shell: bear),
                                        candyLentils: await CandyLentils.make(pieces: lentils),
@@ -72,8 +73,8 @@ private func colorBag(_ colors: Int, count: Int, rng: inout ToppingRandom) -> [I
 }
 
 private extension CandyMeshes.Built {
-    func piece(_ material: some RealityKit.Material) -> ScatterPiece {
-        ScatterPiece(mesh: mesh, materials: [material], halfExtents: halfExtents)
+    func piece(_ material: some RealityKit.Material, look: ScatterLook) -> ScatterPiece {
+        ScatterPiece(mesh: mesh, materials: [material], halfExtents: halfExtents, look: look)
     }
 }
 
@@ -103,7 +104,7 @@ struct GummyBears: ScatterKind {
 
     func makePieces(rng: inout ToppingRandom) -> [ScatterPiece] {
         colorBag(materials.count, count: count, rng: &rng).map {
-            ScatterPiece(mesh: bear.mesh, materials: [materials[$0]], halfExtents: bear.halfExtents)
+            ScatterPiece(mesh: bear.mesh, materials: [materials[$0]], halfExtents: bear.halfExtents, look: ScatterLook(material: $0))
         }
     }
 
@@ -124,7 +125,7 @@ struct GummyBears: ScatterKind {
              [0.0078, 0, 0.0115]),
         ]
         return IconPile.compose(layout.enumerated().map { index, entry in
-            (bear.mesh, [materials[colors[index]]], entry.0, entry.1)
+            (bear.mesh, [materials[colors[index]]], entry.0, entry.1, ScatterLook(material: colors[index]))
         })
     }
 
@@ -205,7 +206,9 @@ struct CandyLentils: ScatterKind {
     func makePieces(rng: inout ToppingRandom) -> [ScatterPiece] {
         colorBag(Self.colors.count, count: count, rng: &rng).map {
             let shade = Int.random(in: 0..<Self.shades, using: &rng)
-            return pieces.randomElement(using: &rng)!.piece(materials[$0 * Self.shades + shade])
+            let shape = Int.random(in: 0..<pieces.count, using: &rng)
+            let material = $0 * Self.shades + shade
+            return pieces[shape].piece(materials[material], look: ScatterLook(mesh: shape, family: shape % 2, material: material))
         }
     }
 
@@ -223,7 +226,10 @@ struct CandyLentils: ScatterKind {
              [-r * 0.15, h * 1.3, r * 0.45]),
         ]
         return IconPile.compose(layout.enumerated().map { index, entry in
-            (pieces[up[index % up.count]].mesh, [materials[colors[index] * Self.shades]], entry.0, entry.1)
+            let shape = up[index % up.count]
+            let material = colors[index] * Self.shades
+            return (pieces[shape].mesh, [materials[material]], entry.0, entry.1,
+                    ScatterLook(mesh: shape, family: shape % 2, material: material))
         })
     }
 
@@ -321,10 +327,20 @@ enum LentilPrint {
 }
 
 struct Sprinkles: ScatterKind {
-    static let variants: [(length: Float, diameter: Float, bend: Float)] = [
-        (6.2, 1.25, 0), (6.8, 1.35, 0), (7.4, 1.2, 0), (7.9, 1.4, 0), (8.0, 1.3, 0),
-        (7.2, 1.45, 0), (6.5, 1.2, 0), (7.6, 1.4, 0), (7.0, 1.3, 0.45), (7.8, 1.35, -0.35), (6.6, 1.25, 0.3),
-    ]
+    /// Millimeters and radians. Lengths within about 15% of 7.1 mm; about two in five are bent into a gentle curve,
+    /// sometimes more toward one end, and the rest are only just off straight.
+    static let variants: [(length: Float, diameter: Float, bend: Float, skew: Float)] = {
+        var rng = ToppingRandom(seed: 0x5915_C1E5)
+        return (0..<24).map { index in
+            let length = 7.1 * Float.random(in: 0.85...1.15, using: &rng)
+            let diameter = Float.random(in: 1.2...1.42, using: &rng)
+            let sign: Float = Bool.random(using: &rng) ? 1 : -1
+            let curved = index % 5 < 2
+            let bend = sign * (curved ? Float.random(in: 0.4...0.85, using: &rng) : Float.random(in: 0...0.12, using: &rng))
+            let skew = curved ? Float.random(in: -0.5...0.5, using: &rng) : 0
+            return (length, diameter, bend, skew)
+        }
+    }()
 
     let pieces: [CandyMeshes.Built]
     let materials: [PhysicallyBasedMaterial]
@@ -346,23 +362,28 @@ struct Sprinkles: ScatterKind {
 
     func makePieces(rng: inout ToppingRandom) -> [ScatterPiece] {
         (0..<count).map { _ in
-            pieces.randomElement(using: &rng)!.piece(materials.randomElement(using: &rng)!)
+            let shape = Int.random(in: 0..<pieces.count, using: &rng)
+            let material = Int.random(in: 0..<materials.count, using: &rng)
+            return pieces[shape].piece(materials[material], look: ScatterLook(mesh: shape, family: shape, material: material))
         }
     }
 
     func makeIconPile(rng: inout ToppingRandom) -> Entity {
         let radius: Float = 0.013
         let height: Float = 0.0075
-        var entries: [(MeshResource, [any RealityKit.Material], simd_quatf, SIMD3<Float>)] = []
+        var entries: [(MeshResource, [any RealityKit.Material], simd_quatf, SIMD3<Float>, ScatterLook)] = []
         for index in 0..<72 {
             let r = radius * sqrt(Float(index) / 72) * Float.random(in: 0.85...1.0, using: &rng)
             let a = Float(index) * 2.39996 + Float.random(in: -0.3...0.3, using: &rng)
             let top = height * (1 - (r / radius) * (r / radius))
-            let built = pieces.randomElement(using: &rng)!
+            let shape = Int.random(in: 0..<pieces.count, using: &rng)
+            let built = pieces[shape]
             let yaw = simd_quatf(angle: Float.random(in: 0...(2 * .pi), using: &rng), axis: [0, 1, 0])
             let slope = simd_quatf(angle: Float.random(in: -0.35...0.35, using: &rng), axis: [cos(a), 0, sin(a)])
-            entries.append((built.mesh, [materials.randomElement(using: &rng)!], slope * yaw,
-                            [r * cos(a), max(top - built.halfExtents.y, 0), r * sin(a)]))
+            let material = Int.random(in: 0..<materials.count, using: &rng)
+            entries.append((built.mesh, [materials[material]], slope * yaw,
+                            [r * cos(a), max(top - built.halfExtents.y, 0), r * sin(a)],
+                            ScatterLook(mesh: shape, family: shape, material: material)))
         }
         return IconPile.compose(entries, dropToFloor: false)
     }
@@ -380,12 +401,13 @@ struct Sprinkles: ScatterKind {
 @MainActor
 enum IconPile {
     /// Places pieces (y is the gap above the floor when `dropToFloor`), then centers the pile on the Y axis resting on y = 0.
-    static func compose(_ entries: [(MeshResource, [any RealityKit.Material], simd_quatf, SIMD3<Float>)],
+    static func compose(_ entries: [(MeshResource, [any RealityKit.Material], simd_quatf, SIMD3<Float>, ScatterLook)],
                         dropToFloor: Bool = true) -> Entity {
         let pile = Entity()
         pile.name = "candy-icon-pile"
-        for (mesh, materials, rotation, position) in entries {
+        for (mesh, materials, rotation, position, look) in entries {
             let model = ModelEntity(mesh: mesh, materials: materials)
+            model.components.set(ScatterLookComponent(look: look))
             model.orientation = rotation
             model.position = position
             pile.addChild(model)

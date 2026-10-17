@@ -19,8 +19,9 @@ struct PlaceholderScatterKind: ScatterKind {
     func makePieces(rng: inout ToppingRandom) -> [ScatterPiece] {
         let resources = Self.resources(shape)
         return (0..<count).map { _ in
-            let material = resources.materials[Int.random(in: 0..<resources.materials.count, using: &rng)]
-            return ScatterPiece(mesh: resources.mesh, materials: [material], halfExtents: resources.half)
+            let material = Int.random(in: 0..<resources.materials.count, using: &rng)
+            return ScatterPiece(mesh: resources.mesh, materials: [resources.materials[material]], halfExtents: resources.half,
+                                look: ScatterLook(material: material))
         }
     }
 
@@ -30,7 +31,7 @@ struct PlaceholderScatterKind: ScatterKind {
         return IconPile.compose(pieces.enumerated().map { index, piece in
             let angle = Float(index) * 2.39996
             let r = largest * 1.6 * sqrt(Float(index) / Float(pieces.count))
-            return (piece.mesh, piece.materials, simd_quatf(angle: angle, axis: [0, 1, 0]), [cos(angle) * r, 0, sin(angle) * r])
+            return (piece.mesh, piece.materials, simd_quatf(angle: angle, axis: [0, 1, 0]), [cos(angle) * r, 0, sin(angle) * r], piece.look)
         })
     }
 

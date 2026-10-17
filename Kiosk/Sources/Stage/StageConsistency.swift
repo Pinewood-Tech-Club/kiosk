@@ -124,6 +124,9 @@ extension Stage {
         for (flavor, icon) in flavorIcons {
             check(abs(icon.appear - 1) < 1e-4, "\(flavor.rawValue) card icon appear \(icon.appear)")
         }
+        for (topping, icon) in toppingIcons {
+            check(abs(icon.appear - 1) < 1e-4, "\(topping.rawValue) card icon appear \(icon.appear)")
+        }
         if showsCards {
             for vessel in Vessel.allCases {
                 let shown = iconShown[.vessel(vessel)] ?? 0
