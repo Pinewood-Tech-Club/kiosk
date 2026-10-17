@@ -27,15 +27,21 @@ p{margin:0}
 .corner{position:absolute;top:28px;left:32px}
 #s-scan{justify-content:flex-start;padding-top:max(32px,5vh)}
 #s-scan .ask{margin-bottom:0;padding:0 12vw}
-.finder{position:relative;width:min(62vh,86vw);height:min(62vh,86vw);margin-top:3.2vh;border:.09em solid var(--fg);border-radius:28px;background:#f3f3f3;overflow:hidden;flex:none;isolation:isolate}
+.finder{position:relative;width:100%;height:100%;border:.09em solid var(--fg);border-radius:28px;background:#f3f3f3;overflow:hidden;flex:none;isolation:isolate}
 .finder video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s}
 .finder video.live{opacity:1}
 .finder video.mirror{transform:scaleX(-1)}
 .finder .sweep{position:absolute;left:0;right:0;top:0;height:3px;background:var(--accent);animation:sweep 2.4s ease-in-out infinite alternate;opacity:0;transition:opacity .3s}
 .finder.live .sweep{opacity:.85}
-.finder.busy video{filter:blur(6px);transform:scale(1.04)}
-.finder.busy.mirror video{transform:scaleX(-1) scale(1.04)}
-.finder.busy .sweep{animation-play-state:paused;opacity:0}
+.stage{position:relative;width:min(62vh,86vw);height:min(62vh,86vw);margin-top:3.2vh;flex:none}
+.stage .finder{margin:0;transition:opacity .35s ease}
+.stage.busy .finder{opacity:0}
+.checking{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:clamp(26px,3.4vw,44px);opacity:0;pointer-events:none;transition:opacity .3s ease}
+.stage.busy .checking{opacity:1;transition-delay:.25s}
+.checking i{font-style:normal;animation:dot 1.2s infinite both}
+.checking i:nth-child(2){animation-delay:.2s}
+.checking i:nth-child(3){animation-delay:.4s}
+@keyframes dot{0%,60%,100%{opacity:.2}30%{opacity:1}}
 @keyframes sweep{from{top:0}to{top:calc(100% - 3px)}}
 #warn{position:fixed;inset:0;z-index:20;background:rgba(255,255,255,.93);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
 #warn[hidden]{display:none}
@@ -45,7 +51,7 @@ p{margin:0}
 #cursor.down path{fill:var(--accent)}
 #cursor path{fill:var(--bg);stroke:var(--fg);stroke-width:2.8;stroke-linejoin:round;stroke-linecap:round;transition:fill .1s}
 @media (pointer:fine){*{cursor:none!important}#cursor{display:block}}
-@media (prefers-reduced-motion:reduce){.finder .sweep{animation:none}}
+@media (prefers-reduced-motion:reduce){.finder .sweep,.checking i{animation:none}}
 `;
 
 const ICON_CAMERA_OFF = `<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121"/><path d="m2 2 20 20"/><path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175"/><path d="M9.695 4.024A2 2 0 0 1 10.004 4h3.993a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v7.344"/></svg>`;
@@ -79,9 +85,12 @@ export function giftCardBody(): string {
 <section class="screen" id="s-scan" hidden>
   <button class="link small corner" id="back-scan">Start over</button>
   <p class="ask">Hold your gift card up to the camera</p>
-  <div class="finder" id="finder">
-    <video id="video" playsinline muted></video>
-    <div class="sweep"></div>
+  <div class="stage" id="stage">
+    <div class="finder" id="finder">
+      <video id="video" playsinline muted></video>
+      <div class="sweep"></div>
+    </div>
+    <p class="checking" aria-live="polite">Checking your balance<i>.</i><i>.</i><i>.</i></p>
   </div>
   <p class="hint">Line up the barcode or QR code inside the square</p>
 </section>
@@ -184,6 +193,7 @@ function show(id) {
   const leaving = current;
   current = id;
   for (const s of SCREENS) $(s).hidden = s !== id;
+  $("stage").classList.remove("busy");
   if (leaving === "s-scan" && id !== "s-scan") stopScan();
   bump();
 }
@@ -297,17 +307,20 @@ function showResult(card) {
 
 async function lookup(gan) {
   busy = true;
-  $("finder").classList.add("busy");
+  const run = scanRun;
+  $("stage").classList.add("busy");
+  const minimum = new Promise((resolve) => setTimeout(resolve, 600));
+  let outcome;
   try {
     const res = await fetch("/giftcard/balance", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ gan }) });
-    if (res.ok) { showResult(await res.json()); return; }
-    fail(res.status === 404 ? "notfound" : res.status === 429 ? "limit" : "network");
+    outcome = res.ok ? await res.json() : res.status === 404 ? "notfound" : res.status === 429 ? "limit" : "network";
   } catch (e) {
-    fail("network");
-  } finally {
-    busy = false;
-    $("finder").classList.remove("busy");
+    outcome = "network";
   }
+  await minimum;
+  busy = false;
+  if (run !== scanRun) return;
+  if (typeof outcome === "string") fail(outcome); else showResult(outcome);
 }
 
 function extractGan(raw) {
@@ -364,7 +377,6 @@ async function makeEngine() {
 function stopScan() {
   scanRun++;
   clearTimeout(scanTimer); scanTimer = null;
-  $("finder").classList.remove("busy");
   busy = false;
 }
 
