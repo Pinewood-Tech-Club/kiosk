@@ -42,6 +42,27 @@ export function normalizeGan(input: string): string {
   return gan;
 }
 
+const SQUARE_BALANCE_HOSTS = new Set(["app.squareup.com", "squareup.com", "www.squareup.com"]);
+
+export function balancePageToken(input: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    return null;
+  }
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || !SQUARE_BALANCE_HOSTS.has(url.hostname)) return null;
+  const match = /^\/gift\/balance\/([0-9a-f]{32})\/?$/i.exec(url.pathname);
+  return match ? match[1].toLowerCase() : null;
+}
+
+export function parseGiftCardCode(input: string): { gan: string } | { token: string } {
+  if (!/^https?:\/\//i.test(input.trim())) return { gan: normalizeGan(input) };
+  const token = balancePageToken(input);
+  if (!token) throw new HttpError(400, "invalid_gan", "That QR code isn't a Square gift card");
+  return { token };
+}
+
 export async function credentialsFor(env: Env): Promise<SquareCredentials> {
   const credentials = await resolveCredentials(env);
   if (!credentials) throw new HttpError(503, "not_configured", "No Square credentials on the server", {}, false);
@@ -86,22 +107,23 @@ export async function lookupCard(
   if (limitFailures && (await recentLookupFailures(env, device, now)) >= LOOKUP_FAILURE_LIMIT) {
     throw new HttpError(429, "rate_limited", "Too many failed gift card lookups, try again in a few minutes", { "Retry-After": "300" });
   }
-  let gan: string;
+  let code: { gan: string } | { token: string };
   try {
-    gan = normalizeGan(rawGan);
+    code = parseGiftCardCode(rawGan);
   } catch (error) {
     if (limitFailures) await noteLookupFailure(env, device, now);
     throw error;
   }
-  const last4 = gan.slice(-4);
+  let last4 = "gan" in code ? code.gan.slice(-4) : null;
   try {
-    const response = await squareRequest<{ gift_card?: { id?: string; state?: string; balance_money?: { amount?: number } } }>(
-      credentials.environment,
-      "/v2/gift-cards/from-gan",
-      { bearer: credentials.accessToken, body: { gan } },
-    );
+    type GiftCardReply = { gift_card?: { id?: string; state?: string; balance_money?: { amount?: number }; gan?: string } };
+    const response =
+      "gan" in code
+        ? await squareRequest<GiftCardReply>(credentials.environment, "/v2/gift-cards/from-gan", { bearer: credentials.accessToken, body: { gan: code.gan } })
+        : await squareRequest<GiftCardReply>(credentials.environment, `/v2/gift-cards/gftc:${code.token}`, { bearer: credentials.accessToken });
     const card = response.gift_card;
     if (!card?.id) throw new HttpError(502, "square_rejected", "Unexpected gift card response", {}, false);
+    last4 ??= (card.gan ?? "").slice(-4);
     return { id: card.id, state: card.state ?? "UNKNOWN", balanceCents: card.balance_money?.amount ?? 0, last4 };
   } catch (error) {
     if (error instanceof SquareError && error.status === 404) {

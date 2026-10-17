@@ -616,6 +616,8 @@ $("confirm-yes").onclick = async () => {
 };
 
 function extractGan(raw) {
+  const qr = String(raw).trim().match(/^https?:\/\/(?:app\.|www\.)?squareup\.com\/gift\/balance\/([0-9a-f]{32})\/?(?:[?#]|$)/i);
+  if (qr) return "https://app.squareup.com/gift/balance/" + qr[1].toLowerCase();
   let text = String(raw).trim().replace(/^sqgc:\/\//i, "");
   if (/^[\d\s-]+$/.test(text)) text = text.replace(/[\s-]/g, "");
   const m = text.match(/(?<!\d)\d{16}(?!\d)/);

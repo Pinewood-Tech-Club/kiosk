@@ -6,6 +6,7 @@ import { ZXING_WASM_PATH } from "../src/giftcard-scanner";
 
 const BASE = "https://booth.test";
 const GAN = "7783320000001234";
+const QR_TOKEN = "a12dc64b43d84644acfd4b9c313f62dd";
 const configured = { ...env, SQUARE_ACCESS_TOKEN: "EAAA-static" } as Env;
 
 let ipCounter = 0;
@@ -92,6 +93,20 @@ describe("GET /giftcard", () => {
     expect(WebAssembly.validate(new Uint8Array(await wasm.arrayBuffer()))).toBe(true);
   });
 
+  it("passes uppercase barcodes and canonical balance QR codes to the lookup", async () => {
+    const script = (await (await send("/giftcard")).text()).match(/function extractGan\(raw\) \{[\s\S]*?\n\}/)![0];
+    const extractGan = new Function(`${script}\nreturn extractGan;`)() as (raw: string) => string | null;
+    const canonical = `https://app.squareup.com/gift/balance/${QR_TOKEN}`;
+    expect(extractGan("SQGC://7782737320193309")).toBe("7782737320193309");
+    expect(extractGan(`sqgc://${GAN}`)).toBe(GAN);
+    expect(extractGan(canonical)).toBe(canonical);
+    expect(extractGan(`HTTP://APP.SQUAREUP.COM/GIFT/BALANCE/${QR_TOKEN.toUpperCase()}/?x=1`)).toBe(canonical);
+    expect(extractGan(`https://squareup.com/gift/balance/${QR_TOKEN}#a`)).toBe(canonical);
+    expect(extractGan(`https://app.squareup.com/gift/balance/${QR_TOKEN}0`)).toBeNull();
+    expect(extractGan(`https://evil.example/gift/balance/${QR_TOKEN}`)).toBeNull();
+    expect(extractGan(`https://app.squareup.com.evil.example/gift/balance/${QR_TOKEN}`)).toBeNull();
+  });
+
   it("gives debug mode the same org list as the live page", async () => {
     const orgsOf = async (path: string) => (await (await send(path)).text()).match(/const ORGS_INIT = (.*);/)![1];
     expect(await orgsOf("/giftcard?debug=1")).toBe(await orgsOf("/giftcard"));
@@ -116,6 +131,34 @@ describe("POST /giftcard/balance", () => {
     const result = await check({ gan: "12ab" });
     expect(result.status).toBe(400);
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("from-gan"))).toBe(false);
+  });
+
+  it("looks up the card behind a Square balance QR code by its gift card id", async () => {
+    mockSquare(200, card({ id: `gftc:${QR_TOKEN}` }));
+    const result = await check({ gan: `https://app.squareup.com/gift/balance/${QR_TOKEN}` });
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual({ balanceCents: 1250, state: "ACTIVE" });
+    const calls = vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes("/v2/gift-cards"));
+    expect(calls).toHaveLength(1);
+    expect(new URL(String(calls[0][0])).pathname).toBe(`/v2/gift-cards/gftc:${QR_TOKEN}`);
+    expect(calls[0][1]?.method).toBe("GET");
+  });
+
+  it("answers 404 for a QR code whose card Square doesn't know", async () => {
+    mockSquare(404, { errors: [{ code: "NOT_FOUND", category: "INVALID_REQUEST_ERROR" }] });
+    const result = await check({ gan: `https://app.squareup.com/gift/balance/${QR_TOKEN}` });
+    expect(result.status).toBe(404);
+    expect(result.body.error.code).toBe("giftcard_not_found");
+  });
+
+  it("rejects other QR links without calling Square", async () => {
+    mockSquare(200, card());
+    for (const gan of [`https://evil.example/gift/balance/${QR_TOKEN}`, `https://app.squareup.com/gift/balance/${QR_TOKEN.slice(2)}`, `https://example.com/${GAN}`]) {
+      const result = await check({ gan });
+      expect(result.status).toBe(400);
+      expect(result.body.error.code).toBe("invalid_gan");
+    }
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/v2/gift-cards"))).toBe(false);
   });
 
   it("answers 404 for an unknown card", async () => {

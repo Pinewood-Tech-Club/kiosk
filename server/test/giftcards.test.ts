@@ -2,7 +2,7 @@ import { createExecutionContext, createScheduledController, waitOnExecutionConte
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker, { FEATURES } from "../src";
-import { normalizeGan } from "../src/giftcards";
+import { balancePageToken, normalizeGan, parseGiftCardCode } from "../src/giftcards";
 import { OAUTH_SCOPES } from "../src/oauth";
 import { receiptPage, type ReceiptRecord } from "../src/receipts";
 
@@ -119,6 +119,37 @@ describe("gift card basics", () => {
     expect(normalizeGan("7783 3200 0000 1234")).toBe(GAN);
     expect(() => normalizeGan("1234")).toThrow(/16 digits/);
     expect(() => normalizeGan(`${GAN}9`)).toThrow();
+  });
+
+  it("reads the gift card token from a Square balance QR code", () => {
+    const token = "a12dc64b43d84644acfd4b9c313f62dd";
+    for (const url of [
+      `https://app.squareup.com/gift/balance/${token}`,
+      `HTTPS://APP.SQUAREUP.COM/GIFT/BALANCE/${token.toUpperCase()}`,
+      `http://app.squareup.com/gift/balance/${token}/`,
+      `https://squareup.com/gift/balance/${token}?utm_source=card#top`,
+      `  https://www.squareup.com/gift/balance/${token}  `,
+    ]) {
+      expect(balancePageToken(url)).toBe(token);
+      expect(parseGiftCardCode(url)).toEqual({ token });
+    }
+    for (const url of [
+      `https://app.squareup.com/gift/balance/${token}0`,
+      `https://app.squareup.com/gift/balance/${token.slice(1)}`,
+      `https://app.squareup.com/gift/balance/${token.slice(1)}g`,
+      `https://app.squareup.com/gift/balance/${token}/extra`,
+      `https://app.squareup.com/gift/${token}`,
+      `https://evil.example/gift/balance/${token}`,
+      `https://app.squareup.com.evil.example/gift/balance/${token}`,
+      `https://app.squareup.com@evil.example/gift/balance/${token}`,
+      `ftp://app.squareup.com/gift/balance/${token}`,
+    ]) {
+      expect(balancePageToken(url)).toBeNull();
+    }
+    expect(() => parseGiftCardCode(`https://evil.example/gift/balance/${token}`)).toThrow(/QR code/);
+    expect(() => parseGiftCardCode(`https://example.com/${GAN}`)).toThrow(/QR code/);
+    expect(parseGiftCardCode(`SQGC://${GAN}`)).toEqual({ gan: GAN });
+    expect(parseGiftCardCode(GAN)).toEqual({ gan: GAN });
   });
 });
 

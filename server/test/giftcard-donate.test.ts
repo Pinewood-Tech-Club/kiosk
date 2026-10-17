@@ -6,6 +6,7 @@ import { refreshDonationOrgs, setFeatured, storedDonationOrgs } from "../src/gif
 
 const BASE = "https://booth.test";
 const GAN = "7783320000001234";
+const QR_TOKEN = "a12dc64b43d84644acfd4b9c313f62dd";
 const configured = { ...env, SQUARE_ACCESS_TOKEN: "EAAA-static" } as Env;
 
 const category = (id: string, name: string) => ({ type: "CATEGORY", id, category_data: { name } });
@@ -36,6 +37,9 @@ function mockSquare() {
     if (url.pathname === "/v2/catalog/list") {
       const page = url.searchParams.get("cursor") === "p2" ? catalog.slice(2) : catalog.slice(0, 2);
       return Response.json({ objects: page, ...(url.searchParams.get("cursor") ? {} : { cursor: catalog.length > 2 ? "p2" : "" }) });
+    }
+    if (url.pathname === `/v2/gift-cards/gftc:${QR_TOKEN}` && method === "GET") {
+      return Response.json({ gift_card: { id: `gftc:${QR_TOKEN}`, state: "ACTIVE", balance_money: { amount: balance, currency: "USD" }, gan: GAN } });
     }
     if (url.pathname === "/v2/gift-cards/from-gan") return Response.json({ gift_card: { id: "gftc:abc", state: "ACTIVE", balance_money: { amount: balance, currency: "USD" }, gan: GAN } });
     if (url.pathname === "/v2/orders" && method === "POST") {
@@ -136,6 +140,17 @@ describe("POST /giftcard/donate", () => {
     expect(payment.body).toMatchObject({ source_id: "gftc:abc", amount_money: { amount: 750, currency: "USD" }, order_id: order.body.idempotency_key && `ORDER-${order.body.idempotency_key}`, autocomplete: true });
     const row = await env.DB.prepare("SELECT status, gan_last4, org_name FROM giftcard_donations").first();
     expect(row).toEqual({ status: "completed", gan_last4: "1234", org_name: "Tech Club" });
+  });
+
+  it("pays from the card behind a scanned balance QR code", async () => {
+    const result = await donate(request({ gan: `https://app.squareup.com/gift/balance/${QR_TOKEN}`, amountCents: 500 }));
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual({ ok: true, balanceCents: 1500 });
+    expect(squareCalls("/v2/gift-cards/from-gan")).toHaveLength(0);
+    const [payment] = squareCalls("/v2/payments");
+    expect(payment.body.source_id).toBe(`gftc:${QR_TOKEN}`);
+    const row = await env.DB.prepare("SELECT gan_last4 FROM giftcard_donations").first();
+    expect(row).toEqual({ gan_last4: "1234" });
   });
 
   it("rejects an amount above the balance before creating anything", async () => {
