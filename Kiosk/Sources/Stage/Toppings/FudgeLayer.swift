@@ -1,17 +1,13 @@
 import RealityKit
 import UIKit
 
-/// Hot fudge ladled onto the top scoop: a heavy ribbon falls from above the screen and coils where it lands, the fudge
-/// spreads into a thick glossy cap and slumps down the sides in a few fat drips that slow and stall, each ending in a
-/// rounded bead. The cap is a sheet over a grid of rays marched across the surface from the crown; past the fudge's edge
-/// the sheet dips under the ice cream, so the edge is wherever the two surfaces cross.
+/// The cap is one sheet over rays marched across the surface from the crown. Past the fudge's edge the sheet dips under
+/// the ice cream instead of ending, so the visible edge is wherever the two surfaces cross.
 @MainActor
 final class FudgeLayer: ToppingLayer {
     let entity = Entity()
     var launchPoint: (() -> SIMD3<Float>)?
     private(set) var isFinished = false
-    /// Set before `apply` when toppings already sit where the fudge goes: it wells up from beneath them instead of
-    /// being ladled over them.
     var underToppings = false
 
     static let liftDuration: Double = 0.7
@@ -142,8 +138,6 @@ final class FudgeLayer: ToppingLayer {
         buildStream(rest: rest, state: state, clock: clock)
     }
 
-    /// The ribbon off the ladle: wide and flat where it leaves the ladle above the screen, narrowing as it falls and
-    /// slowly twisting, coiling over itself where it lands. When the pour ends it breaks off at the top and falls in.
     private func buildStream(rest: FudgeRest, state: FudgeState, clock: Float) {
         let lead = Float(Self.streamLead), pour = Float(Self.pourDuration), cut = Float(Self.streamCut)
         let t = clock + lead
@@ -179,8 +173,6 @@ final class FudgeLayer: ToppingLayer {
         stream.isEnabled = true
     }
 
-    /// How far up from `point` a plumb line leaves the top of the stage camera's view (a little past the edge), and
-    /// which way is up, in this layer's space.
     private func sky(above point: SIMD3<Float>) -> (Float, SIMD3<Float>)? {
         guard let camera = stageCamera(),
               let fieldOfView = camera.components[PerspectiveCameraComponent.self]?.fieldOfViewInDegrees else { return nil }
@@ -216,7 +208,6 @@ final class FudgeLayer: ToppingLayer {
 }
 
 enum FudgeStyle {
-    /// Dense, opaque and warm: a deep brown with no thin translucent rim, under a wet, mirror-like coat.
     static let color = UIColor(red: 0.2, green: 0.085, blue: 0.045, alpha: 1)
 
     @MainActor static let material: PhysicallyBasedMaterial = {
@@ -231,7 +222,6 @@ enum FudgeStyle {
     }()
 }
 
-/// Where the ribbon lands, in the crown's chart: it starts a little off center and the ladle drifts in a slow circle.
 struct FudgeLanding {
     var phase: Float
     var spin: Float
@@ -245,17 +235,14 @@ struct FudgeLanding {
 }
 
 struct FudgeState {
-    /// Seconds since the ribbon first touched down; infinity when finished.
+    /// Infinity once settled.
     var clock: Float
     var pour: Float
-    /// 0 hidden under the surface to 1 full, when it wells up under other toppings.
     var rise: Float
-    /// 0 to 1 as it melts away into the scoop.
     var drain: Float
     var landing: FudgeLanding
 }
 
-/// One drip, in the chart: it leaves the cap's edge at `angle` and runs `length` meters down the side.
 struct FudgeDrip {
     var angle: Float
     var length: Float
@@ -267,8 +254,6 @@ struct FudgeDrip {
     var meander: Float
 }
 
-/// The settled fudge laid onto one surface: rays from the crown, sampled every `step` along the surface, with the cap's
-/// reach along each ray and the drips.
 struct FudgeRest: Sendable {
     static let rays = 168
     static let rings = 116
@@ -280,21 +265,15 @@ struct FudgeRest: Sendable {
     var center: SIMD3<Float>
     var positions: [SIMD3<Float>]
     var normals: [SIMD3<Float>]
-    /// Horizontal distance from the crown's axis, per sample.
     var spread: [Float]
     var reach: [Int]
     var cap: [Float]
     var drips: [FudgeDrip]
     var crown: Float
-    /// Where ladlefuls piled a little higher before they ran together: chart x, z and extra height.
     var heaps: [SIMD3<Float>] = []
-    /// Per ray, the drips close enough to reach it and the sine of the angle between them.
     var rayDrips: [[(drip: Int, sine: Float)]] = []
-    /// Where each drip leaves the cap.
     var roots: [Float] = []
-    /// Per ray, the first ring past anything the fudge could cover.
     var limit: [Int] = []
-    /// The settled fudge's height at each sample, before the drips and the pour.
     var crest: [Float] = []
 
     static let cosines: [Float] = (0..<rays).map { cos(Float($0) / Float(rays) * 2 * .pi) }
@@ -455,7 +434,6 @@ struct FudgeRest: Sendable {
         return out
     }
 
-    /// The middle of the top as it looks: a leaning scoop's highest point sits off toward one side.
     static func crownCenter(_ surface: ToppingSurface, radius: Float) -> SIMD2<Float> {
         let apex = SIMD2<Float>(surface.apex.x, surface.apex.z)
         let floor = surface.apex.y - 0.6 * radius
@@ -475,8 +453,6 @@ struct FudgeRest: Sendable {
         return apex + (length > limit ? shift * (limit / length) : shift)
     }
 
-    /// Walks one ray outward across the surface, recording a sample every `step` meters along it, until the surface
-    /// drops away, turns nearly vertical or falls off a ledge.
     private static func march(_ surface: ToppingSurface, ray k: Int, from c: SIMD2<Float>, center: SIMD3<Float>, normal: SIMD3<Float>, lowest: Float,
                               positions: inout [SIMD3<Float>], normals: inout [SIMD3<Float>], spread: inout [Float], reach: inout Int) {
         let direction = SIMD2<Float>(cosines[k], sines[k])
@@ -518,8 +494,6 @@ struct FudgeRest: Sendable {
         }
     }
 
-    /// Fudge bridges the ice cream's small lumps: the base is evened out along and across the rays, but never sunk far
-    /// into the bumps it smooths over.
     private static func smooth(_ positions: inout [SIMD3<Float>], _ normals: inout [SIMD3<Float>], reach: [Int]) {
         let raw = positions, rawNormals = normals
         for k in 0..<rays {
@@ -573,9 +547,6 @@ struct FudgeRest: Sendable {
         return thickness(ray: k, ring: j, state: state)
     }
 
-    /// Height of the fudge above the base at one sample, along its normal; negative past the edge, where the sheet
-    /// runs under the ice cream.
-    /// What changes only with time, worked out once per frame.
     struct Moment {
         var state: FudgeState
         var settled: Bool
@@ -671,14 +642,12 @@ enum FudgeMath {
         return max(a, b) + h * h * k * 0.25
     }
 
-    /// A thick drip: it gathers for a moment, slides off and then slows to a stall as it cools on the ice cream.
     static func ooze(_ x: Float) -> Float {
         let start = smoothstep(0, 0.18, x)
         return start * (1 - pow(1 - x, 2.6))
     }
 }
 
-/// The settled fudge as a surface for the toppings above it.
 struct FudgeCoverSurface: ToppingSurface {
     let below: ToppingSurface
     let rest: FudgeRest
@@ -842,7 +811,6 @@ final class FudgeSheetMesh {
     }
 }
 
-/// The falling ribbon, one tube with a flattened, twisting cross-section and rounded ends.
 @MainActor
 final class FudgeStreamMesh {
     static let rings = 48
@@ -889,8 +857,6 @@ final class FudgeStreamMesh {
         self.resource = resource
     }
 
-    /// `axis(z)` is where the ribbon's center would be `z` meters up the plumb line from the landing point, before the
-    /// coil near the bottom.
     func write(from landing: SIMD3<Float>, up: SIMD3<Float>, bottom: Float, top: Float, height: Float, taper: Float,
                coil: Float, clock: Float, spin: Float, axis: (Float) -> SIMD3<Float>) {
         let rings = Self.rings, sides = Self.sides

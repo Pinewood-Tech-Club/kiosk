@@ -1,8 +1,6 @@
 import RealityKit
 import UIKit
 
-/// The hot fudge card's icon: a steel ladle brimming with fudge, one fat drip run over its lip and down the outside.
-/// Real size, resting on y = 0. Needs the stage's lighting.
 @MainActor
 enum FudgeIcon {
     private static let bowl: Float = 0.012
@@ -58,7 +56,6 @@ enum FudgeIcon {
         }
     }
 
-    /// The bowl turned from one profile: the outside, a rounded lip, and the inside back down.
     private static func bowlMesh() -> MeshDescriptor {
         var profile: [(SIMD2<Float>, SIMD2<Float>)] = []
         let steps = 28
@@ -141,7 +138,6 @@ enum FudgeIcon {
         return mesh.descriptor("fudge-icon-handle")
     }
 
-    /// Brimming: domed a little above the lip, softly folded where it was ladled in, its edge tucked into the steel.
     private static func surfaceMesh() -> MeshDescriptor {
         var mesh = Builder()
         let inner = bowl - wall
@@ -184,7 +180,6 @@ enum FudgeIcon {
         return mesh.descriptor("fudge-icon-surface")
     }
 
-    /// Over the lip and down the outside of the bowl, pressed onto the steel, ending in a heavy bead.
     private static func dripMesh() -> MeshDescriptor {
         var mesh = Builder()
         let radial = SIMD3<Float>(cos(dripAngle), 0, sin(dripAngle))
