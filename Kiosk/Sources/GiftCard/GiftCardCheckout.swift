@@ -20,6 +20,7 @@ final class GiftCardCheckout {
         case checking
         case confirmFull(totalCents: Int, balanceCents: Int, last4: String)
         case confirmSplit(balanceCents: Int, remainingCents: Int, last4: String)
+        case donating
         case charging
         case applied(giftCents: Int, remainingCents: Int)
         case readerPayment(remainingCents: Int)
@@ -46,11 +47,12 @@ final class GiftCardCheckout {
 
     static let wasNotCharged = "Your gift card wasn't charged"
 
-    let quote: OrderQuote
+    private(set) var quote: OrderQuote
     let customerName: String
     let orderNumber: Int
-    let checkout: CheckoutIdentity
+    private(set) var checkout: CheckoutIdentity
     private(set) var step: Step = .scan
+    private(set) var leftoverOffer: Int?
     private(set) var digits = ""
     private(set) var cameraAvailable = true
     var onFinish: (Outcome) -> Void = { _ in }
@@ -66,6 +68,7 @@ final class GiftCardCheckout {
     @ObservationIgnored private var hold: GiftCardCharge?
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var finished = false
+    @ObservationIgnored private var leftoverAnswered = false
 
     init(quote: OrderQuote, customerName: String, orderNumber: Int, checkout: CheckoutIdentity, backend: GiftCardBackend,
          merchantName: String, appliedPause: Duration = .seconds(2.2), retryDelays: [Duration] = [.seconds(1), .seconds(3)],
@@ -84,7 +87,7 @@ final class GiftCardCheckout {
 
     var isBusy: Bool {
         switch step {
-        case .checking, .charging, .applied, .readerPayment, .completing: true
+        case .checking, .donating, .charging, .applied, .readerPayment, .completing: true
         default: false
         }
     }
@@ -202,7 +205,12 @@ final class GiftCardCheckout {
 
     func confirm() {
         switch step {
-        case .confirmFull:
+        case .confirmFull(let total, let balance, _):
+            let leftover = balance - total
+            if !leftoverAnswered, hold == nil, leftover > 0, leftover < Donation.leftoverOfferBelowCents {
+                leftoverOffer = leftover
+                return
+            }
             charge(agreedToSplit: false)
         case .confirmSplit:
             if let hold {
@@ -212,6 +220,47 @@ final class GiftCardCheckout {
             }
         default:
             break
+        }
+    }
+
+    func declineLeftover() {
+        guard leftoverOffer != nil, case .confirmFull = step else { return }
+        leftoverOffer = nil
+        leftoverAnswered = true
+        charge(agreedToSplit: false)
+    }
+
+    /// The order was created before the balance was known, so donating the leftover needs a new checkout whose total
+    /// is the card's whole balance. The donation line is untaxed, so the new total is the old one plus the leftover.
+    func donateLeftover() {
+        guard let leftover = leftoverOffer, case .confirmFull(_, let balance, _) = step, let order else { return }
+        leftoverOffer = nil
+        leftoverAnswered = true
+        let donating = quote.adding(donationCents: leftover)
+        let identity = CheckoutIdentity(id: UUID().uuidString, receiptToken: ReceiptToken.make(), orderRef: checkout.orderRef)
+        step = .donating
+        log("Gift card covers order \(order.id) with \(leftover.formattedAsUSD) left; donating it in checkout \(identity.id)")
+        Task {
+            do {
+                let created = try await backend.createCheckout(quote: donating, customerName: customerName, orderNumber: orderNumber,
+                                                               checkout: identity)
+                guard !finished, step == .donating else { return }
+                guard created.totalCents <= balance else {
+                    log("Checkout \(identity.id) came to \(created.totalCents.formattedAsUSD), more than the card's \(balance.formattedAsUSD); paying the order without the donation")
+                    charge(agreedToSplit: false)
+                    return
+                }
+                log("Gift card checkout \(identity.id): order \(created.id), total \(created.totalCents.formattedAsUSD) with the donation")
+                quote = donating
+                checkout = identity
+                self.order = created
+                charge(agreedToSplit: false)
+            } catch {
+                let failure = GiftCardFailure(error)
+                log("Adding the donation failed: \(failure)")
+                guard !finished, step == .donating else { return }
+                show(failure)
+            }
         }
     }
 
@@ -350,6 +399,8 @@ final class GiftCardCheckout {
     func tryAnother() {
         guard !isBusy else { return }
         attempt += 1
+        leftoverOffer = nil
+        leftoverAnswered = false
         gan = nil
         digits = ""
         step = cameraAvailable ? .scan : .manual

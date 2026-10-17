@@ -11,6 +11,7 @@ extension AppModel {
         var stepName: String?
         var lines: [AssistSession.Item] = []
         var total = 0
+        var donation = 0
         switch screen {
         case .builder where mode == .customize:
             stepName = step.title.lowercased()
@@ -22,16 +23,18 @@ extension AppModel {
                 lines.append(Self.sessionItem(current, cents: 0, current: true, inOrder: false))
             }
             total = quote.totalCents
+            donation = quote.donationCents
         case .builder, .name, .confirmation:
             if screen == .builder { screenName = "summary" }
             let quote = orderQuote
             lines = quote.lines.map { Self.sessionItem($0.item, cents: $0.totalCents, current: false, inOrder: true) }
             total = quote.totalCents
+            donation = quote.donationCents
         case .roleSetup, .attract, .staff:
             break
         }
         return AssistSession(screen: screenName, step: stepName, editing: screen == .builder && mode == .customize && isEditing,
-                             items: lines, customerName: customerName, totalCents: total, paying: isPaying || giftCard != nil,
+                             items: lines, customerName: customerName, totalCents: total, donationCents: donation, paying: isPaying || giftCard != nil,
                              orderingOpen: orderingOpen, assisted: assisted, maxScoops: Pricing.maxScoopsPerItem, results: results)
     }
 

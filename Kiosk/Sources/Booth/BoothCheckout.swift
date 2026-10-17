@@ -38,6 +38,7 @@ private struct CheckoutRequest: Encodable {
     let sourceName: String
     let locationId: String
     let quotedCents: Int
+    let donationCents: Int?
     let items: [Item]
 }
 
@@ -56,6 +57,7 @@ private struct CheckoutResponse: Decodable {
     let locationId: String
     let totalCents: Int
     let taxCents: Int
+    let donationCents: Int?
     let usedCatalog: Bool
     let catalogError: String?
     let lines: [Line]
@@ -104,9 +106,12 @@ final class BoothCheckoutClient {
         }
         let elapsed = Int(Date().timeIntervalSince(started) * 1000)
         switch outcome {
-        case .success(let response) where response.locationId == locationID:
+        case .success(let response) where response.locationId == locationID && Self.carriesDonation(response, of: quote):
             log("Booth checkout: order \(response.squareOrderId) \(response.status) in \(elapsed) ms (\(response.usedCatalog ? "catalog" : "ad-hoc: \(response.catalogError ?? "no catalog")"))")
             return response.order
+        case .success(let response) where response.locationId == locationID:
+            log("Booth checkout: the server left out the \(quote.donationCents.formattedAsUSD) donation; creating the order on the device")
+            return nil
         case .success(let response):
             log("Booth checkout: server used location \(response.locationId), not \(locationID); creating the order on the device")
         case .failure(let error):
@@ -129,8 +134,16 @@ final class BoothCheckoutClient {
         guard response.locationId == locationID else {
             throw BoothError.badResponse("server used location \(response.locationId), not \(locationID)")
         }
+        guard Self.carriesDonation(response, of: quote) else {
+            throw BoothError.badResponse("the server left out the \(quote.donationCents.formattedAsUSD) donation")
+        }
         log("Booth checkout: order \(response.squareOrderId) \(response.status) for a gift card payment")
         return response.order
+    }
+
+    /// A server from before donations ignores the field and creates the order without it.
+    private static func carriesDonation(_ response: CheckoutResponse, of quote: OrderQuote) -> Bool {
+        (response.donationCents ?? 0) == quote.donationCents
     }
 
     private static func request(quote: OrderQuote, customerName: String, orderNumber: Int, checkout: CheckoutIdentity,
@@ -139,6 +152,7 @@ final class BoothCheckoutClient {
             id: checkout.id, receiptToken: checkout.receiptToken, orderNumber: orderNumber, orderRef: checkout.orderRef,
             customerName: customerName,
             sourceName: sourceName, locationId: locationID, quotedCents: quote.totalCents,
+            donationCents: quote.donationCents > 0 ? quote.donationCents : nil,
             items: quote.lines.map {
                 CheckoutRequest.Item(vessel: $0.item.vessel.rawValue, flavors: $0.item.flavors.map(\.rawValue),
                                      toppings: $0.item.toppings.map(\.rawValue))

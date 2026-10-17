@@ -91,6 +91,41 @@ struct SquareAPI {
         return lines
     }
 
+    /// Auto-applied taxes also reach custom amounts, so the donation blocks every catalog tax at the location.
+    static func donationLineItem(cents: Int, blockedTaxIDs: [String]) -> [String: Any] {
+        var line: [String: Any] = [
+            "name": Donation.lineName,
+            "quantity": "1",
+            "base_price_money": ["amount": cents, "currency": "USD"],
+        ]
+        if !blockedTaxIDs.isEmpty {
+            line["pricing_blocklists"] = [
+                "blocked_taxes": blockedTaxIDs.enumerated().map { ["uid": "donation-tax-\($0.offset)", "tax_catalog_object_id": $0.element] },
+            ]
+        }
+        return line
+    }
+
+    func fetchTaxIDs() async throws -> [String] {
+        var ids: [String] = []
+        var cursor: String?
+        repeat {
+            var body: [String: Any] = ["object_types": ["TAX"]]
+            if let cursor { body["cursor"] = cursor }
+            let json = try await request("v2/catalog/search", method: "POST", body: body)
+            for object in json["objects"] as? [[String: Any]] ?? [] {
+                guard object["type"] as? String == "TAX", let id = object["id"] as? String, object["is_deleted"] as? Bool != true,
+                      !(object["absent_at_location_ids"] as? [String] ?? []).contains(locationID),
+                      object["present_at_all_locations"] as? Bool == true
+                        || (object["present_at_location_ids"] as? [String] ?? []).contains(locationID)
+                else { continue }
+                ids.append(id)
+            }
+            cursor = (json["cursor"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        } while cursor != nil
+        return ids
+    }
+
     static func lineItems(for quote: OrderQuote) -> [[String: Any]] {
         func money(_ cents: Int) -> [String: Any] { ["amount": cents, "currency": "USD"] }
         return quote.lines.map { line in
@@ -124,13 +159,18 @@ struct SquareAPI {
 
     func createOrder(quote: OrderQuote, catalog: SquareCatalog? = nil, customerName: String, referenceID: String, sourceName: String,
                      idempotencyKey: String = UUID().uuidString, checkoutID: String? = nil) async throws -> CreatedOrder {
+        var lineItems = catalog.map { Self.catalogLineItems(for: quote, catalog: $0) } ?? Self.lineItems(for: quote)
+        if quote.donationCents > 0 {
+            let taxIDs = (try? await fetchTaxIDs()) ?? []
+            lineItems.append(Self.donationLineItem(cents: quote.donationCents, blockedTaxIDs: taxIDs))
+        }
         var orderBody: [String: Any] = [
             "location_id": locationID,
             "reference_id": referenceID,
             "ticket_name": customerName,
             "source": ["name": sourceName],
             "pricing_options": ["auto_apply_taxes": true],
-            "line_items": catalog.map { Self.catalogLineItems(for: quote, catalog: $0) } ?? Self.lineItems(for: quote),
+            "line_items": lineItems,
             "fulfillments": [[
                 "type": "PICKUP",
                 "state": "PROPOSED",

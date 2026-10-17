@@ -108,10 +108,12 @@ final class SimulatedGiftCards: GiftCardBackend {
         case notFound = "4040"
         case rateLimited = "4290"
         case completeFails = "5000"
+        case leftover = "1675"
         case inactive = "8888"
     }
 
     static let partialBalanceCents = 200
+    static let leftoverBalanceCents = 1675
     static let fullBalanceCents = 5000
 
     private var held: [String: Int] = [:]
@@ -140,6 +142,7 @@ final class SimulatedGiftCards: GiftCardBackend {
         case .empty: return GiftCardBalance(last4: last4, balanceCents: 0, state: "ACTIVE")
         case .inactive: return GiftCardBalance(last4: last4, balanceCents: Self.fullBalanceCents, state: "DEACTIVATED")
         case .partial: return GiftCardBalance(last4: last4, balanceCents: Self.partialBalanceCents, state: "ACTIVE")
+        case .leftover: return GiftCardBalance(last4: last4, balanceCents: Self.leftoverBalanceCents, state: "ACTIVE")
         default: return GiftCardBalance(last4: last4, balanceCents: Self.fullBalanceCents, state: "ACTIVE")
         }
     }

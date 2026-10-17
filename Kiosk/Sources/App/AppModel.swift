@@ -84,7 +84,11 @@ final class AppModel {
     private var vesselChosen = false {
         didSet { syncTrayCurrent() }
     }
-    private(set) var items: [IceCreamItem] = []
+    private(set) var items: [IceCreamItem] = [] {
+        didSet { if items.isEmpty { donationCents = 0 } }
+    }
+    /// An add-on to the order: it never stands alone, so it goes when the last item does.
+    private(set) var donationCents = 0
     private(set) var editingID: UUID? {
         didSet { syncTrayCurrent() }
     }
@@ -144,10 +148,17 @@ final class AppModel {
         } else {
             basket.append(current)
         }
-        return Pricing.quote(basket)
+        return Pricing.quote(basket, donationCents: donationCents)
     }
 
-    var orderQuote: OrderQuote { Pricing.quote(items) }
+    var orderQuote: OrderQuote { Pricing.quote(items, donationCents: donationCents) }
+
+    var canChangeDonation: Bool { screen == .builder && mode == .summary && !items.isEmpty && !isPaying }
+
+    func setDonation(_ cents: Int) {
+        guard canChangeDonation, (0...Donation.maxCustomDollars * 100).contains(cents) else { return }
+        donationCents = cents
+    }
 
     /// The tray shows the item being built or edited exactly when `liveQuote` counts it.
     private func syncTrayCurrent() {
@@ -363,6 +374,7 @@ final class AppModel {
         transitionTask?.cancel()
         builderResetPending = false
         items = []
+        donationCents = 0
         current = freshItem()
         editingID = nil
         mode = .customize
@@ -798,6 +810,7 @@ final class AppModel {
 
         if let screenName = options.screen {
             items = options.items
+            donationCents = items.isEmpty ? 0 : min(max(options.donationCents ?? 0, 0), Donation.maxCustomDollars * 100)
             current = options.current ?? freshItem()
             step = options.step ?? .vessel
             customerName = options.name ?? ""

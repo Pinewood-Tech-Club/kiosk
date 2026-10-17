@@ -14,6 +14,8 @@ struct Receipt: Sendable {
         let quantity: Int
         let baseCents: Int
         let cents: Int
+
+        var isDonation: Bool { title == Donation.lineName && detail.firstMatch(of: /^#\d/) == nil }
     }
 
     let merchantName: String
@@ -35,6 +37,8 @@ struct Receipt: Sendable {
     var giftCard: GiftCardTender? = nil
 
     var cardCents: Int { totalCents - (giftCard?.cents ?? 0) }
+
+    var donationCents: Int { lines.filter(\.isDonation).reduce(0) { $0 + $1.cents } }
 
     var receiptURL: URL? {
         BoothConfig.publicBaseURL?.appending(path: "r/\(receiptToken)")
@@ -60,6 +64,9 @@ struct Receipt: Sendable {
                 lines.append(Line(title: "Ice Cream Toppings", detail: "\(label): \(topping.title)", quantity: 1,
                                   baseCents: topping.priceCents, cents: topping.priceCents))
             }
+        }
+        if quote.donationCents > 0 {
+            lines.append(Line(title: Donation.lineName, detail: "", quantity: 1, baseCents: quote.donationCents, cents: quote.donationCents))
         }
         return lines
     }

@@ -125,14 +125,23 @@ enum Pricing {
         return (1...count).reduce(0) { $0 + scoopCents(atPosition: $1) }
     }
 
-    static func quote(_ items: [IceCreamItem]) -> OrderQuote {
+    static func quote(_ items: [IceCreamItem], donationCents: Int = 0) -> OrderQuote {
         let lines = items.map { item in
             OrderQuote.Line(item: item, scoopShareCents: scoopsTotal(item.flavors.count), vesselCents: item.vessel.priceCents,
                             toppingCents: item.toppings.count * Pricing.toppingCents)
         }
         return OrderQuote(lines: lines, scoopCount: items.reduce(0) { $0 + $1.flavors.count },
-                          scoopsTotalCents: lines.reduce(0) { $0 + $1.scoopShareCents })
+                          scoopsTotalCents: lines.reduce(0) { $0 + $1.scoopShareCents },
+                          donationCents: items.isEmpty ? 0 : max(donationCents, 0))
     }
+}
+
+enum Donation {
+    static let organization = "Tech Club"
+    static let lineName = "Donation"
+    static let presetsCents = [200, 500, 1000]
+    static let maxCustomDollars = 100
+    static let leftoverOfferBelowCents = 1000
 }
 
 struct OrderQuote: Sendable {
@@ -150,12 +159,20 @@ struct OrderQuote: Sendable {
     let lines: [Line]
     let scoopCount: Int
     let scoopsTotalCents: Int
+    var donationCents = 0
 
     var coneCount: Int { lines.filter { $0.item.vessel == .cone }.count }
     var conesTotalCents: Int { lines.reduce(0) { $0 + $1.vesselCents } }
     var toppingCount: Int { lines.reduce(0) { $0 + $1.item.toppings.count } }
     var toppingsTotalCents: Int { lines.reduce(0) { $0 + $1.toppingCents } }
-    var totalCents: Int { scoopsTotalCents + conesTotalCents + toppingsTotalCents }
+    var itemsTotalCents: Int { scoopsTotalCents + conesTotalCents + toppingsTotalCents }
+    var totalCents: Int { itemsTotalCents + donationCents }
+
+    func adding(donationCents extra: Int) -> OrderQuote {
+        var quote = self
+        quote.donationCents += extra
+        return quote
+    }
     var isEmpty: Bool { lines.isEmpty }
 }
 

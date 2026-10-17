@@ -278,6 +278,7 @@ struct AssistSession: Encodable, Equatable, Sendable {
     var items: [Item]
     var customerName: String
     var totalCents: Int
+    var donationCents = 0
     var paying: Bool
     var orderingOpen: Bool
     var assisted: Bool

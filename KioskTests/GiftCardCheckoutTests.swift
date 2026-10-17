@@ -9,7 +9,10 @@ private final class StubBackend: GiftCardBackend {
     var chargeApproved: Int?
     var chargeError: Error?
     var completeErrors: [Error] = []
+    var createError: Error?
+    private(set) var created: [(checkoutID: String, quote: OrderQuote)] = []
     private(set) var charges: [String] = []
+    private(set) var chargedCheckouts: [String] = []
     private(set) var completed: [[String]] = []
     private(set) var completeKeys: [String] = []
     private(set) var canceled: [[String]] = []
@@ -17,7 +20,14 @@ private final class StubBackend: GiftCardBackend {
     var isSimulated: Bool { false }
 
     func createCheckout(quote: OrderQuote, customerName: String, orderNumber: Int, checkout: CheckoutIdentity) async throws -> SquareAPI.CreatedOrder {
-        SquareAPI.CreatedOrder(id: "ORDER", totalCents: orderTotal, taxCents: 50, lines: [], usedCatalog: true)
+        if !created.isEmpty, let createError { throw createError }
+        created.append((checkout.id, quote))
+        return SquareAPI.CreatedOrder(id: "ORDER-\(created.count)", totalCents: totalCents(checkout.id), taxCents: 50,
+                                      lines: Receipt.chargedLines(for: quote), usedCatalog: true)
+    }
+
+    private func totalCents(_ checkoutID: String) -> Int {
+        orderTotal + (created.first { $0.checkoutID == checkoutID }?.quote.donationCents ?? 0)
     }
 
     func lookup(gan: String) async throws -> GiftCardBalance {
@@ -28,8 +38,10 @@ private final class StubBackend: GiftCardBackend {
     func charge(checkoutID: String, gan: String, idempotencyKey: String) async throws -> GiftCardCharge {
         charges.append(gan)
         if let chargeError { throw chargeError }
-        let approved = chargeApproved ?? min(balance.balanceCents, orderTotal)
-        return GiftCardCharge(paymentId: "GIFT", approvedCents: approved, remainingCents: orderTotal - approved, last4: balance.last4)
+        let total = totalCents(checkoutID)
+        let approved = chargeApproved ?? min(balance.balanceCents, total)
+        chargedCheckouts.append(checkoutID)
+        return GiftCardCharge(paymentId: "GIFT", approvedCents: approved, remainingCents: total - approved, last4: balance.last4)
     }
 
     func complete(checkoutID: String, paymentIDs: [String], idempotencyKey: String) async throws {
@@ -54,6 +66,10 @@ final class GiftCardCheckoutTests: XCTestCase {
 
     override func setUp() async throws {
         backend = StubBackend()
+        setUpOutcome()
+    }
+
+    private func setUpOutcome() {
         readerAmounts = []
         outcome = nil
     }
@@ -172,6 +188,97 @@ final class GiftCardCheckoutTests: XCTestCase {
         XCTAssertEqual(receipt?.totalCents, 650)
         XCTAssertEqual(receipt?.subtotalCents, 600)
         XCTAssertEqual(receipt?.cardCents, 0)
+    }
+
+    // MARK: Leftover donation
+
+    func testOffersALeftoverUnderTenDollarsAndDonatesIt() async {
+        backend.balance = GiftCardBalance(last4: "5678", balanceCents: 1000, state: "ACTIVE")
+        let checkout = makeCheckout()
+        let original = checkout.checkout
+        checkout.scanned(Self.number)
+        await wait("full confirmation") { checkout.step == .confirmFull(totalCents: 650, balanceCents: 1000, last4: "5678") }
+        checkout.confirm()
+        XCTAssertEqual(checkout.leftoverOffer, 350)
+        XCTAssertTrue(backend.charges.isEmpty)
+        checkout.donateLeftover()
+        XCTAssertNil(checkout.leftoverOffer)
+        await waitForOutcome()
+        XCTAssertEqual(backend.created.map(\.quote.donationCents), [0, 350])
+        XCTAssertNotEqual(checkout.checkout.id, original.id)
+        XCTAssertNotEqual(checkout.checkout.receiptToken, original.receiptToken)
+        XCTAssertEqual(checkout.checkout.orderRef, original.orderRef)
+        XCTAssertEqual(backend.chargedCheckouts, [checkout.checkout.id])
+        XCTAssertEqual(checkout.quote.donationCents, 350)
+        let receipt = receipt()
+        XCTAssertEqual(receipt?.totalCents, 1000)
+        XCTAssertEqual(receipt?.giftCard?.cents, 1000)
+        XCTAssertEqual(receipt?.donationCents, 350)
+        XCTAssertEqual(receipt?.checkoutID, checkout.checkout.id)
+        XCTAssertEqual(receipt?.receiptToken, checkout.checkout.receiptToken)
+    }
+
+    func testDecliningTheLeftoverChargesTheOrderAsIs() async {
+        backend.balance = GiftCardBalance(last4: "5678", balanceCents: 1000, state: "ACTIVE")
+        let checkout = makeCheckout()
+        let original = checkout.checkout
+        checkout.scanned(Self.number)
+        await wait("full confirmation") { if case .confirmFull = checkout.step { true } else { false } }
+        checkout.confirm()
+        XCTAssertEqual(checkout.leftoverOffer, 350)
+        checkout.declineLeftover()
+        await waitForOutcome()
+        XCTAssertEqual(backend.created.count, 1)
+        XCTAssertEqual(backend.chargedCheckouts, [original.id])
+        XCTAssertEqual(receipt()?.totalCents, 650)
+        XCTAssertEqual(receipt()?.donationCents, 0)
+    }
+
+    func testNoOfferForTenDollarsLeftOrAnEmptiedCard() async {
+        for balance in [1650, 650] {
+            setUpOutcome()
+            backend = StubBackend()
+            backend.balance = GiftCardBalance(last4: "5678", balanceCents: balance, state: "ACTIVE")
+            let checkout = makeCheckout()
+            checkout.scanned(Self.number)
+            await wait("full confirmation") { if case .confirmFull = checkout.step { true } else { false } }
+            checkout.confirm()
+            XCTAssertNil(checkout.leftoverOffer)
+            await waitForOutcome()
+            XCTAssertEqual(receipt()?.totalCents, 650)
+        }
+    }
+
+    func testNoOfferWhenTheCardOnlyCoversPart() async {
+        backend.balance = GiftCardBalance(last4: "5678", balanceCents: 200, state: "ACTIVE")
+        let checkout = makeCheckout()
+        checkout.scanned(Self.number)
+        await wait("split confirmation") { if case .confirmSplit = checkout.step { true } else { false } }
+        checkout.confirm()
+        XCTAssertNil(checkout.leftoverOffer)
+        await waitForOutcome()
+        XCTAssertEqual(readerAmounts, [450])
+    }
+
+    func testFailedDonationCheckoutShowsAProblemAndKeepsTheOrder() async {
+        backend.balance = GiftCardBalance(last4: "5678", balanceCents: 1000, state: "ACTIVE")
+        backend.createError = GiftCardFailure.unavailable("down")
+        let checkout = makeCheckout()
+        let original = checkout.checkout
+        checkout.scanned(Self.number)
+        await wait("full confirmation") { if case .confirmFull = checkout.step { true } else { false } }
+        checkout.confirm()
+        checkout.donateLeftover()
+        await wait("problem") { checkout.step == .problem(.unavailable) }
+        XCTAssertTrue(backend.charges.isEmpty)
+        XCTAssertEqual(checkout.checkout.id, original.id)
+        XCTAssertEqual(checkout.quote.donationCents, 0)
+        checkout.tryAnother()
+        backend.createError = nil
+        checkout.scanned(Self.number)
+        await wait("full confirmation again") { if case .confirmFull = checkout.step { true } else { false } }
+        checkout.confirm()
+        XCTAssertEqual(checkout.leftoverOffer, 350)
     }
 
     func testCancelAtConfirmationLeavesWithoutCharging() async {

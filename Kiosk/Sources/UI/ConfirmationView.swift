@@ -156,7 +156,7 @@ struct ReceiptItem: Identifiable {
     static func group(_ receipt: Receipt, items: [IceCreamItem]) -> [ReceiptItem] {
         var groups: [Int: (vessel: Int, scoops: Int, scoopCents: Int, toppings: Int, toppingCents: Int, hint: String)] = [:]
         var tagged = true
-        for line in receipt.lines {
+        for line in receipt.lines where !line.isDonation {
             guard let match = line.detail.firstMatch(of: /^#(\d+)/), let number = Int(match.1) else {
                 tagged = false
                 break
@@ -177,7 +177,7 @@ struct ReceiptItem: Identifiable {
             groups[number] = group
         }
         let total = groups.values.reduce(0) { $0 + $1.vessel + $1.scoopCents + $1.toppingCents }
-        if tagged, !groups.isEmpty, total == receipt.subtotalCents, items.isEmpty || groups.count == items.count {
+        if tagged, !groups.isEmpty, total == receipt.subtotalCents - receipt.donationCents, items.isEmpty || groups.count == items.count {
             return groups.keys.sorted().map { number in
                 let group = groups[number]!
                 let item = number <= items.count ? items[number - 1] : nil
@@ -298,6 +298,9 @@ private struct ReceiptView: View {
 
     private var totals: some View {
         VStack(spacing: 8) {
+            if receipt.donationCents > 0 {
+                amountRow(Donation.lineName, receipt.donationCents)
+            }
             amountRow("Subtotal", receipt.subtotalCents)
             amountRow("Tax", receipt.taxCents)
             HStack(alignment: .firstTextBaseline) {

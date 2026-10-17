@@ -52,9 +52,15 @@ struct SummaryView: View {
             .frame(width: Layout.summaryListRect.width, height: Layout.summaryListRect.height)
             .position(x: Layout.summaryListRect.midX, y: Layout.summaryListRect.midY)
 
+            DonationPicker(app: app)
+                .frame(width: Layout.screen.width - 112)
+                .position(x: Layout.midX, y: Layout.donationPickerY)
+
             checkout(quote)
                 .frame(width: Layout.screen.width - 112)
+                .offset(y: quote.donationCents > 0 ? -Self.donationRowHeight / 2 : 0)
                 .position(x: Layout.midX, y: 1212)
+                .animation(.easeInOut(duration: 0.25), value: quote.donationCents > 0)
         }
         .frame(width: Layout.screen.width, height: Layout.screen.height)
         .animation(.easeInOut(duration: 0.35), value: quote.lines.map(\.id))
@@ -69,9 +75,25 @@ struct SummaryView: View {
         Binding(get: { app.notice != nil }, set: { if !$0 { app.notice = nil } })
     }
 
+    /// Growing upward by the row's height keeps the total and the pay buttons where they are.
+    private static let donationRowHeight: CGFloat = 44
+
     private func checkout(_ quote: OrderQuote) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Rectangle().fill(Theme.hairline).frame(height: 1)
+            if quote.donationCents > 0 {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(Donation.lineName).font(Theme.serif(22, .regular))
+                    Spacer()
+                    Text(quote.donationCents.formattedAsUSD)
+                        .font(Theme.serif(24, .medium))
+                        .monospacedDigit()
+                        .contentTransition(.numericText(value: Double(quote.donationCents)))
+                }
+                .foregroundStyle(Theme.text.opacity(0.8))
+                .frame(height: Self.donationRowHeight, alignment: .bottom)
+                .transition(.opacity)
+            }
             HStack(alignment: .firstTextBaseline) {
                 Text("Total").font(Theme.serif(32))
                 Spacer()

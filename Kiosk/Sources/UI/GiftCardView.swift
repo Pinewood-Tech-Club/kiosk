@@ -33,6 +33,20 @@ struct GiftCardView: View {
         .animation(.easeInOut(duration: 0.3), value: stepKey)
         .animation(.easeInOut(duration: 0.3), value: showsBack)
         .onChange(of: stepKey) { readCode = nil }
+        .alert(leftoverTitle, isPresented: leftoverBinding, presenting: checkout.leftoverOffer) { leftover in
+            Button("Donate \(leftover.formattedAsUSD)") { checkout.donateLeftover() }
+            Button("No thanks", role: .cancel) { checkout.declineLeftover() }
+        } message: { _ in
+            Text("Would you like to donate it to \(Donation.organization)?")
+        }
+    }
+
+    private var leftoverTitle: String {
+        checkout.leftoverOffer.map { "You'll have \($0.formattedAsUSD) left on your gift card" } ?? ""
+    }
+
+    private var leftoverBinding: Binding<Bool> {
+        Binding(get: { checkout.leftoverOffer != nil }, set: { _ in })
     }
 
     private var stepKey: String {
@@ -42,6 +56,7 @@ struct GiftCardView: View {
         case .checking: "checking"
         case .confirmFull: "confirm-full"
         case .confirmSplit: "confirm-split"
+        case .donating: "donating"
         case .charging: "charging"
         case .applied: "applied"
         case .readerPayment: "reader"
@@ -56,6 +71,7 @@ struct GiftCardView: View {
         case .scan: scan
         case .manual: manual
         case .checking: working("Checking your gift card…")
+        case .donating: working("Adding your donation…")
         case .charging: working("Charging your gift card…")
         case .completing: working("Finishing your payment…")
         case .readerPayment(let remaining): working("Pay \(remaining.formattedAsUSD) on the card reader")
@@ -181,31 +197,8 @@ struct GiftCardView: View {
     }
 
     private var keypad: some View {
-        Grid(horizontalSpacing: 18, verticalSpacing: 16) {
-            ForEach([[1, 2, 3], [4, 5, 6], [7, 8, 9]], id: \.self) { row in
-                GridRow {
-                    ForEach(row, id: \.self) { digitKey($0) }
-                }
-            }
-            GridRow {
-                Color.clear.frame(width: 1, height: 1)
-                digitKey(0)
-                Button { checkout.deleteDigit() } label: {
-                    LucideIcon(name: "delete", size: 34).frame(width: 140)
-                }
-                .buttonStyle(.glassSecondary(height: 84, fontSize: 36))
-                .disabled(checkout.digits.isEmpty)
-                .accessibilityLabel("Delete")
-            }
-        }
-    }
-
-    private func digitKey(_ digit: Int) -> some View {
-        Button { checkout.type(digit) } label: {
-            Text("\(digit)").frame(width: 140)
-        }
-        .buttonStyle(.glassSecondary(height: 84, fontSize: 38))
-        .disabled(checkout.digits.count >= GiftCardNumber.length)
+        NumberKeypad(canType: checkout.digits.count < GiftCardNumber.length, canDelete: !checkout.digits.isEmpty,
+                     type: checkout.type, delete: checkout.deleteDigit)
     }
 
     // MARK: Confirm

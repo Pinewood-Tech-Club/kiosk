@@ -77,7 +77,8 @@ enum Layout {
         y: primaryButtonCenter.y)
 
     static let sheetRect = CGRect(x: 0, y: 64, width: 1032, height: 1376)
-    static let summaryListRect = CGRect(x: 0, y: 206, width: 1032, height: 846)
+    static let summaryListRect = CGRect(x: 0, y: 206, width: 1032, height: 740)
+    static let donationPickerY: CGFloat = 984
     static let summaryRowPitch: CGFloat = 172
     static let summaryRowHeight: CGFloat = 172
     static var summaryRowsThatFit: Int { Int((summaryListRect.height - 52) / summaryRowPitch) }

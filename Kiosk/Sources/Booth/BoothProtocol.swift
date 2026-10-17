@@ -626,6 +626,7 @@ struct BoothOrder: Codable, Equatable, Sendable {
     let giftCardPaymentId: String?
     let giftCardCents: Int?
     let giftCardLast4: String?
+    let donationCents: Int?
     var epoch: Int?
 
     init(receipt: Receipt, quote: OrderQuote) {
@@ -651,5 +652,6 @@ struct BoothOrder: Codable, Equatable, Sendable {
         giftCardPaymentId = receipt.giftCard?.paymentID
         giftCardCents = receipt.giftCard?.cents
         giftCardLast4 = receipt.giftCard?.last4
+        donationCents = receipt.donationCents > 0 ? receipt.donationCents : nil
     }
 }

@@ -17,6 +17,7 @@
 		1BB0562605F01093714A5FD4 /* BoothCheckout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DBF1469A678F767112B34C4 /* BoothCheckout.swift */; };
 		1C8E5E6A40CE2AA7540FC935 /* KioskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF36BF94972C41A51D71D966 /* KioskApp.swift */; };
 		1D208167E95C76C2B5B5A490 /* BoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F0550CC6C227CF4C4E7909 /* BoothProtocol.swift */; };
+		25464922B25136C1C58DD81E /* DonationPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06844CF08DB5746D93AE46F7 /* DonationPicker.swift */; };
 		25A01BC37C7EF980285F928A /* GiftCardE2EUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = 19D9029025C6720F44559A02 /* GiftCardE2EUITests.m */; };
 		2B3B67EAE69AA4243D861375 /* AppModel+Assist.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F5FAFE03F05BA46C8E864D /* AppModel+Assist.swift */; };
 		2B591179C416EC14B3DF661F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF77AD1D7C8D64414EA6DB92 /* Theme.swift */; };
@@ -37,6 +38,7 @@
 		5E0527E4240E6371F48181A6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7703DC11C0C31F62DC6BD09D /* Assets.xcassets */; };
 		5F86B8903E485D1E472AD15A /* AssistQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4460074B7A42DFDD0F0B5B8C /* AssistQueueTests.swift */; };
 		5F9C7D0544857EDEAD4E22C6 /* StageActors.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB1DFC96A2B464467CC2110 /* StageActors.swift */; };
+		613867DED29F5E25AC962430 /* DonationUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = D3E45A66DF005EA646F4E638 /* DonationUITests.m */; };
 		63314811021B7CBD9DC6174D /* SquareCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B362FE7742C73DA7798FF13 /* SquareCredentials.swift */; };
 		671DD6E8074DB0373D2C6FC5 /* GiftCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EAA0A9FBB33CC50418C00AD /* GiftCardView.swift */; };
 		6735B223D0F752A9B4C1C427 /* TrayTiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D0BD8A918E962602B31E95B /* TrayTiles.swift */; };
@@ -81,6 +83,7 @@
 		C0FFE25ACFD95D63EC7D4169 /* Order.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1105750A779779A5507FAF2 /* Order.swift */; };
 		C132BC2D7902E1D6FE8C068E /* ScoopMesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D45B2B05A78CF394F3A76B /* ScoopMesh.swift */; };
 		C659717E6746E0A1AD7B7C6E /* NotoSerif-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */; };
+		CACD00C282448F333623013F /* NumberKeypad.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A98607E045E3B0037E63C31 /* NumberKeypad.swift */; };
 		CD1BC6FAE564FE19F6D02057 /* AppModel+GiftCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4238ECFC69ADA5E1BBAEC6CE /* AppModel+GiftCard.swift */; };
 		CD5E3ED59D3759FB531081DF /* CandyKinds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4649965D4D60FFAD3C4019DC /* CandyKinds.swift */; };
 		CFA9251FBFBDD52ED6806157 /* 3D in Resources */ = {isa = PBXBuildFile; fileRef = 41288991151D7382A2F4C89D /* 3D */; };
@@ -127,6 +130,7 @@
 		00AF3CC3F90C022C9A18218B /* KioskTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KioskTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		019AB8B349B0B11885D0A1B1 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		032C0963C55D1F2DDA3E4886 /* SquareCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquareCatalog.swift; sourceTree = "<group>"; };
+		06844CF08DB5746D93AE46F7 /* DonationPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DonationPicker.swift; sourceTree = "<group>"; };
 		0709C534BE54B5155CA2586D /* BoothAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothAPI.swift; sourceTree = "<group>"; };
 		07F672994A6FAD8246F61015 /* GiftCardCheckoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiftCardCheckoutTests.swift; sourceTree = "<group>"; };
 		0B1947CA65BE6B0AE411C69D /* KioskUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KioskUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -164,6 +168,7 @@
 		5406E8E764595F07AE47CDAC /* ToppingStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToppingStack.swift; sourceTree = "<group>"; };
 		55DB05585C44EF2E778B1C60 /* GiftCardCheckout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiftCardCheckout.swift; sourceTree = "<group>"; };
 		5701FD802D3A088526716CC8 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		5A98607E045E3B0037E63C31 /* NumberKeypad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumberKeypad.swift; sourceTree = "<group>"; };
 		5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmationView.swift; sourceTree = "<group>"; };
 		5DAEF2574292FAA4ECD348D8 /* NotoSerif-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "NotoSerif-OFL.txt"; sourceTree = "<group>"; };
 		60A6A3D2C8370D7698E2E811 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
@@ -211,6 +216,7 @@
 		CC36C7844469174D0B2C95FD /* Kiosk.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Kiosk.entitlements; sourceTree = "<group>"; };
 		CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		CF19658A1F3C86F0454611F7 /* NotoSerif-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerif-SemiBold.ttf"; sourceTree = "<group>"; };
+		D3E45A66DF005EA646F4E638 /* DonationUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DonationUITests.m; sourceTree = "<group>"; };
 		D49DFEEF7AAC0DEB3EF85D86 /* KioskIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KioskIdentity.swift; sourceTree = "<group>"; };
 		D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SheetDragUITests.m; sourceTree = "<group>"; };
 		D65867471778683C1CB36618 /* ScatterLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScatterLayer.swift; sourceTree = "<group>"; };
@@ -264,6 +270,7 @@
 			isa = PBXGroup;
 			children = (
 				90EDD9F598341794544137E8 /* BoothRoleUITests.m */,
+				D3E45A66DF005EA646F4E638 /* DonationUITests.m */,
 				19D9029025C6720F44559A02 /* GiftCardE2EUITests.m */,
 				9E6A9AC65579D36CEE73A675 /* GiftCardUITests.m */,
 				D527C6E4A85FBAD17057B891 /* SheetDragUITests.m */,
@@ -470,11 +477,13 @@
 				8C66F22C19A9D84CCE143692 /* Cards.swift */,
 				5CD7E228BEC8EAAA7FBC8AB4 /* ConfirmationView.swift */,
 				309806DC452BB62BEE356569 /* DebugBar.swift */,
+				06844CF08DB5746D93AE46F7 /* DonationPicker.swift */,
 				9F3619142C4733C7703955AD /* GiftCardScanner.swift */,
 				8EAA0A9FBB33CC50418C00AD /* GiftCardView.swift */,
 				60A6A3D2C8370D7698E2E811 /* Glass.swift */,
 				425B72639F56A451EDADC970 /* Layout.swift */,
 				37AB58ED0D97D8805BD8DAA1 /* NameEntryView.swift */,
+				5A98607E045E3B0037E63C31 /* NumberKeypad.swift */,
 				A55113BE6466FFE8F66055F2 /* PhotoColumns.swift */,
 				CE911E4F2E0C5BA5E7A03205 /* QRCodeView.swift */,
 				1B7A7AFF92A48FE8EEEBD543 /* RootView.swift */,
@@ -644,6 +653,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F32A1F960D465605BA61261A /* BoothRoleUITests.m in Sources */,
+				613867DED29F5E25AC962430 /* DonationUITests.m in Sources */,
 				25A01BC37C7EF980285F928A /* GiftCardE2EUITests.m in Sources */,
 				E914998623BE51ECE8266AF6 /* GiftCardUITests.m in Sources */,
 				DAF4FA584F4D4E1D6709845E /* SheetDragUITests.m in Sources */,
@@ -680,6 +690,7 @@
 				8D84B8F2FA746D97902E0847 /* ConfirmationView.swift in Sources */,
 				74456A6B3CED1B853F498EDE /* ContactSolver.swift in Sources */,
 				9DA6BA5210047DA76F4CA821 /* DebugBar.swift in Sources */,
+				25464922B25136C1C58DD81E /* DonationPicker.swift in Sources */,
 				7BA5F30548207E9109087F13 /* DrizzleLayer.swift in Sources */,
 				F059F5260157FEF12E3CFF32 /* FrameStats.swift in Sources */,
 				11C208BC53946DFF15A77F09 /* FudgeIcon.swift in Sources */,
@@ -698,6 +709,7 @@
 				BC87549B0A11F97F418AB61F /* Layout.swift in Sources */,
 				6788115AD2F9F28D7D442445 /* LogShipper.swift in Sources */,
 				A27FF852B7F37FBECEA57119 /* NameEntryView.swift in Sources */,
+				CACD00C282448F333623013F /* NumberKeypad.swift in Sources */,
 				C0FFE25ACFD95D63EC7D4169 /* Order.swift in Sources */,
 				31E11CF00B709FFA3131CDD2 /* PaymentProblem.swift in Sources */,
 				4AFE52D6F8375FB36B7DA613 /* PhotoColumns.swift in Sources */,

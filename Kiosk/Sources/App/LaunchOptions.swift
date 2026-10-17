@@ -12,6 +12,7 @@ struct LaunchOptions {
     var items: [IceCreamItem] = []
     var current: IceCreamItem?
     var name: String?
+    var donationCents: Int?
     var script: String?
     var slowMotion: Double?
     var debug3D = false
@@ -46,6 +47,7 @@ struct LaunchOptions {
         }
         options.toppingsScroll = defaults.string(forKey: "kioskToppingsScroll").flatMap(Topping.init(rawValue:))
         options.name = defaults.string(forKey: "kioskCustomerName")
+        if defaults.object(forKey: "kioskDonation") != nil { options.donationCents = defaults.integer(forKey: "kioskDonation") }
         if defaults.object(forKey: "kioskSlowmo") != nil {
             options.slowMotion = defaults.double(forKey: "kioskSlowmo")
         }
