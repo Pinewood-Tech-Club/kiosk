@@ -19,9 +19,9 @@ p{margin:0}
 .actions{margin-top:48px;display:flex;flex-direction:column;align-items:center;gap:18px}
 .btn,.link{outline:none;font:inherit;font-size:var(--btn);line-height:1.2;padding:.45em 1.3em;border:.09em solid var(--fg);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,color .12s,transform .12s}
 .btn{background:var(--accent);color:var(--bg);border-color:var(--accent)}
-.btn:hover{background:var(--bg);color:var(--fg);border-color:var(--fg)}
-.link:hover{background:var(--fg);color:var(--bg)}
-.btn:active,.link:active{transform:scale(.97)}
+.btn:hover:not(:disabled){background:var(--bg);color:var(--fg);border-color:var(--fg)}
+.link:hover:not(:disabled){background:var(--fg);color:var(--bg)}
+.btn:active:not(:disabled),.link:active:not(:disabled){transform:scale(.97)}
 .btn:disabled,.link:disabled{opacity:.4;cursor:default;transform:none}
 .actions.row{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:22px}
 @property --ft{syntax:"<length>";inherits:false;initial-value:0px}
@@ -45,11 +45,11 @@ p{margin:0}
 .choice:active{transform:scale(.97)}
 .choice b{font-size:clamp(40px,5.4vw,72px);line-height:1.05;font-weight:700;font-variant-numeric:lining-nums}
 .choice span{font-size:clamp(16px,1.8vw,22px);min-height:1.4em}
-.corner{position:absolute;top:28px;left:32px;z-index:3}
+.corner{position:fixed;top:28px;left:32px;z-index:3}
 .screen.step{justify-content:flex-start;padding:0 24px calc(max(16px,2.2vh) + 52px)}
 .step .body{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:max(136px,16vh)}
 .foot{flex:none;display:flex;flex-direction:column;align-items:center;gap:18px;padding-top:24px}
-.pair{min-width:7.5em}
+.pair{min-width:8.2em}
 #s-scan{justify-content:flex-start;padding-top:max(32px,5vh)}
 #s-scan .ask{margin-bottom:0;padding:0 12vw}
 #s-scan .hint{margin-top:2.4vh}
@@ -64,14 +64,17 @@ p{margin:0}
 .finder video.mirror{transform:scaleX(-1)}
 .finder canvas{position:absolute;inset:0;width:100%;height:100%}
 .stage{position:relative;width:min(58vh,86vw);height:min(58vh,86vw);margin-top:3.2vh;flex:none}
-.stage .finder{margin:0;transition:opacity .35s ease}
-.stage.busy .finder{opacity:0}
-.checking{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-size:clamp(26px,3.4vw,44px);opacity:0;pointer-events:none;transition:opacity .3s ease}
-.busy>.checking{opacity:1;transition-delay:.25s}
-.checking i{font-style:normal;animation:dot 1.2s infinite both}
-.checking i:nth-child(2){animation-delay:.2s}
-.checking i:nth-child(3){animation-delay:.4s}
-@keyframes dot{0%,75%,100%{visibility:hidden}25%{visibility:visible}}
+.stage .finder{margin:0}
+.away{opacity:0;pointer-events:none;transition:opacity .35s ease}
+.checking{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;white-space:nowrap;margin:0;font-size:clamp(26px,3.4vw,44px);opacity:0;pointer-events:none;transition:opacity .12s ease}
+.checking.on{opacity:1;transition:opacity .3s ease .3s}
+.checking i{font-style:normal;animation:1.6s step-end infinite d1}
+.checking i:nth-child(2){animation-name:d2}
+.checking i:nth-child(3){animation-name:d3}
+@keyframes d1{0%{visibility:hidden}25%,100%{visibility:visible}}
+@keyframes d2{0%{visibility:hidden}50%,100%{visibility:visible}}
+@keyframes d3{0%{visibility:hidden}75%,100%{visibility:visible}}
+#confetti{position:fixed;inset:0;width:100%;height:100%;z-index:4;pointer-events:none}
 .credit{position:fixed;left:0;right:0;bottom:max(16px,2.2vh);z-index:21;margin:0;text-align:center;font-size:clamp(15px,1.6vw,20px);font-weight:400;pointer-events:none}
 .credit b{font-weight:700}
 #warn{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
@@ -115,14 +118,12 @@ export function giftCardBody(): string {
       <video id="video" playsinline muted></video>
       <canvas id="sim" hidden></canvas>
     </div>
-    <p class="checking" aria-live="polite">Checking your balance<i>.</i><i>.</i><i>.</i></p>
   </div>
   <p class="hint">Line up the barcode or QR code inside the square</p>
   <button class="link" id="scan-type">Enter card number</button>
 </section>
 
 <section class="screen step" id="s-type" hidden>
-  <button class="link corner start-over">Start Over</button>
   <div class="body">
     <p class="ask">Type your gift card number</p>
     <input class="gan" id="type-gan" inputmode="numeric" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Gift card number">
@@ -131,7 +132,6 @@ export function giftCardBody(): string {
 </section>
 
 <section class="screen" id="s-result" hidden>
-  <button class="link corner start-over">Start Over</button>
   <p class="ask" id="result-ask">Your gift card balance is</p>
   <p class="amount" id="result-amount"></p>
   <p class="sub" id="result-sub"></p>
@@ -139,7 +139,6 @@ export function giftCardBody(): string {
 </section>
 
 <section class="screen name" id="s-org" hidden>
-  <button class="link corner start-over">Start Over</button>
   <div class="top">
     <p class="ask">Who should get your donation?</p>
   </div>
@@ -148,7 +147,6 @@ export function giftCardBody(): string {
 </section>
 
 <section class="screen step" id="s-amount" hidden>
-  <button class="link corner start-over">Start Over</button>
   <div class="body">
     <p class="ask">How much would you like to give to</p>
     <p class="who" id="amount-org"></p>
@@ -158,7 +156,6 @@ export function giftCardBody(): string {
 </section>
 
 <section class="screen step" id="s-confirm" hidden>
-  <button class="link corner start-over" id="confirm-restart">Start Over</button>
   <div class="body">
     <p class="who" id="confirm-text"></p>
     <p class="sub" style="margin-top:18px">It comes off your gift card balance.</p>
@@ -167,7 +164,6 @@ export function giftCardBody(): string {
 </section>
 
 <section class="screen" id="s-thanks" hidden>
-  <button class="link corner start-over">Start Over</button>
   <h1>Thank you.</h1>
   <p class="sub" id="thanks-sub"></p>
   <p class="ask thanks-left">Your gift card balance is now</p>
@@ -176,20 +172,22 @@ export function giftCardBody(): string {
 </section>
 
 <section class="screen" id="s-error" hidden>
-  <button class="link corner start-over">Start Over</button>
   <span id="error-icon"></span>
   <h1 id="error-title"></h1>
   <p class="sub" id="error-sub"></p>
   <div class="actions">
-    <button class="btn" id="error-retry">Try again</button>
-    <button class="link" id="error-done">Start over</button>
+    <button class="btn pair" id="error-retry">Try again</button>
   </div>
 </section>
+
+<button class="link corner" id="start-over" hidden>Start Over</button>
+<canvas id="confetti"></canvas>
+<p class="checking" id="checking" aria-live="polite">Checking your balance<i>.</i><i>.</i><i>.</i></p>
 
 <section id="warn" hidden>
   <p class="ask">Are you still there?</p>
   <p class="count" id="warn-count">5</p>
-  <p class="sub">Tap anywhere to keep going</p>
+  <p class="sub">Move the mouse or press any key to keep going</p>
 </section>
 <p class="credit">From the <b>Pinewood Tech Club</b></p>
 <template id="icon-camera-off">${ICON_CAMERA_OFF}</template>`;
@@ -253,32 +251,50 @@ function bump() {
   stopWarning();
   if (current !== "s-scan") idleTimer = setTimeout(startWarning, WARN_AT_MS);
 }
+let lastMove = { x: NaN, y: NaN };
 function onActivity(e) {
-  if (!$("warn").hidden) {
+  if (e.type === "pointermove") {
+    if (e.clientX === lastMove.x && e.clientY === lastMove.y) return;
+    lastMove = { x: e.clientX, y: e.clientY };
+  } else if (!$("warn").hidden && (e.type === "pointerdown" || e.type === "keydown" || e.type === "touchstart")) {
     e.stopPropagation(); e.preventDefault();
     swallowClick = Date.now() + 500;
-    bump();
-    return;
   }
   bump();
 }
 for (const type of ["pointerdown", "keydown", "touchstart"]) document.addEventListener(type, onActivity, true);
+for (const type of ["pointermove", "wheel", "scroll"]) document.addEventListener(type, onActivity, { capture: true, passive: true });
 document.addEventListener("click", (e) => { if (Date.now() < swallowClick) { e.stopPropagation(); e.preventDefault(); } }, true);
 
 function show(id) {
   const leaving = current;
   current = id;
-  for (const s of SCREENS) $(s).hidden = s !== id;
-  if (!busy) $("stage").classList.remove("busy");
+  for (const s of SCREENS) { $(s).hidden = s !== id; $(s).classList.remove("away"); }
+  $("checking").classList.remove("on");
+  const corner = $("start-over");
+  corner.classList.remove("away");
+  corner.hidden = id === "s-scan";
+  if (corner.hidden) for (const a of corner.getAnimations()) a.cancel();
   if (leaving === "s-scan" && id !== "s-scan") stopScan();
   bump();
+}
+
+function fadeCorner(on, duration) {
+  const corner = $("start-over");
+  for (const a of corner.getAnimations()) a.cancel();
+  corner.hidden = false;
+  corner.classList.remove("away");
+  corner.animate([{ opacity: on ? 0 : 1 }, { opacity: on ? 1 : 0 }], { duration, easing: on ? "cubic-bezier(0, 0, .2, 1)" : "cubic-bezier(.4, 0, 1, 1)", fill: on ? "none" : "forwards" });
 }
 
 function swap(from, to, tone) {
   const f = $(from), t = $(to);
   t.hidden = false; t.style.zIndex = 2;
+  $("checking").classList.remove("on");
+  if (from === "s-thanks") clearConfetti();
+  if ((from === "s-scan") !== (to === "s-scan")) fadeCorner(from === "s-scan", from === "s-scan" ? 380 : 320);
   const out = f.animate(
-    [{ transform: "scale(1)", filter: "blur(0px)", opacity: 1 }, { transform: "scale(" + (tone === "back" ? 1.1 : 0.7) + ")", filter: "blur(12px)", opacity: 0 }],
+    [{ transform: "scale(1)", filter: "blur(0px)", opacity: getComputedStyle(f).opacity }, { transform: "scale(" + (tone === "back" ? 1.1 : 0.7) + ")", filter: "blur(12px)", opacity: 0 }],
     { duration: 320, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
   t.animate(
     [{ transform: "scale(1.2)", filter: "blur(14px)", opacity: 0 }, { transform: "scale(1)", filter: "blur(0px)", opacity: 1 }],
@@ -299,8 +315,10 @@ function reset() {
   resetting = true;
   stopScan();
   current = "s-scan";
+  if (from.id === "s-thanks") clearConfetti();
+  fadeCorner(false, 380);
   const out = from.animate(
-    [{ transform: "scale(1)", filter: "blur(0px)", opacity: 1 }, { transform: "scale(1.1)", filter: "blur(14px)", opacity: 0 }],
+    [{ transform: "scale(1)", filter: "blur(0px)", opacity: getComputedStyle(from).opacity }, { transform: "scale(1.1)", filter: "blur(14px)", opacity: 0 }],
     { duration: 380, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
   out.onfinish = () => {
     show("s-scan"); out.cancel();
@@ -312,22 +330,16 @@ function reset() {
   };
 }
 
-for (const b of document.querySelectorAll(".start-over")) b.onclick = () => { if (!donating) reset(); };
+$("start-over").onclick = () => { if (!donating) reset(); };
 $("thanks-done").onclick = reset;
-$("error-done").onclick = reset;
 $("error-retry").onclick = () => {
+  if (current !== "s-error") return;
   const again = retryAction;
   retryAction = null;
   if (again) { again(); return; }
-  $("s-error").hidden = true; swapToScan();
-};
-
-function swapToScan() {
-  $("s-scan").hidden = false;
-  $("s-error").hidden = true;
-  show("s-scan");
+  swap("s-error", "s-scan", "back");
   startScan();
-}
+};
 
 function fail(kind) {
   const cases = {
@@ -368,11 +380,22 @@ function showResult(found, gan) {
   swap("s-scan", "s-result", "forward");
 }
 
+function beginChecking(from) {
+  $(from).classList.add("away");
+  if (from !== "s-scan") {
+    $("start-over").classList.add("away");
+    $("s-scan").classList.add("away");
+    $("s-scan").hidden = false;
+    current = "s-scan";
+  }
+  $("checking").classList.add("on");
+  bump();
+}
+
 async function lookup(gan) {
   busy = true;
   const run = ++lookupRun;
-  $("stage").classList.add("busy");
-  const minimum = new Promise((resolve) => setTimeout(resolve, 600));
+  const minimum = new Promise((resolve) => setTimeout(resolve, 1100));
   let outcome;
   if (DEBUG) outcome = { balanceCents: DEMO_BALANCE_CENTS, state: "ACTIVE" };
   else try {
@@ -402,7 +425,7 @@ function submitTyped() {
   const digits = typedDigits();
   if (digits.length !== 16 || busy || current !== "s-type") return;
   ganInput.blur();
-  swap("s-type", "s-scan", "back");
+  beginChecking("s-type");
   lookup(digits);
 }
 ganInput.addEventListener("input", () => { paintTyped(); bump(); });
@@ -512,13 +535,18 @@ let fire = null;
 function celebrate() {
   if (typeof confetti !== "function") return;
   // The page CSP blocks the blob: worker that the default confetti() cannon spins up.
-  fire = fire || confetti.create(null, { resize: true, useWorker: false });
+  fire = fire || confetti.create($("confetti"), { resize: true, useWorker: false });
   const end = Date.now() + 1400;
   (function burst() {
     fire({ particleCount: 4, angle: 60, spread: 55, startVelocity: 55, origin: { x: 0, y: 0.7 } });
     fire({ particleCount: 4, angle: 120, spread: 55, startVelocity: 55, origin: { x: 1, y: 0.7 } });
     if (Date.now() < end) requestAnimationFrame(burst);
   })();
+}
+
+function clearConfetti() {
+  if (!fire) return;
+  $("confetti").animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: "ease-in" }).onfinish = () => fire.reset();
 }
 
 function newKey() {
@@ -537,7 +565,7 @@ $("back-confirm").onclick = () => { if (!donating && current === "s-confirm") sw
 
 function confirmBusy(on) {
   donating = on;
-  $("confirm-yes").disabled = on; $("back-confirm").disabled = on; $("confirm-restart").disabled = on;
+  $("confirm-yes").disabled = on; $("back-confirm").disabled = on; $("start-over").disabled = on;
   $("confirm-yes").textContent = on ? "Donating..." : "Confirm";
 }
 
@@ -726,7 +754,7 @@ async function startScan() {
       if (run !== scanRun) return;
       let gan = null;
       for (const raw of values) { gan = extractGan(raw); if (gan) break; }
-      if (gan) { bump(); await lookup(gan); return; }
+      if (gan) { beginChecking("s-scan"); await lookup(gan); return; }
     }
     requestAnimationFrame(loop);
   };
@@ -860,7 +888,7 @@ function simulate(run) {
     if (run !== scanRun) return;
     const t = now - t0;
     drawSim(canvas, t);
-    if (t >= foundAt + SIM_HOLD && !busy) { bump(); lookup(DEMO_GAN); return; }
+    if (t >= foundAt + SIM_HOLD && !busy) { beginChecking("s-scan"); lookup(DEMO_GAN); return; }
     requestAnimationFrame(frame);
   })(t0);
 }
