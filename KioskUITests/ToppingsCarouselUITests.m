@@ -53,7 +53,7 @@ static const CGFloat kScreenWidth = 1032;
 
 - (void)testStartsAtTheFirstCardWithTheNextOnePeeking {
     XCTAssertEqualWithAccuracy(CGRectGetMinX([self card:@"whip"].frame), kMargin, 1);
-    CGFloat peek = CGRectGetMinX([self card:@"gummies"].frame);
+    CGFloat peek = CGRectGetMinX([self card:@"caramel"].frame);
     XCTAssertEqualWithAccuracy(peek, kMargin + 3 * kPitch, 1);
     XCTAssertLessThan(peek, kScreenWidth, @"the fourth card should peek in from the right edge");
     XCTAssertEqualWithAccuracy(CGRectGetWidth([self card:@"whip"].frame), kCardWidth, 1);
@@ -99,10 +99,10 @@ static const CGFloat kScreenWidth = 1032;
 }
 
 - (void)testScrollingDoesNotToggleACard {
-    XCUIElement *chocolate = [self card:@"chocolate"];
+    XCUIElement *fudge = [self card:@"fudge"];
     [[self at:520] pressForDuration:0.05 thenDragToCoordinate:[self at:240] withVelocity:900 thenHoldForDuration:0];
     [self pause:2.0];
-    XCTAssertEqualObjects(chocolate.value, @"+$0.50", @"a drag that starts on a card must not add it");
+    XCTAssertEqualObjects(fudge.value, @"+$0.50", @"a drag that starts on a card must not add it");
 }
 
 @end
