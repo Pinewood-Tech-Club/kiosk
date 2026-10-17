@@ -1675,7 +1675,7 @@ function renderAssist(fresh){
 
 function assistOrder(v){
   var x=v.s;
-  var head='<div class="section-head"><h2>Order</h2><span class="as-total">'+(x&&x.items.length?"Total "+money2(x.totalCents):"")+"</span></div>";
+  var head='<div class="section-head"><h2>Order</h2><span class="as-total">'+(x&&x.items.length?"Total "+money2(x.totalCents)+(x.donationCents?", incl. "+money2(x.donationCents)+" donation":""):"")+"</span></div>";
   if(!x||!x.items.length)return head+emptyGroup(x&&x.screen!=="attract"?"Nothing in the order yet.":"No order in progress.");
   var n=0;
   var html=x.items.map(function(it){return assistItem(it,it.inOrder?"Item "+(++n):"New item",v);}).join("");

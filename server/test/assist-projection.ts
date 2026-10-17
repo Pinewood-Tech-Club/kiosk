@@ -8,6 +8,7 @@ export interface PjView {
   items: PjItem[];
   customerName: string;
   totalCents: number;
+  donationCents?: number;
   paying: boolean;
   orderingOpen: boolean;
   maxScoops: number;

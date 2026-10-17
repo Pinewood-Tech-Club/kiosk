@@ -12,7 +12,7 @@ function pjFresh(m,ref){var v=pjDefaultVessel(m.ctx);m.start=v;return {id:ref||"
 function pjModel(x,ctx){
   var m={ctx:ctx,fresh:0,screen:"attract",mode:"customize",step:"vessel",items:[],current:null,editing:null,start:null,customerName:"",paying:false,orderingOpen:true,maxScoops:3};
   if(!x)return m;
-  m.paying=!!x.paying;m.orderingOpen=x.orderingOpen!==false;m.maxScoops=x.maxScoops||3;m.customerName=x.customerName||"";
+  m.paying=!!x.paying;m.orderingOpen=x.orderingOpen!==false;m.maxScoops=x.maxScoops||3;m.customerName=x.customerName||"";m.donationCents=x.donationCents||0;
   m.screen=x.screen==="summary"?"builder":x.screen;
   if(x.screen==="summary")m.mode="summary";
   if(x.screen==="builder")m.step=x.step||"vessel";
@@ -179,8 +179,8 @@ function pjView(m){
     if(m.screen==="builder")screen="summary";
     m.items.forEach(function(it){lines.push(pjLine(it,false,true));});
   }
-  var total=0;lines.forEach(function(l){total+=l.cents;});
-  return {screen:screen,step:step,editing:editing,items:lines,customerName:m.customerName,totalCents:total,paying:m.paying,orderingOpen:m.orderingOpen,maxScoops:m.maxScoops};
+  var total=0,donation=lines.some(function(l){return l.inOrder;})?m.donationCents||0:0;lines.forEach(function(l){total+=l.cents;});
+  return {screen:screen,step:step,editing:editing,items:lines,customerName:m.customerName,totalCents:total+donation,donationCents:donation,paying:m.paying,orderingOpen:m.orderingOpen,maxScoops:m.maxScoops};
 }
 function pjProject(session,commands,ctx){
   var m=pjModel(session,ctx),failed=[];

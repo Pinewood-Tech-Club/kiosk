@@ -23,6 +23,20 @@ const shape = (items: { vessel: string; flavors: string[]; toppings: string[]; c
   items.map((i) => [i.vessel, i.flavors.join("+"), i.toppings.join("+"), i.cents, i.inOrder, i.current]);
 
 describe("assist projection", () => {
+  it("keeps the kiosk's donation in the total while the order has items", () => {
+    const session = builder({
+      screen: "summary",
+      step: null,
+      items: [{ id: ITEM(1), vessel: "cup", flavors: ["vanilla"], toppings: [], cents: 400, current: false, inOrder: true }],
+      totalCents: 900,
+      donationCents: 500,
+    });
+    const topped = pj.pjProject(session, [cmd("setTopping", { item: ITEM(1), topping: "whip", on: true })], context()).view;
+    expect([topped.totalCents, topped.donationCents]).toEqual([950, 500]);
+    const emptied = pj.pjProject(session, [cmd("removeItem", { item: ITEM(1) })], context()).view;
+    expect([emptied.totalCents, emptied.donationCents]).toEqual([0, 0]);
+  });
+
   it("prices each item on its own: $4, $7, $9 for 1 to 3 scoops, +$1.50 a cone, +$0.50 a topping", () => {
     const price = (vessel: string, scoops: number, toppings: number) =>
       pj.pjPrice({ vessel, flavors: Array(scoops).fill("vanilla"), toppings: Array(toppings).fill("whip") });

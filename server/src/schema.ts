@@ -106,6 +106,7 @@ export const KioskSession = z.object({
   items: z.array(SessionItem).max(30),
   customerName: text(40).default(""),
   totalCents: z.number().int().min(0).max(10_000_000),
+  donationCents: z.number().int().min(0).max(10_000_000).default(0),
   paying: z.boolean().default(false),
   orderingOpen: z.boolean().default(true),
   assisted: z.boolean().default(false),
