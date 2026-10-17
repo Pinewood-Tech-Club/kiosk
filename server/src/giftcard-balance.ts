@@ -4,6 +4,7 @@ import { donationCatalog } from "./giftcard-donate";
 import { giftCardBody, giftCardScript, giftCardShell } from "./giftcard-page";
 import { GiftCardLookupBody } from "./schema";
 import { ZXING_LIBRARY_JS } from "./zxing-lib";
+import { CONFETTI_LIBRARY_JS } from "./confetti-lib";
 
 function pageHeaders(nonce: string): Record<string, string> {
   return {
@@ -38,6 +39,15 @@ export const routes: Route[] = [
     path: "/giftcard/zxing.js",
     async handle() {
       return new Response(ZXING_LIBRARY_JS, {
+        headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff" },
+      });
+    },
+  },
+  {
+    method: "GET",
+    path: "/giftcard/confetti.js",
+    async handle() {
+      return new Response(CONFETTI_LIBRARY_JS, {
         headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff" },
       });
     },

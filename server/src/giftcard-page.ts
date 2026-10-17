@@ -1,11 +1,12 @@
-import { NOTO_SERIF_SEMIBOLD_WOFF2 } from "./staff-font";
+import { NOTO_SERIF_REGULAR_WOFF2, NOTO_SERIF_SEMIBOLD_WOFF2 } from "./staff-font";
 
 const STYLE = String.raw`
-@font-face{font-family:"Kiosk Serif";src:url(data:font/woff2;base64,${NOTO_SERIF_SEMIBOLD_WOFF2}) format("woff2");font-weight:400 700;font-display:block}
+@font-face{font-family:"Kiosk Serif";src:url(data:font/woff2;base64,${NOTO_SERIF_SEMIBOLD_WOFF2}) format("woff2");font-weight:500 700;font-display:block}
+@font-face{font-family:"Kiosk Serif";src:url(data:font/woff2;base64,${NOTO_SERIF_REGULAR_WOFF2}) format("woff2");font-weight:400;font-display:block}
 :root{--bg:#fff;--fg:#000;--accent:#000;--serif:"Kiosk Serif","Noto Serif",Georgia,serif}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--fg);font-family:var(--serif);font-size:24px;line-height:1.4;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overflow:hidden;user-select:none;touch-action:manipulation}
+body{background:var(--bg);color:var(--fg);font-family:var(--serif);font-weight:600;font-size:24px;line-height:1.4;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overflow:hidden;user-select:none;touch-action:manipulation}
 .screen{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
 .screen[hidden]{display:none}
 h1{font-size:clamp(56px,10vw,140px);font-weight:700;line-height:1.05;margin:0 0 14px}
@@ -47,44 +48,28 @@ p{margin:0}
 .choice:active{transform:scale(.97)}
 .choice b{font-size:clamp(40px,5.4vw,72px);line-height:1.05;font-weight:700;font-variant-numeric:lining-nums}
 .choice span{font-size:clamp(16px,1.8vw,22px);min-height:1.4em}
-.amount.mid{font-size:clamp(64px,11vw,150px);margin:0}
-.thanks-ask{margin:44px 0 6px}
+.small-note{font-size:clamp(15px,1.6vw,20px);opacity:.6}
 .small{font-size:clamp(15px,1.6vw,20px);padding:.4em 1em}
 .corner{position:absolute;top:28px;left:32px}
 #s-scan{justify-content:flex-start;padding-top:max(32px,5vh)}
 #s-scan .ask{margin-bottom:0;padding:0 12vw}
 #s-scan .hint{margin-top:2.4vh}
-#s-scan .link{margin-top:1.8vh}
 .finder{position:relative;width:100%;height:100%;border:.09em solid var(--fg);border-radius:28px;background:#f3f3f3;overflow:hidden;flex:none;isolation:isolate}
 .finder video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s}
 .finder video.live{opacity:1}
 .finder video.mirror{transform:scaleX(-1)}
 .finder canvas{position:absolute;inset:0;width:100%;height:100%}
-.finder .sweep{position:absolute;left:0;right:0;top:0;height:3px;background:var(--accent);animation:sweep 2.4s ease-in-out infinite alternate;opacity:0;transition:opacity .3s}
-.finder.live .sweep{opacity:.85}
 .stage{position:relative;width:min(62vh,86vw);height:min(62vh,86vw);margin-top:3.2vh;flex:none}
 .stage .finder{margin:0;transition:opacity .35s ease}
-.stage.busy .finder,.kstage.busy .pad{opacity:0}
+.stage.busy .finder{opacity:0}
 .checking{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-size:clamp(26px,3.4vw,44px);opacity:0;pointer-events:none;transition:opacity .3s ease}
 .busy>.checking{opacity:1;transition-delay:.25s}
 .checking i{font-style:normal;animation:dot 1.2s infinite both}
 .checking i:nth-child(2){animation-delay:.2s}
 .checking i:nth-child(3){animation-delay:.4s}
-#s-keypad{justify-content:flex-start;padding-top:max(28px,4.5vh)}
-#s-keypad .ask{margin-bottom:0}
-.digits{font-size:clamp(34px,5.4vw,64px);font-weight:700;line-height:1.1;margin:2.2vh 0 0;font-variant-numeric:tabular-nums lining-nums;white-space:pre;letter-spacing:.02em}
-.digits .rest{opacity:.18}
-.kstage{position:relative;margin-top:2.8vh;flex:none}
-.pad{display:grid;grid-template-columns:repeat(3,min(13vh,17vw));gap:min(1.6vh,2vw);justify-content:center;transition:opacity .35s ease}
-.key{font:inherit;font-size:clamp(30px,4.6vh,52px);height:min(10.5vh,14vw);border:.09em solid var(--fg);background:var(--bg);color:var(--fg);cursor:pointer;display:flex;align-items:center;justify-content:center;outline:none;transition:background .08s,color .08s,transform .08s;font-variant-numeric:lining-nums}
-.key:active,.key.down{background:var(--fg);color:var(--bg);transform:scale(.96)}
-.key.quiet{border-color:transparent}
-.key.quiet:active,.key.quiet.down{background:var(--bg);color:var(--fg)}
-.key svg{width:.85em;height:.85em;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.key:disabled{opacity:.25;cursor:default;transform:none}
-.pad .btn{grid-column:1/-1;margin-top:min(1.2vh,1.5vw);font-size:clamp(22px,3.4vh,34px)}
 @keyframes dot{0%,60%,100%{opacity:.2}30%{opacity:1}}
-@keyframes sweep{from{top:0}to{top:calc(100% - 3px)}}
+.credit{position:fixed;left:0;right:0;bottom:max(16px,2.2vh);z-index:21;margin:0;text-align:center;font-size:clamp(15px,1.6vw,20px);font-weight:400;opacity:.6;pointer-events:none}
+.credit b{font-weight:700}
 #warn{position:fixed;inset:0;z-index:20;background:rgba(255,255,255,.93);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
 #warn[hidden]{display:none}
 #warn .count{font-size:clamp(120px,24vw,320px);font-weight:700;line-height:1;margin:8px 0 22px;font-variant-numeric:lining-nums}
@@ -93,10 +78,8 @@ p{margin:0}
 #cursor.down path{fill:var(--accent)}
 #cursor path{fill:var(--bg);stroke:var(--fg);stroke-width:2.8;stroke-linejoin:round;stroke-linecap:round;transition:fill .1s}
 @media (pointer:fine){*{cursor:none!important}#cursor{display:block}}
-@media (prefers-reduced-motion:reduce){.finder .sweep,.checking i{animation:none}}
+@media (prefers-reduced-motion:reduce){.checking i{animation:none}}
 `;
-
-const ICON_DELETE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/></svg>`;
 
 const ICON_CAMERA_OFF = `<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121"/><path d="m2 2 20 20"/><path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175"/><path d="M9.695 4.024A2 2 0 0 1 10.004 4h3.993a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v7.344"/></svg>`;
 
@@ -109,6 +92,7 @@ export function giftCardShell(body: string, nonce: string, script: string): stri
 <meta name="robots" content="noindex">
 <title>Gift card balance</title>
 <style nonce="${nonce}">${STYLE}</style>
+<script src="/giftcard/confetti.js"></script>
 </head>
 <body>
 ${body}
@@ -126,28 +110,10 @@ export function giftCardBody(): string {
     <div class="finder" id="finder">
       <video id="video" playsinline muted></video>
       <canvas id="sim" hidden></canvas>
-      <div class="sweep"></div>
     </div>
     <p class="checking" aria-live="polite">Checking your balance<i>.</i><i>.</i><i>.</i></p>
   </div>
   <p class="hint">Line up the barcode or QR code inside the square</p>
-  <button class="link small" id="open-keypad">Enter card number</button>
-</section>
-
-<section class="screen" id="s-keypad" hidden>
-  <button class="link small corner" id="back-keypad">Back</button>
-  <p class="ask">Type the 16-digit card number</p>
-  <p class="digits" id="kp-digits" aria-live="polite"></p>
-  <div class="kstage" id="kstage">
-    <div class="pad" id="pad">
-      <button class="key" data-key="1">1</button><button class="key" data-key="2">2</button><button class="key" data-key="3">3</button>
-      <button class="key" data-key="4">4</button><button class="key" data-key="5">5</button><button class="key" data-key="6">6</button>
-      <button class="key" data-key="7">7</button><button class="key" data-key="8">8</button><button class="key" data-key="9">9</button>
-      <span></span><button class="key" data-key="0">0</button><button class="key quiet" data-key="back" aria-label="Delete">${ICON_DELETE}</button>
-      <button class="btn" id="kp-check" disabled>Check balance</button>
-    </div>
-    <p class="checking" aria-live="polite">Checking your balance<i>.</i><i>.</i><i>.</i></p>
-  </div>
 </section>
 
 <section class="screen" id="s-result" hidden>
@@ -181,11 +147,12 @@ export function giftCardBody(): string {
 </section>
 
 <section class="screen" id="s-thanks" hidden>
-  <h1>Thank you</h1>
+  <h1>Thank you.</h1>
   <p class="sub" id="thanks-sub"></p>
-  <p class="ask thanks-ask">Your gift card balance is now</p>
-  <p class="amount mid" id="thanks-amount"></p>
-  <div class="actions"><button class="btn" id="thanks-done">Done</button></div>
+  <div class="actions">
+    <button class="btn" id="thanks-done">Done</button>
+    <p class="small-note" id="thanks-balance"></p>
+  </div>
 </section>
 
 <section class="screen" id="s-error" hidden>
@@ -203,6 +170,7 @@ export function giftCardBody(): string {
   <p class="count" id="warn-count">5</p>
   <p class="sub">Tap anywhere to keep going</p>
 </section>
+<p class="credit">From the <b>Pinewood Tech Club</b></p>
 <template id="icon-camera-off">${ICON_CAMERA_OFF}</template>`;
 }
 
@@ -212,7 +180,7 @@ export function giftCardScript(debug = false, catalog: { orgs: { id: string; nam
 const IDLE_MS = 20000, WARN_AT_MS = 15000, SCAN_EVERY_MS = 140, CAMERA_RETRY_MS = 3000;
 const FORMATS = ["qr_code", "code_128", "code_39", "code_93", "ean_13", "ean_8", "itf", "codabar", "upc_a", "upc_e", "data_matrix", "pdf417", "aztec"];
 const $ = (id) => document.getElementById(id);
-const SCREENS = ["s-scan", "s-keypad", "s-result", "s-error", "s-org", "s-amount", "s-confirm", "s-thanks"];
+const SCREENS = ["s-scan", "s-result", "s-error", "s-org", "s-amount", "s-confirm", "s-thanks"];
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 let current = "s-scan", resetting = false, swallowClick = 0, retryAction = null, lookupRun = 0;
@@ -281,7 +249,6 @@ function show(id) {
   current = id;
   for (const s of SCREENS) $(s).hidden = s !== id;
   $("stage").classList.remove("busy");
-  $("kstage").classList.remove("busy");
   if (leaving === "s-scan" && id !== "s-scan") stopScan();
   bump();
 }
@@ -344,7 +311,7 @@ function swapToScan() {
 function fail(kind) {
   const cases = {
     denied: ["Camera is turned off", "Allow camera access for this page, then try again. Or ask at the table.", true],
-    nocamera: ["No camera found", "This screen can't see a camera. Type the card number instead, or ask at the table.", false],
+    nocamera: ["No camera found", "This screen can't see a camera. Ask at the table.", false],
     camera: ["Camera won't start", "Something else may be using it. Try again, or ask at the table.", true],
     notfound: ["Card not found", "We couldn't find that gift card. Check that it is the right card and try again.", true],
     network: ["Couldn't check right now", "Something went wrong on our end. Try again, or ask at the table.", true],
@@ -363,7 +330,7 @@ function fail(kind) {
   else show("s-error");
 }
 
-function showResult(found, gan, from) {
+function showResult(found, gan) {
   const active = found.state === "ACTIVE";
   card = active ? { gan, balanceCents: found.balanceCents } : null;
   $("result-donate").hidden = !(card && card.balanceCents > 0 && orgs.length);
@@ -371,20 +338,20 @@ function showResult(found, gan, from) {
   if (active) {
     $("result-ask").textContent = "Your gift card balance is";
     $("result-amount").textContent = money.format(found.balanceCents / 100);
-    $("result-sub").textContent = found.balanceCents === 0 ? "This card is empty." : "Thanks for supporting Tech Club.";
+    $("result-sub").textContent = found.balanceCents === 0 ? "This card is empty." : "";
   } else {
     $("result-ask").textContent = "This card can't be used right now";
     $("result-amount").textContent = "";
     $("result-sub").textContent = notes[found.state] || "Ask at the table.";
   }
-  swap(from, "s-result", "forward");
+  swap("s-scan", "s-result", "forward");
 }
 
-async function lookup(gan, from = "s-scan") {
+async function lookup(gan) {
   busy = true;
   const run = ++lookupRun;
-  (from === "s-keypad" ? $("kstage") : $("stage")).classList.add("busy");
-  const minimum = new Promise((resolve) => setTimeout(resolve, DEBUG ? 1500 : 600));
+  $("stage").classList.add("busy");
+  const minimum = new Promise((resolve) => setTimeout(resolve, 600));
   let outcome;
   if (DEBUG) outcome = { balanceCents: DEMO_BALANCE_CENTS, state: "ACTIVE" };
   else try {
@@ -395,64 +362,13 @@ async function lookup(gan, from = "s-scan") {
   }
   await minimum;
   busy = false;
-  if (run !== lookupRun || current !== from) return;
-  if (from === "s-keypad") retryAction = () => { $("kstage").classList.remove("busy"); swap("s-error", "s-keypad", "back"); };
-  if (typeof outcome === "string") fail(outcome); else showResult(outcome, gan, from);
+  if (run !== lookupRun || current !== "s-scan") return;
+  if (typeof outcome === "string") fail(outcome); else showResult(outcome, gan);
 }
 
-let typed = "";
-function paintKeypad() {
-  let done = "", left = "";
-  for (let i = 0; i < 16; i++) {
-    const gap = i && i % 4 === 0 ? " " : "";
-    if (i < typed.length) done += gap + typed[i]; else left += gap + "\u2022";
-  }
-  const shown = document.createElement("span"), rest = document.createElement("span");
-  shown.textContent = done; rest.className = "rest"; rest.textContent = left;
-  $("kp-digits").replaceChildren(shown, rest);
-  $("kp-check").disabled = typed.length !== 16;
-  for (const k of $("pad").querySelectorAll("[data-key]")) k.disabled = k.dataset.key === "back" ? !typed.length : typed.length >= 16;
-}
-function press(key) {
-  if (current !== "s-keypad" || busy) return;
-  if (key === "back") typed = typed.slice(0, -1);
-  else if (/^\d$/.test(key) && typed.length < 16) typed += key;
-  paintKeypad();
-}
-function flash(key) {
-  const el = $("pad").querySelector('[data-key="' + key + '"]');
-  if (!el) return;
-  el.classList.add("down");
-  setTimeout(() => el.classList.remove("down"), 120);
-}
-function checkTyped() {
-  if (current !== "s-keypad" || busy || typed.length !== 16) return;
-  lookup(typed, "s-keypad");
-}
-function openKeypad(first) {
-  if (current !== "s-scan" || busy || resetting) return;
-  typed = first || "";
-  paintKeypad();
-  $("kstage").classList.remove("busy");
-  swap("s-scan", "s-keypad", "forward");
-}
-$("open-keypad").onclick = () => openKeypad("");
-$("back-keypad").onclick = () => { if (!busy) { typed = ""; swap("s-keypad", "s-scan", "back"); startScan(); } };
-$("pad").addEventListener("click", (e) => { const k = e.target.closest("[data-key]"); if (k) press(k.dataset.key); });
-$("kp-check").onclick = checkTyped;
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { reset(); return; }
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (current === "s-scan" && /^\d$/.test(e.key)) { e.preventDefault(); openKeypad(e.key); return; }
-  if (current !== "s-keypad") return;
-  if (/^\d$/.test(e.key)) { e.preventDefault(); flash(e.key); press(e.key); }
-  else if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); flash("back"); press("back"); }
-  else if (e.key === "Enter") { e.preventDefault(); checkTyped(); }
-});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") reset(); });
 
 const ORGS_REFRESH_MS = 3 * 60000;
-const DEMO_FEATURED = ["demo-8", "demo-6", "demo-7", "demo-3"];
-const DEMO_ORGS = ["Astronomy Club", "Climbing Club", "Finance Club", "Freshman StuCo", "Korean Culture Club", "Math Club", "PPA", "Robotics", "Tech Club", "Yearbook"].map((name, i) => ({ id: "demo-" + i, name }));
 const fold = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/ +/g, " ").trim();
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -462,7 +378,7 @@ function prepOrgs(list) {
 
 let orgs = [], orgsAt = 0, orgsRefreshing = false;
 function takeOrgs(catalog) {
-  const list = catalog && Array.isArray(catalog.orgs) && catalog.orgs.length ? catalog : DEBUG ? { orgs: DEMO_ORGS, featured: DEMO_FEATURED } : { orgs: [], featured: [] };
+  const list = catalog && Array.isArray(catalog.orgs) ? catalog : { orgs: [], featured: [] };
   const rank = new Map((list.featured || []).map((id, i) => [id, i]));
   orgs = prepOrgs(list.orgs).map((o) => ({ ...o, rank: rank.has(o.id) ? rank.get(o.id) : -1 }));
   orgsAt = Date.now();
@@ -579,6 +495,19 @@ function pickOrg(o) {
 }
 $("back-amount").onclick = () => openOrgs("s-amount");
 
+let fire = null;
+function celebrate() {
+  if (typeof confetti !== "function") return;
+  // The page CSP blocks the blob: worker that the default confetti() cannon spins up.
+  fire = fire || confetti.create(null, { resize: true, useWorker: false });
+  const end = Date.now() + 1400;
+  (function burst() {
+    fire({ particleCount: 4, angle: 60, spread: 55, startVelocity: 55, origin: { x: 0, y: 0.7 } });
+    fire({ particleCount: 4, angle: 120, spread: 55, startVelocity: 55, origin: { x: 1, y: 0.7 } });
+    if (Date.now() < end) requestAnimationFrame(burst);
+  })();
+}
+
 function newKey() {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -623,7 +552,7 @@ $("confirm-yes").onclick = async () => {
   if (!donation || !card || donating || current !== "s-confirm") return;
   const d = donation;
   confirmBusy(true);
-  const [outcome] = await Promise.all([sendDonation(d), wait(DEBUG ? 1200 : 600)]);
+  const [outcome] = await Promise.all([sendDonation(d), wait(600)]);
   confirmBusy(false);
   if (donation !== d || current !== "s-confirm") return;
   if (typeof outcome === "string") {
@@ -633,10 +562,11 @@ $("confirm-yes").onclick = async () => {
     return;
   }
   card.balanceCents = outcome.balanceCents;
-  $("thanks-sub").textContent = "You gave " + money.format(d.cents / 100) + " to " + d.org.name + ".";
-  $("thanks-amount").textContent = money.format(outcome.balanceCents / 100);
+  $("thanks-sub").textContent = "Your " + money.format(d.cents / 100) + " donation to " + d.org.name + " went through.";
+  $("thanks-balance").textContent = "Your gift card balance is now " + money.format(outcome.balanceCents / 100);
   donation = null;
   swap("s-confirm", "s-thanks", "forward");
+  celebrate();
 };
 
 function extractGan(raw) {
@@ -706,7 +636,6 @@ function releaseCamera() {
   if (stream) { for (const t of stream.getTracks()) { t.onended = null; t.stop(); } stream = null; }
   const v = $("video");
   v.pause(); v.srcObject = null; v.classList.remove("live", "mirror");
-  $("finder").classList.remove("live", "mirror");
 }
 
 function scheduleCameraRetry() {
@@ -730,8 +659,8 @@ function openCamera() {
       const v = $("video");
       v.srcObject = media;
       try { await v.play(); } catch (e) {}
-      v.classList.toggle("mirror", mirror); $("finder").classList.toggle("mirror", mirror);
-      v.classList.add("live"); $("finder").classList.add("live");
+      v.classList.toggle("mirror", mirror);
+      v.classList.add("live");
     } catch (e) {
       scheduleCameraRetry();
       throw e;
@@ -776,7 +705,7 @@ async function startScan() {
 }
 
 const DEMO_GAN = "7783320000001234", DEMO_BALANCE_CENTS = 1250;
-const SIM_ENTER = 1400, SIM_SLIDE = 1250, SIM_SETTLE = 900, SIM_HOLD = 500;
+const SIM_ENTER = 200, SIM_SLIDE = 800, SIM_SETTLE = 450, SIM_HOLD = 450;
 let simBars = null, simGrain = null;
 
 function simBarcode() {
@@ -895,24 +824,21 @@ function drawSim(canvas, t) {
 }
 
 function simulate(run) {
-  const canvas = $("sim"), finder = $("finder"), t0 = performance.now();
+  const canvas = $("sim"), t0 = performance.now();
   const foundAt = SIM_ENTER + SIM_SLIDE + SIM_SETTLE;
   canvas.hidden = false;
-  finder.classList.add("live");
   (function frame(now) {
     if (run !== scanRun) return;
     const t = now - t0;
     drawSim(canvas, t);
-    if (t >= foundAt) finder.classList.remove("live");
     if (t >= foundAt + SIM_HOLD && !busy) { bump(); lookup(DEMO_GAN); return; }
     requestAnimationFrame(frame);
   })(t0);
 }
 
-paintKeypad();
 show("s-scan");
 startScan();
-if (!DEBUG && !("BarcodeDetector" in window)) loadZxing().catch(() => {});
+if (!("BarcodeDetector" in window)) loadZxing().catch(() => {});
 
 document.addEventListener("visibilitychange", () => { if (document.hidden && current !== "s-scan") reset(); });
 `;

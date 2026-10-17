@@ -61,10 +61,17 @@ describe("GET /giftcard", () => {
     expect(await (await send("/giftcard?debug=1")).text()).toContain("const DEBUG = true;");
   });
 
-  it("serves the vendored decoder", async () => {
-    const response = await send("/giftcard/zxing.js");
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Type")).toContain("javascript");
+  it("serves the vendored decoder and confetti", async () => {
+    for (const path of ["/giftcard/zxing.js", "/giftcard/confetti.js"]) {
+      const response = await send(path);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Type")).toContain("javascript");
+    }
+  });
+
+  it("gives debug mode the same org list as the live page", async () => {
+    const orgsOf = async (path: string) => (await (await send(path)).text()).match(/const ORGS_INIT = (.*);/)![1];
+    expect(await orgsOf("/giftcard?debug=1")).toBe(await orgsOf("/giftcard"));
   });
 });
 
