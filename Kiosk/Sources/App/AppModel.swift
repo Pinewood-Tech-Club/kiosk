@@ -47,6 +47,7 @@ final class AppModel {
     var screen: Screen = .roleSetup {
         didSet {
             guard screen != oldValue else { return }
+            syncTrayCurrent()
             if screen == .attract { square.reauthorizeIfIdle() } else { attractLive = false }
             leavingScreen = oldValue
             leavingTask?.cancel()
@@ -65,15 +66,24 @@ final class AppModel {
     static let blackoutIn = 0.3
     static let blackoutOut = 0.4
     var builderVisible = false
-    private(set) var mode: BuilderMode = .customize
+    private(set) var mode: BuilderMode = .customize {
+        didSet { syncTrayCurrent() }
+    }
     private(set) var step: BuilderStep = .vessel
     private(set) var current = IceCreamItem() {
-        didSet { if current.toppings != oldValue.toppings { stage.setToppings(current.toppings, itemID: current.id) } }
+        didSet {
+            if current.toppings != oldValue.toppings { stage.setToppings(current.toppings, itemID: current.id) }
+            syncTrayCurrent()
+        }
     }
     /// What a new item started as; a different vessel counts as the customer's choice.
-    private var startVessel: Vessel = .cup
+    private var startVessel: Vessel = .cup {
+        didSet { syncTrayCurrent() }
+    }
     private(set) var items: [IceCreamItem] = []
-    private(set) var editingID: UUID?
+    private(set) var editingID: UUID? {
+        didSet { syncTrayCurrent() }
+    }
     private(set) var stageReady = false
     private var assetLoadFailed = false
     var assetsFailed: Bool { assetLoadFailed || forcedError == .assets }
@@ -134,6 +144,12 @@ final class AppModel {
     }
 
     var orderQuote: OrderQuote { Pricing.quote(items) }
+
+    /// The tray shows the item being built or edited exactly when `liveQuote` counts it.
+    private func syncTrayCurrent() {
+        let counted = screen == .builder && mode == .customize && (isEditing || currentHasChoices)
+        stage.trayCurrentWanted = counted ? (current, editingID) : nil
+    }
 
     var currentHasChoices: Bool { current.hasChoices(startingFrom: startVessel) }
 

@@ -99,6 +99,10 @@ final class ToppingStack {
         leaving.isEmpty && pendingCount == nil && !placed.contains { ($0.layer as? ScatterLayer)?.isSettling == true }
     }
 
+    func isSettled(now: Double) -> Bool {
+        isIdle && !placed.contains { ($0.layer as? DrizzleLayer)?.isPouring(now: now) == true }
+    }
+
     /// Height of the topmost surface once every layer has settled, for framing and fitting the item into tray slots
     /// and order rows.
     var top: Float? {

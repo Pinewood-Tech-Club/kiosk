@@ -9,17 +9,17 @@ private let stepFade = AnyTransition.asymmetric(
 private let slotRadius: CGFloat = 26
 private let slotSize = CGSize(width: 100, height: 106)
 
-/// Holds the place of the item that's out for editing. Tapping it finishes the edit from any step, and a
-/// delete badge sits on the corner like a home-screen icon in edit mode.
+/// Outlines the slot of the item being built or edited, whose mini the stage draws in it. While editing, tapping it
+/// finishes the edit from any step, and a delete badge sits on the corner like a home-screen icon in edit mode.
 /// Follows its slot every frame while the tray scrolls, clipped like the tiles; the controls show only while
 /// the whole slot is in view.
-private struct EditingSlot: View {
+private struct CurrentSlot: View {
     let app: AppModel
-    let id: UUID
+    let tile: TrayTileModel.Tile
+    let isEditing: Bool
 
     var body: some View {
-        let editing = app.stage.trayTiles.editing
-        let x = (editing?.id == id ? editing?.x : nil) ?? app.stage.trayItemCenter(id)?.x ?? Layout.trayFirstCenterX
+        let x = tile.x
         let area = TrayClip.itemsArea
         let inView = x - slotSize.width / 2 >= Layout.trayItemsRect.minX - 0.5
             && x + slotSize.width / 2 <= Layout.trayItemsRect.maxX + 0.5
@@ -33,35 +33,32 @@ private struct EditingSlot: View {
                 .position(x: area.midX, y: area.midY)
                 .allowsHitTesting(false)
 
-            Button { app.finishEditing(then: .newItem) } label: {
-                LucideIcon(name: "check", size: 28)
-                    .foregroundStyle(Theme.text)
-                    .frame(width: 58, height: 58)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                    .frame(width: slotSize.width, height: slotSize.height)
-                    .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Done editing")
-            .opacity(inView ? 1 : 0)
-            .allowsHitTesting(inView)
-            .animation(.easeInOut(duration: 0.2), value: inView)
-            .position(x: x, y: Layout.trayCenterY)
+            if isEditing {
+                Button { app.finishEditing(then: .newItem) } label: {
+                    Color.clear
+                        .frame(width: slotSize.width, height: slotSize.height)
+                        .contentShape(.rect(cornerRadius: slotRadius, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Done editing")
+                .allowsHitTesting(inView)
+                .position(x: x, y: Layout.trayCenterY)
 
-            Button { app.requestDelete(id) } label: {
-                LucideIcon(name: "minus", size: 15)
-                    .foregroundStyle(Theme.text)
-                    .frame(width: 30, height: 30)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                    .frame(width: 44, height: 44)
-                    .contentShape(.circle)
+                Button { app.requestDelete(tile.id) } label: {
+                    LucideIcon(name: "minus", size: 15)
+                        .foregroundStyle(Theme.text)
+                        .frame(width: 30, height: 30)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove this item")
+                .opacity(inView ? 1 : 0)
+                .allowsHitTesting(inView)
+                .animation(.easeInOut(duration: 0.2), value: inView)
+                .position(x: x + slotSize.width / 2 - 8, y: Layout.trayCenterY - slotSize.height / 2 + 8)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove this item")
-            .opacity(inView ? 1 : 0)
-            .allowsHitTesting(inView)
-            .animation(.easeInOut(duration: 0.2), value: inView)
-            .position(x: x + slotSize.width / 2 - 8, y: Layout.trayCenterY - slotSize.height / 2 + 8)
         }
     }
 }
@@ -436,13 +433,14 @@ struct BuilderForeground: View {
             .modifier(CoveredBySheet(model: app.stage.sheetModel))
         }
         .modifier(TrayContentFade(model: app.stage.sheetModel))
-        .animation(.easeInOut(duration: 0.3), value: app.items.isEmpty)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: app.editingID)
+        .animation(.easeInOut(duration: 0.3), value: trayIsEmpty)
     }
+
+    private var trayIsEmpty: Bool { app.items.isEmpty && app.stage.trayTiles.current == nil }
 
     private var trayContent: some View {
         ZStack {
-            if app.items.isEmpty {
+            if trayIsEmpty {
                 Text("Added items appear here")
                     .font(Theme.serif(18, .regular))
                     .foregroundStyle(Theme.textSecondary)
@@ -466,9 +464,10 @@ struct BuilderForeground: View {
                         }
                 )
 
-            if let editingID = app.editingID {
-                EditingSlot(app: app, id: editingID)
-                    .transition(.opacity)
+            if let tile = app.stage.trayTiles.current {
+                CurrentSlot(app: app, tile: tile, isEditing: tile.id == app.editingID)
+                    .id(tile.id)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.2)))
             }
 
             newItemSlot

@@ -236,6 +236,8 @@ final class DrizzleLayer: ToppingLayer {
         build(now: now)
     }
 
+    func isPouring(now: Double) -> Bool { now < animationEnd }
+
     func remove(now: Double) {
         guard removeStart == nil else { return }
         if path.isEmpty {

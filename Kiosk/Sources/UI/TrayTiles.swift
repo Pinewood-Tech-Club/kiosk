@@ -12,12 +12,12 @@ final class TrayTileModel {
     }
 
     private(set) var tiles: [Tile] = []
-    /// The slot of the item that's out for editing, which the dashed placeholder follows.
-    private(set) var editing: Tile?
+    /// The slot of the item being built or edited, which the dashed outline follows.
+    private(set) var current: Tile?
 
-    func update(_ tiles: [Tile], editing: Tile?) {
+    func update(_ tiles: [Tile], current: Tile?) {
         if tiles != self.tiles { self.tiles = tiles }
-        if editing != self.editing { self.editing = editing }
+        if current != self.current { self.current = current }
     }
 }
 
