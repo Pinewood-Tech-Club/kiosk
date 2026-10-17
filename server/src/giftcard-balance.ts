@@ -3,12 +3,12 @@ import { credentialsFor, lookupCard } from "./giftcards";
 import { donationCatalog } from "./giftcard-donate";
 import { giftCardBody, giftCardScript, giftCardShell } from "./giftcard-page";
 import { GiftCardLookupBody } from "./schema";
-import { ZXING_LIBRARY_JS } from "./zxing-lib";
+import { SCAN_WORKER_JS, ZXING_WASM_PATH, zxingWasm } from "./giftcard-scanner";
 import { CONFETTI_LIBRARY_JS } from "./confetti-lib";
 
 function pageHeaders(nonce: string): Record<string, string> {
   return {
-    "Content-Security-Policy": `default-src 'none'; script-src 'self' 'nonce-${nonce}'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; font-src data:; img-src data:; connect-src 'self'; media-src blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+    "Content-Security-Policy": `default-src 'none'; script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval'; style-src 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; font-src data:; img-src data:; connect-src 'self'; media-src blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
     "Permissions-Policy": "camera=(self)",
   };
 }
@@ -36,10 +36,24 @@ export const routes: Route[] = [
   },
   {
     method: "GET",
-    path: "/giftcard/zxing.js",
+    path: "/giftcard/scan-worker.js",
     async handle() {
-      return new Response(ZXING_LIBRARY_JS, {
-        headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff" },
+      return new Response(SCAN_WORKER_JS, {
+        headers: {
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "Content-Security-Policy": "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    },
+  },
+  {
+    method: "GET",
+    path: ZXING_WASM_PATH,
+    async handle() {
+      return new Response(zxingWasm(), {
+        headers: { "Content-Type": "application/wasm", "Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" },
       });
     },
   },

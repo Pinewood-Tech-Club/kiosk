@@ -172,16 +172,16 @@ export function giftCardBody(): string {
 export function giftCardScript(debug = false, catalog: { orgs: { id: string; name: string }[]; featured: string[] } | null = null): string {
   const inline = JSON.stringify(catalog).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
   return `const DEBUG = ${debug};\nconst ORGS_INIT = ${inline};` + String.raw`
-const IDLE_MS = 20000, WARN_AT_MS = 15000, SCAN_EVERY_MS = 140, CAMERA_RETRY_MS = 3000;
-const FORMATS = ["qr_code", "code_128", "code_39", "code_93", "ean_13", "ean_8", "itf", "codabar", "upc_a", "upc_e", "data_matrix", "pdf417", "aztec"];
+const IDLE_MS = 20000, WARN_AT_MS = 15000, SCAN_MAX_SIDE = 1920, CAMERA_RETRY_MS = 3000;
+const FORMATS = ["qr_code", "code_128", "code_39", "code_93", "itf", "codabar", "data_matrix", "pdf417", "aztec"];
 const $ = (id) => document.getElementById(id);
 const SCREENS = ["s-scan", "s-result", "s-error", "s-org", "s-amount", "s-confirm", "s-thanks"];
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 let current = "s-scan", resetting = false, swallowClick = 0, retryAction = null, lookupRun = 0;
 let idleTimer = null, warnTimer = null, warnDeadline = 0;
-let stream = null, cameraOpening = null, cameraRetry = null, scanTimer = null, scanRun = 0, busy = false;
-let engine = null, zxingLoading = null;
+let stream = null, cameraOpening = null, cameraRetry = null, scanRun = 0, busy = false;
+let engine = null, scannerLoading = null;
 let card = null, donation = null, donating = false;
 
 
@@ -528,20 +528,48 @@ $("confirm-yes").onclick = async () => {
 };
 
 function extractGan(raw) {
-  let text = String(raw);
+  let text = String(raw).trim().replace(/^sqgc:\/\//i, "");
   if (/^[\d\s-]+$/.test(text)) text = text.replace(/[\s-]/g, "");
   const m = text.match(/(?<!\d)\d{16}(?!\d)/);
   return m ? m[0] : null;
 }
 
-function loadZxing() {
-  if (!zxingLoading) zxingLoading = new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "/giftcard/zxing.js";
-    s.onload = resolve; s.onerror = () => reject(new Error("zxing"));
-    document.head.appendChild(s);
+function loadScanner() {
+  if (!scannerLoading) scannerLoading = new Promise((resolve, reject) => {
+    const worker = new Worker("/giftcard/scan-worker.js");
+    const pending = new Map();
+    let seq = 0, dead = false;
+    const die = () => {
+      dead = true;
+      worker.terminate();
+      scannerLoading = null;
+      if (engine && engine.worker === worker) engine = null;
+      for (const settle of pending.values()) settle(null);
+      pending.clear();
+    };
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if ("ready" in m) {
+        if (!m.ready) { die(); reject(new Error("scanner")); return; }
+        resolve({
+          name: "zxing",
+          worker,
+          detect: (canvas, ctx) => new Promise((ok, bad) => {
+            if (dead) { bad(new Error("scanner")); return; }
+            const id = ++seq;
+            pending.set(id, (texts) => texts ? ok(texts) : bad(new Error("scanner")));
+            const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            worker.postMessage({ id, data, width, height }, [data.buffer]);
+          }),
+        });
+        return;
+      }
+      const settle = pending.get(m.id);
+      if (settle) { pending.delete(m.id); settle(m.texts); }
+    };
+    worker.onerror = () => { die(); reject(new Error("scanner")); };
   });
-  return zxingLoading;
+  return scannerLoading;
 }
 
 async function makeEngine() {
@@ -557,31 +585,13 @@ async function makeEngine() {
       }
     } catch (e) {}
   }
-  await loadZxing();
-  const Z = window.ZXing;
-  const hints = new Map();
-  hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.QR_CODE, Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.CODE_39, Z.BarcodeFormat.CODE_93, Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.ITF, Z.BarcodeFormat.CODABAR, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E, Z.BarcodeFormat.DATA_MATRIX, Z.BarcodeFormat.PDF_417, Z.BarcodeFormat.AZTEC]);
-  hints.set(Z.DecodeHintType.TRY_HARDER, true);
-  const reader = new Z.MultiFormatReader();
-  reader.setHints(hints);
-  engine = {
-    name: "zxing",
-    detect: async (canvas) => {
-      try {
-        const bitmap = new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(canvas)));
-        return [reader.decode(bitmap).getText()];
-      } catch (e) {
-        return [];
-      }
-    },
-  };
+  try { engine = await loadScanner(); } catch (e) { scannerLoading = null; throw e; }
   return engine;
 }
 
 function stopScan() {
   scanRun++;
   lookupRun++;
-  clearTimeout(scanTimer); scanTimer = null;
   busy = false;
 }
 
@@ -608,7 +618,7 @@ function openCamera() {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error("no camera"), { name: "NotFoundError" });
       releaseCamera();
-      const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
       stream = media;
       const track = media.getVideoTracks()[0];
       track.onended = () => { releaseCamera(); scheduleCameraRetry(); };
@@ -646,18 +656,20 @@ async function startScan() {
   const loop = async () => {
     if (run !== scanRun) return;
     if (!busy && v.readyState >= 2 && v.videoWidth) {
-      const side = Math.min(v.videoWidth, v.videoHeight);
-      const out = Math.min(side, 960);
-      canvas.width = canvas.height = out;
-      ctx.drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2, side, side, 0, 0, out, out);
+      const k = Math.min(1, SCAN_MAX_SIDE / Math.max(v.videoWidth, v.videoHeight));
+      const w = Math.round(v.videoWidth * k), h = Math.round(v.videoHeight * k);
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      ctx.drawImage(v, 0, 0, w, h);
       let values = [];
-      try { values = await eng.detect(canvas); } catch (e) {}
+      try { values = await eng.detect(canvas, ctx); } catch (e) {
+        if (eng.worker) { if (run === scanRun) fail("camera"); return; }
+      }
       if (run !== scanRun) return;
       let gan = null;
       for (const raw of values) { gan = extractGan(raw); if (gan) break; }
       if (gan) { bump(); await lookup(gan); return; }
     }
-    scanTimer = setTimeout(loop, SCAN_EVERY_MS);
+    requestAnimationFrame(loop);
   };
   loop();
 }
@@ -796,7 +808,7 @@ function simulate(run) {
 
 show("s-scan");
 startScan();
-if (!("BarcodeDetector" in window)) loadZxing().catch(() => {});
+if (!DEBUG) makeEngine().catch(() => {});
 
 document.addEventListener("visibilitychange", () => { if (document.hidden && current !== "s-scan") reset(); });
 `;
