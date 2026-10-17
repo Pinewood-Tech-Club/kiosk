@@ -406,7 +406,7 @@ describe("receipt tenders", () => {
   const record = (overrides: Partial<ReceiptRecord>): ReceiptRecord => ({
     source: "order", id: "o", orderNumber: 1, orderRef: null, customerName: "Alex", totalCents: 900, subtotalCents: 900, taxCents: 0,
     card: "Visa 4242 + Gift card 1234", simulated: false, paidAt: Date.now(), squarePaymentId: null, giftCardCents: 500, giftCardLast4: "1234",
-    items: [{ vessel: "cup", flavors: ["vanilla"], toppings: [] }], lines: [], paid: true, canceled: false, ...overrides,
+    donationCents: 0, items: [{ vessel: "cup", flavors: ["vanilla"], toppings: [] }], lines: [], paid: true, canceled: false, ...overrides,
   });
 
   it("shows both tenders for a split payment", () => {

@@ -939,7 +939,7 @@ function renderStats(){
   $("tOrders").textContent=s.orders;
   $("tOrdersSub").textContent=plural(s.items,"item")+(s.canceledOrders?", "+s.canceledOrders+" canceled":"")+(s.simulatedOrders?", "+s.simulatedOrders+" test":"");
   $("tRevenue").textContent=money(s.totalCents);
-  $("tAvg").textContent=s.orders?"Average "+money(s.averageCents):"No orders yet";
+  $("tAvg").textContent=(s.orders?"Average "+money(s.averageCents):"No orders yet")+(s.donationCents?", "+money(s.donationCents)+" donated":"");
   $("tScoops").textContent=s.scoops;
   $("tVessels").textContent=plural(s.cones,"cone")+", "+plural(s.cups,"cup")+", "+plural(s.toppings,"topping");
   var r=s.last15Min||{orders:0,totalCents:0};

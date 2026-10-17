@@ -13,6 +13,7 @@ export interface StatsSummary {
   totalCents: number;
   subtotalCents: number;
   taxCents: number;
+  donationCents: number;
   averageCents: number;
   items: number;
   scoops: number;
@@ -30,6 +31,7 @@ interface Row {
   total_cents: number;
   subtotal_cents: number | null;
   tax_cents: number | null;
+  donation_cents: number | null;
   simulated: number;
   items: string;
   paid_at: number;
@@ -39,12 +41,12 @@ interface Row {
 /** Real (not simulated) orders paid in [since, until). Simulated orders only count in `simulatedOrders`; canceled ones only in `canceledOrders` and `statuses`. */
 export async function summarize(env: Env, since: number, until: number, now = Date.now()): Promise<StatsSummary> {
   const { results } = await withRetry("D1", () =>
-    env.DB.prepare("SELECT total_cents, subtotal_cents, tax_cents, simulated, items, paid_at, status FROM orders WHERE paid_at >= ? AND paid_at < ?")
+    env.DB.prepare("SELECT total_cents, subtotal_cents, tax_cents, donation_cents, simulated, items, paid_at, status FROM orders WHERE paid_at >= ? AND paid_at < ?")
       .bind(since, until)
       .all<Row>(),
   );
   const summary: StatsSummary = {
-    since, until, generatedAt: now, orders: 0, simulatedOrders: 0, canceledOrders: 0, totalCents: 0, subtotalCents: 0, taxCents: 0, averageCents: 0,
+    since, until, generatedAt: now, orders: 0, simulatedOrders: 0, canceledOrders: 0, totalCents: 0, subtotalCents: 0, taxCents: 0, donationCents: 0, averageCents: 0,
     items: 0, scoops: 0, cups: 0, cones: 0, toppings: 0, flavors: {}, toppingCounts: {}, statuses: {}, byHour: [], last15Min: { orders: 0, totalCents: 0 },
   };
   const hours = new Map<number, { orders: number; totalCents: number }>();
@@ -62,6 +64,7 @@ export async function summarize(env: Env, since: number, until: number, now = Da
     summary.orders++;
     summary.totalCents += row.total_cents;
     summary.taxCents += row.tax_cents ?? 0;
+    summary.donationCents += row.donation_cents ?? 0;
     summary.subtotalCents += row.subtotal_cents ?? row.total_cents - (row.tax_cents ?? 0);
     let items: { vessel?: string; flavors?: string[]; toppings?: string[] }[] = [];
     try {

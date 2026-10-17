@@ -175,6 +175,9 @@ export const LogsBody = z.object({
   lines: z.array(z.unknown()).min(1).max(500),
 });
 
+export const MAX_DONATION_CENTS = 20_000;
+const DonationCents = z.number().int().min(0).max(MAX_DONATION_CENTS);
+
 export const Order = z.object({
   id,
   orderNumber: z.number().int().nullable().optional(),
@@ -193,6 +196,7 @@ export const Order = z.object({
   giftCardPaymentId: text(64).nullable().optional(),
   giftCardCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   giftCardLast4: text(4).nullable().optional(),
+  donationCents: DonationCents.optional(),
   epoch: Epoch.optional(),
   items: z
     .array(z.object({ vessel: text(20), flavors: z.array(text(32)).max(10), toppings: z.array(text(32)).max(20).optional() }))
@@ -217,6 +221,7 @@ export const CheckoutBody = z.object({
   sourceName: text(80).optional(),
   locationId: z.string().max(64).optional(),
   quotedCents: z.number().int().min(0).max(10_000_000).optional(),
+  donationCents: DonationCents.optional(),
   items: z.array(CartItem).min(1).max(20),
 });
 export type CheckoutBody = z.infer<typeof CheckoutBody>;

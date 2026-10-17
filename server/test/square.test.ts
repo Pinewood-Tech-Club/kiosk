@@ -2,7 +2,7 @@ import { createExecutionContext, createScheduledController, waitOnExecutionConte
 import { env, exports } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src";
-import { buildCatalog, clearCatalogMemory } from "../src/catalog";
+import { buildCatalog, clearCatalogMemory, clearTaxMemory } from "../src/catalog";
 import { REFRESH_AFTER_MS, STATE_TTL_MS } from "../src/oauth";
 import { adHocLineItems, catalogLineItems, chargedLines, pricingMismatch, quote, scoopsTotal, type CartItem } from "../src/pricing";
 import type { ServerMessage } from "../src/protocol";
@@ -151,6 +151,7 @@ function cart(overrides: Record<string, unknown> = {}) {
 
 beforeEach(async () => {
   clearCatalogMemory();
+  clearTaxMemory();
   await env.DB.batch(["square_tokens", "oauth_states", "square_cache", "checkouts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 });
 
@@ -455,6 +456,48 @@ describe("checkout", () => {
     await call("/v1/actions", { token: STAFF, json: { actions: out(false) } });
   });
 
+  it("adds a donation as its own untaxed line and counts it in the total", async () => {
+    mockSquare();
+    await connectSquare();
+    const body = cart({ donationCents: 500, quotedCents: 1800 });
+    const result = await call("/v1/checkout", { token: KIOSK, json: body });
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ totalCents: 1800, donationCents: 500, expectedSubtotalCents: 1800, priceMatches: true, usedCatalog: true });
+    expect(result.body.lines.at(-1)).toMatchObject({ title: "Donation", cents: 500 });
+    const donation = callsTo("/v2/orders")[0].body.order.line_items.at(-1);
+    expect(donation).toEqual({ name: "Donation", quantity: "1", base_price_money: { amount: 500, currency: "USD" } });
+
+    const changed = await call("/v1/checkout", { token: KIOSK, json: { ...body, donationCents: 200 } });
+    expect(changed.status).toBe(409);
+    const plain = await call("/v1/checkout", { token: KIOSK, json: cart() });
+    expect(plain.body).toMatchObject({ totalCents: 1300, donationCents: 0 });
+    expect(callsTo("/v2/catalog/search").filter((c) => c.body.object_types.includes("TAX"))).toHaveLength(1);
+  });
+
+  it("blocks the location's catalog taxes on the donation line", async () => {
+    mockSquare({
+      "/v2/catalog/search": (body) =>
+        body.object_types.includes("TAX")
+          ? {
+              body: {
+                objects: [
+                  { id: "TAX-ALL", type: "TAX", present_at_all_locations: true },
+                  { id: "TAX-HERE", type: "TAX", present_at_all_locations: false, present_at_location_ids: ["LOC1"] },
+                  { id: "TAX-ELSEWHERE", type: "TAX", present_at_all_locations: false, present_at_location_ids: ["LOC0"] },
+                  { id: "TAX-ABSENT", type: "TAX", present_at_all_locations: true, absent_at_location_ids: ["LOC1"] },
+                  { id: "TAX-GONE", type: "TAX", present_at_all_locations: true, is_deleted: true },
+                ],
+              },
+            }
+          : { body: { objects: [{ id: "CAT", type: "CATEGORY", category_data: { name: "Tech Club" } }] } },
+    });
+    await connectSquare();
+    await call("/v1/checkout", { token: KIOSK, json: cart({ donationCents: 325 }) });
+    const donation = callsTo("/v2/orders")[0].body.order.line_items.at(-1);
+    expect(donation.pricing_blocklists.blocked_taxes.map((t: any) => t.tax_catalog_object_id)).toEqual(["TAX-ALL", "TAX-HERE"]);
+    expect(callsTo("/v2/orders")[0].body.order.line_items.slice(0, -1).every((l: any) => !l.pricing_blocklists)).toBe(true);
+  });
+
   it("validates the cart", async () => {
     mockSquare();
     await connectSquare();
@@ -465,6 +508,9 @@ describe("checkout", () => {
       cart({ items: [{ vessel: "cup", flavors: ["a", "b", "c", "d"] }] }),
       cart({ receiptToken: "short" }),
       cart({ customerName: "" }),
+      cart({ donationCents: -100 }),
+      cart({ donationCents: 1.5 }),
+      cart({ donationCents: 20_001 }),
     ];
     for (const body of cases) expect((await call("/v1/checkout", { token: KIOSK, json: body })).status).toBe(400);
     expect(callsTo("/v2/orders")).toHaveLength(0);
@@ -562,6 +608,33 @@ describe("receipts", () => {
     expect(page.headers.get("X-Robots-Tag")).toContain("noindex");
   });
 
+  it("shows a donation on its own line and keeps it out of the item prices", async () => {
+    mockSquare();
+    const receiptToken = randomReceipt();
+    const lines = [
+      { title: "Ice Cream (First Scoop)", detail: "#1 Cup: Vanilla", cents: 400 },
+      { title: "Donation", detail: "", cents: 500 },
+    ];
+    await call("/v1/orders", {
+      token: KIOSK,
+      json: { orders: [{ id: `dn-${crypto.randomUUID()}`, totalCents: 900, subtotalCents: 900, taxCents: 0, card: "Visa 4242", receiptToken,
+        donationCents: 500, items: [{ vessel: "cup", flavors: ["vanilla"] }], lines, paidAt: new Date().toISOString() }] },
+    });
+    const page = await call(`/r/${receiptToken}`);
+    expect(page.body).toContain("<b>Donation</b>");
+    expect(page.body).toMatch(/Item 1: Cup<\/b>.*?\$4\.00/s);
+    expect(page.body).toMatch(/Donation<\/b>.*?\$5\.00/s);
+    expect(page.body).toMatch(/Total<\/span><span class="amt">\$9\.00/);
+
+    const derived = randomReceipt();
+    await call("/v1/orders", {
+      token: KIOSK,
+      json: { orders: [{ id: `dn-${crypto.randomUUID()}`, totalCents: 900, subtotalCents: 900, taxCents: 0, receiptToken: derived,
+        items: [{ vessel: "cup", flavors: ["vanilla"] }], lines, paidAt: new Date().toISOString() }] },
+    });
+    expect((await call(`/r/${derived}`)).body).toMatch(/Donation<\/b>.*?\$5\.00/s);
+  });
+
   it("uses Square's per-item amounts only when they add up to the subtotal", () => {
     const items = [{ vessel: "cone", flavors: ["vanilla"], toppings: [] }, { vessel: "cup", flavors: ["chocolate"], toppings: [] }];
     const tagged = [
@@ -572,6 +645,7 @@ describe("receipts", () => {
     expect(itemPrices(items, tagged, 950)).toEqual([550, 400]);
     expect(itemPrices(items, tagged, 900)).toEqual(quote(items as CartItem[]).lines.map((l) => l.totalCents));
     expect(itemPrices(items, [{ title: "Scoop", detail: "Vanilla", cents: 950 }], 950)).toEqual(quote(items as CartItem[]).lines.map((l) => l.totalCents));
+    expect(itemPrices(items, [...tagged, { title: "Donation", detail: "", cents: 200 }], 950)).toEqual([550, 400]);
   });
 });
 
@@ -658,13 +732,13 @@ describe("order feed and stats", () => {
     const at = (minutes: number) => new Date(since + minutes * 60_000).toISOString();
     const orders = [
       { id: `st-${crypto.randomUUID()}`, totalCents: 1100, taxCents: 0, paidAt: at(5), items: [{ vessel: "cone", flavors: ["vanilla", "chocolate"], toppings: ["whip"] }, { vessel: "cup", flavors: ["vanilla"] }] },
-      { id: `st-${crypto.randomUUID()}`, totalCents: 400, paidAt: at(70), items: [{ vessel: "cup", flavors: ["cookies"] }] },
+      { id: `st-${crypto.randomUUID()}`, totalCents: 600, donationCents: 200, paidAt: at(70), items: [{ vessel: "cup", flavors: ["cookies"] }] },
       { id: `st-${crypto.randomUUID()}`, totalCents: 400, simulated: true, paidAt: at(80), items: [{ vessel: "cup", flavors: ["cookies"] }] },
     ];
     await call("/v1/orders", { token: KIOSK, json: { orders } });
     const stats = await call(`/v1/stats?since=${since}&until=${since + DAY}`, { token: STAFF });
     expect(stats.body).toMatchObject({
-      orders: 2, simulatedOrders: 1, totalCents: 1500, averageCents: 750, items: 3, scoops: 4, cones: 1, cups: 2, toppings: 1,
+      orders: 2, simulatedOrders: 1, totalCents: 1700, donationCents: 200, averageCents: 850, items: 3, scoops: 4, cones: 1, cups: 2, toppings: 1,
       flavors: { vanilla: 2, chocolate: 1, cookies: 1 }, toppingCounts: { whip: 1 }, statuses: { paid: 2 },
     });
     expect(stats.body.byHour.reduce((sum: number, h: any) => sum + h.orders, 0)).toBe(2);

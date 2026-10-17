@@ -32,8 +32,8 @@ async function ingestOrders(request: Request, env: Env, client: Client): Promise
   const statement = env.DB.prepare(
     `INSERT OR IGNORE INTO orders (id, order_number, square_order_id, square_payment_id, customer_name, total_cents,
        subtotal_cents, tax_cents, card, simulated, items, lines, paid_at, device, app_version, received_at, receipt_token, status, status_at, order_ref,
-       gift_card_payment_id, gift_card_cents, gift_card_last4)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?)`,
+       gift_card_payment_id, gift_card_cents, gift_card_last4, donation_cents)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?)`,
   );
   const results: ItemResult[] = [];
   const pending: { index: number; statement: D1PreparedStatement; order: Order }[] = [];
@@ -61,7 +61,7 @@ async function ingestOrders(request: Request, env: Env, client: Client): Promise
         o.subtotalCents ?? null, o.taxCents ?? null, o.card ?? null, o.simulated ? 1 : 0, JSON.stringify(o.items),
         o.lines ? JSON.stringify(o.lines) : null, parseTimestamp(o.paidAt, now), client.device, o.appVersion ?? null, now,
         o.receiptToken ?? null, now, o.orderRef ?? null,
-        o.giftCardPaymentId ?? null, o.giftCardCents ?? null, o.giftCardLast4 ?? null,
+        o.giftCardPaymentId ?? null, o.giftCardCents ?? null, o.giftCardLast4 ?? null, o.donationCents ?? 0,
       ),
     });
   }
@@ -113,7 +113,7 @@ async function listOrders(url: URL, env: Env): Promise<Response> {
     env.DB.prepare(
       `SELECT id, order_number, square_order_id, square_payment_id, customer_name, total_cents, subtotal_cents, tax_cents,
               card, simulated, items, lines, paid_at, device, order_ref, status, status_at, status_by,
-              gift_card_payment_id, gift_card_cents, gift_card_last4
+              gift_card_payment_id, gift_card_cents, gift_card_last4, donation_cents
        FROM orders WHERE paid_at >= ?1 AND (?2 IS NULL OR device = ?2) ORDER BY paid_at DESC LIMIT ?3`,
     )
       .bind(since, device, limit)

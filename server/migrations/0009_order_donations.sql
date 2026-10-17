@@ -1,0 +1,1 @@
+ALTER TABLE orders ADD COLUMN donation_cents INTEGER NOT NULL DEFAULT 0;

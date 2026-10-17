@@ -369,6 +369,7 @@ Clients that queue offline should keep only the newest unsent `setSoldOut`/`setS
   "paidAt": "2026-12-05T13:02:11Z", "appVersion": "0.1 (1)",
   "receiptToken": "Qm9vdGhSZWNlaXB0VG9rZW4",                                     // (added) optional
   "giftCardPaymentId": "...", "giftCardCents": 500, "giftCardLast4": "1234",     // (added) optional, nullable: the gift card part of a split or gift-only order
+  "donationCents": 500,                                                           // (added) optional, 0 to 20000: the donation included in totalCents
   "epoch": 1,                                                                     // (added) optional: the reset epoch when it was queued
   "items": [{ "vessel": "cone", "flavors": ["vanilla", "chocolate"], "toppings": ["sprinkles"] }],   // toppings (added) optional
   "lines": [{ "title": "Ice Cream (First Scoop)", "detail": "#1 Waffle Cone: Vanilla", "cents": 400 }] }] }
@@ -414,15 +415,15 @@ Creates the Square order for a cart, priced by the server, and returns what the 
 
 ```jsonc
 { "id": "<checkout id, a UUID>", "receiptToken": "<22 to 64 of A-Z a-z 0-9 _ ->", "orderNumber": 12, "orderRef": "3F2A-12", "customerName": "Alex",
-  "sourceName": "Tech Club Ice Cream Kiosk", "locationId": "L...", "quotedCents": 1100,
+  "sourceName": "Tech Club Ice Cream Kiosk", "locationId": "L...", "quotedCents": 1100, "donationCents": 0,
   "items": [{ "vessel": "cone", "flavors": ["vanilla", "chocolate"], "toppings": ["whip"] }, { "vessel": "cup", "flavors": ["cookies"] }] }
 ```
 
-1 to 20 items, 1 to 3 flavors and up to 10 toppings each. `orderRef` *(added)* is optional; with it the Square reference id is `kiosk-<orderRef>`, without it `kiosk-<orderNumber, 4 digits>`. `locationId` (the location the kiosk's SDK is authorized for) and `quotedCents` (what the kiosk showed) are optional checks: a different location is `409 location_mismatch`; a different quote is only logged, because Square's total is what gets charged.
+1 to 20 items, 1 to 3 flavors and up to 10 toppings each. `orderRef` *(added)* is optional; with it the Square reference id is `kiosk-<orderRef>`, without it `kiosk-<orderNumber, 4 digits>`. `locationId` (the location the kiosk's SDK is authorized for) and `quotedCents` (what the kiosk showed) are optional checks: a different location is `409 location_mismatch`; a different quote is only logged, because Square's total is what gets charged. `donationCents` *(added)* is optional (0 to 20000): it adds a custom-amount line named *Donation*, with the location's catalog taxes blocked on it, and is part of the cart for idempotency; `quotedCents` includes it.
 
 ```json
 { "id": "...", "status": "created", "squareOrderId": "...", "locationId": "L...", "environment": "sandbox", "referenceId": "kiosk-3F2A-12",
-  "totalCents": 1100, "taxCents": 0, "subtotalCents": 1100, "expectedSubtotalCents": 1100, "priceMatches": true,
+  "totalCents": 1100, "taxCents": 0, "subtotalCents": 1100, "donationCents": 0, "expectedSubtotalCents": 1100, "priceMatches": true,
   "usedCatalog": true, "catalogError": null, "receiptToken": "...",
   "lines": [{ "title": "Ice Cream (First Scoop)", "detail": "#1 Waffle Cone: Vanilla", "quantity": 1, "baseCents": 400, "cents": 400 }] }
 ```
@@ -456,7 +457,7 @@ Public, no auth: the token is the credential. The kiosk generates it (128 random
 Defaults to the last 24 hours. Counts real orders only: simulated ones are only counted in `simulatedOrders`, and orders staff set to `canceled` only in `canceledOrders` and `statuses` (they add nothing to money, items or `byHour`). `last15Min` compares the kiosk's `paidAt` with the server clock:
 
 ```json
-{ "since": 0, "until": 0, "generatedAt": 0, "orders": 42, "simulatedOrders": 3, "canceledOrders": 1, "totalCents": 39100, "subtotalCents": 39100, "taxCents": 0,
+{ "since": 0, "until": 0, "generatedAt": 0, "orders": 42, "simulatedOrders": 3, "canceledOrders": 1, "totalCents": 39100, "subtotalCents": 39100, "taxCents": 0, "donationCents": 700,
   "averageCents": 931, "items": 51, "scoops": 88, "cups": 30, "cones": 21, "toppings": 17,
   "flavors": { "vanilla": 30 }, "toppingCounts": { "whip": 8 }, "statuses": { "paid": 2, "collected": 40, "canceled": 1 },
   "byHour": [{ "hour": 1796500800000, "orders": 12, "totalCents": 11200 }],

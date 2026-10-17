@@ -1,6 +1,6 @@
 import { escapeHtml, html, withRetry, type Route } from "./http";
 import { resolveCredentials } from "./oauth";
-import { flavorTitle, quote, toppingTitle, vesselTitle, type CartItem } from "./pricing";
+import { flavorTitle, isDonationLine, quote, toppingTitle, vesselTitle, type CartItem } from "./pricing";
 import { ReceiptToken } from "./schema";
 import { squareRequest } from "./square";
 
@@ -36,6 +36,7 @@ export interface ReceiptRecord {
   squarePaymentId: string | null;
   giftCardCents: number;
   giftCardLast4: string | null;
+  donationCents: number;
   items: ReceiptItemRecord[];
   lines: ReceiptLineRecord[];
   paid: boolean;
@@ -56,6 +57,7 @@ interface Row {
   square_payment_id?: string | null;
   gift_card_cents?: number | null;
   gift_card_last4?: string | null;
+  donation_cents?: number | null;
   items: string;
   lines?: string | null;
   response?: string;
@@ -75,13 +77,14 @@ function parse<T>(text: string | null | undefined, fallback: T): T {
 export async function findReceipt(env: Env, token: string): Promise<ReceiptRecord | null> {
   const order = await withRetry("D1", () =>
     env.DB.prepare(
-      `SELECT id, order_number, order_ref, customer_name, total_cents, subtotal_cents, tax_cents, card, simulated, paid_at, square_payment_id, gift_card_cents, gift_card_last4, items, lines, status
+      `SELECT id, order_number, order_ref, customer_name, total_cents, subtotal_cents, tax_cents, card, simulated, paid_at, square_payment_id, gift_card_cents, gift_card_last4, donation_cents, items, lines, status
        FROM orders WHERE receipt_token = ?`,
     )
       .bind(token)
       .first<Row>(),
   );
   if (order) {
+    const lines = parse<ReceiptLineRecord[]>(order.lines, []);
     return {
       source: "order",
       id: order.id,
@@ -97,8 +100,9 @@ export async function findReceipt(env: Env, token: string): Promise<ReceiptRecor
       squarePaymentId: order.square_payment_id ?? null,
       giftCardCents: order.gift_card_cents ?? 0,
       giftCardLast4: order.gift_card_last4 ?? null,
+      donationCents: order.donation_cents || donationInLines(lines),
       items: parse(order.items, []),
-      lines: parse(order.lines, []),
+      lines,
       paid: true,
       canceled: order.status === "canceled",
     };
@@ -109,7 +113,7 @@ export async function findReceipt(env: Env, token: string): Promise<ReceiptRecor
       .first<Row>(),
   );
   if (checkout) {
-    const response = parse<{ lines?: ReceiptLineRecord[] }>(checkout.response, {});
+    const response = parse<{ lines?: ReceiptLineRecord[]; donationCents?: number }>(checkout.response, {});
     return {
       source: "checkout",
       id: checkout.id,
@@ -125,6 +129,7 @@ export async function findReceipt(env: Env, token: string): Promise<ReceiptRecor
       squarePaymentId: null,
       giftCardCents: 0,
       giftCardLast4: null,
+      donationCents: response.donationCents ?? 0,
       items: parse(checkout.items, []),
       lines: response.lines ?? [],
       paid: false,
@@ -132,6 +137,10 @@ export async function findReceipt(env: Env, token: string): Promise<ReceiptRecor
     };
   }
   return null;
+}
+
+function donationInLines(lines: ReceiptLineRecord[]): number {
+  return lines.filter(isDonationLine).reduce((sum, line) => sum + line.cents, 0);
 }
 
 export const money = (cents: number) => `${cents < 0 ? "-" : ""}$${(Math.abs(cents) / 100).toFixed(2)}`;
@@ -145,6 +154,7 @@ export function itemPrices(items: ReceiptItemRecord[], lines: ReceiptLineRecord[
   const tagged = new Array<number>(items.length).fill(0);
   let usable = lines.length > 0;
   for (const line of lines) {
+    if (isDonationLine(line)) continue;
     const number = Number(/^#(\d+)/.exec(line.detail)?.[1]);
     if (!number || number > items.length) {
       usable = false;
@@ -246,7 +256,10 @@ export function notFoundPage(): string {
 
 export function receiptPage(record: ReceiptRecord, squareUrl: string | null): string {
   const subtotal = record.subtotalCents ?? record.totalCents - (record.taxCents ?? 0);
-  const prices = itemPrices(record.items, record.lines, subtotal);
+  const prices = itemPrices(record.items, record.lines, subtotal - record.donationCents);
+  const donation = record.donationCents > 0
+    ? `<div class="item"><div><b>Donation</b><small>Thank you for supporting Tech Club</small></div><div class="amt">${money(record.donationCents)}</div></div>`
+    : "";
   const label = record.orderRef ? `Order ${record.orderRef}` : record.orderNumber !== null ? `Order ${record.orderNumber}` : "Your order";
   return page(
     `${EVENT_NAME} receipt`,
@@ -254,7 +267,7 @@ export function receiptPage(record: ReceiptRecord, squareUrl: string | null): st
 <p class="sub">${record.paidAt ? escapeHtml(formatEventTime(record.paidAt)) : ""}</p>
 <div class="who"><span>${escapeHtml(label)}</span><span>${escapeHtml(record.customerName ?? "")}</span></div>
 ${record.canceled ? '<p class="canceled">This order was canceled</p>' : ""}<hr>
-${record.items.map((item, i) => itemHtml(item, i, prices[i] ?? 0)).join("")}<hr>
+${record.items.map((item, i) => itemHtml(item, i, prices[i] ?? 0)).join("")}${donation}<hr>
 <div class="row"><span>Subtotal</span><span class="amt">${money(subtotal)}</span></div>
 <div class="row"><span>Tax</span><span class="amt">${money(record.taxCents ?? 0)}</span></div>
 <div class="total"><span>Total</span><span class="amt">${money(record.totalCents)}</span></div><hr>

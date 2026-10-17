@@ -200,3 +200,48 @@ function checked(catalog: Catalog): CatalogResult {
 export function clearCatalogMemory() {
   memory.clear();
 }
+
+const taxMemory = new Map<string, { ids: string[]; fetchedAt: number }>();
+
+function presentAt(object: Record<string, unknown>, locationId: string): boolean {
+  const absent = (object.absent_at_location_ids as string[] | undefined) ?? [];
+  if (absent.includes(locationId)) return false;
+  if (object.present_at_all_locations === true) return true;
+  return ((object.present_at_location_ids as string[] | undefined) ?? []).includes(locationId);
+}
+
+async function fetchTaxIds(credentials: SquareCredentials): Promise<string[]> {
+  const ids: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const body: { objects?: Record<string, unknown>[]; cursor?: string } = await squareRequest(credentials.environment, "/v2/catalog/search", {
+      bearer: credentials.accessToken,
+      body: { object_types: ["TAX"], ...(cursor ? { cursor } : {}) },
+    });
+    for (const object of body.objects ?? []) {
+      if (object.type !== "TAX" || typeof object.id !== "string" || object.is_deleted === true) continue;
+      if (presentAt(object, credentials.locationId)) ids.push(object.id);
+    }
+    cursor = body.cursor || undefined;
+  } while (cursor);
+  return ids;
+}
+
+/** The location's catalog taxes, so a donation line can block them. Empty when Square can't be asked. */
+export async function loadTaxIds(credentials: SquareCredentials, now = Date.now()): Promise<string[]> {
+  const key = `${credentials.environment}:${credentials.merchantId ?? credentials.source}:${credentials.locationId}`;
+  const cached = taxMemory.get(key);
+  if (cached && now - cached.fetchedAt <= CATALOG_FRESH_MS) return cached.ids;
+  try {
+    const ids = await fetchTaxIds(credentials);
+    taxMemory.set(key, { ids, fetchedAt: now });
+    return ids;
+  } catch (error) {
+    console.warn({ event: "tax-fetch-failed", error: error instanceof Error ? error.message : String(error) });
+    return cached?.ids ?? [];
+  }
+}
+
+export function clearTaxMemory() {
+  taxMemory.clear();
+}

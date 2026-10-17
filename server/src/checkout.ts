@@ -1,7 +1,7 @@
-import { loadCatalog } from "./catalog";
+import { loadCatalog, loadTaxIds } from "./catalog";
 import { authenticate, HttpError, json, noteKioskContact, readBody, sha256, withRetry, type Route } from "./http";
 import { resolveCredentials } from "./oauth";
-import { adHocLineItems, catalogLineItems, quote, type CartItem, type ReceiptLine } from "./pricing";
+import { adHocLineItems, catalogLineItems, donationLineItem, quote, type CartItem, type ReceiptLine } from "./pricing";
 import { CheckoutBody } from "./schema";
 import { squareRequest, SquareError } from "./square";
 
@@ -15,6 +15,7 @@ export interface CheckoutResponse {
   totalCents: number;
   taxCents: number;
   subtotalCents: number;
+  donationCents: number;
   expectedSubtotalCents: number;
   priceMatches: boolean;
   usedCatalog: boolean;
@@ -59,6 +60,7 @@ function canonical(body: CheckoutBody): string {
     orderNumber: body.orderNumber ?? null,
     receiptToken: body.receiptToken,
     ...(body.orderRef ? { orderRef: body.orderRef } : {}),
+    ...(body.donationCents ? { donationCents: body.donationCents } : {}),
   });
 }
 
@@ -89,10 +91,14 @@ export async function checkout(env: Env, device: string, body: CheckoutBody, now
 
   const items: CartItem[] = body.items;
   const q = quote(items);
-  if (body.quotedCents !== undefined && body.quotedCents !== q.totalCents) {
-    console.warn({ event: "checkout-quote-differs", id: body.id, kiosk: body.quotedCents, server: q.totalCents });
+  const donationCents = body.donationCents ?? 0;
+  const expectedCents = q.totalCents + donationCents;
+  if (body.quotedCents !== undefined && body.quotedCents !== expectedCents) {
+    console.warn({ event: "checkout-quote-differs", id: body.id, kiosk: body.quotedCents, server: expectedCents });
   }
   const { catalog, error: catalogError } = await loadCatalog(env, credentials, now);
+  const lineItems = catalog ? catalogLineItems(q, catalog) : adHocLineItems(q);
+  if (donationCents > 0) lineItems.push(donationLineItem(donationCents, await loadTaxIds(credentials, now)));
   const ref = referenceId(body.orderNumber, body.orderRef);
 
   let order: SquareOrder;
@@ -108,7 +114,7 @@ export async function checkout(env: Env, device: string, body: CheckoutBody, now
           source: { name: body.sourceName ?? "Kiosk" },
           metadata: { checkout_id: body.id },
           pricing_options: { auto_apply_taxes: true },
-          line_items: catalog ? catalogLineItems(q, catalog) : adHocLineItems(q),
+          line_items: lineItems,
           fulfillments: [
             {
               type: "PICKUP",
@@ -144,15 +150,16 @@ export async function checkout(env: Env, device: string, body: CheckoutBody, now
     totalCents,
     taxCents,
     subtotalCents: totalCents - taxCents,
-    expectedSubtotalCents: q.totalCents,
-    priceMatches: totalCents - taxCents === q.totalCents,
+    donationCents,
+    expectedSubtotalCents: expectedCents,
+    priceMatches: totalCents - taxCents === expectedCents,
     usedCatalog: catalog !== null,
     catalogError,
     lines: receiptLines(order),
     receiptToken: body.receiptToken,
   };
   if (!result.priceMatches) {
-    console.warn({ event: "checkout-price-mismatch", id: body.id, square: result.subtotalCents, expected: q.totalCents });
+    console.warn({ event: "checkout-price-mismatch", id: body.id, square: result.subtotalCents, expected: expectedCents });
   }
 
   const insert = await withRetry("D1", () =>
@@ -163,7 +170,7 @@ export async function checkout(env: Env, device: string, body: CheckoutBody, now
     )
       .bind(
         body.id, device, hash, body.receiptToken, body.orderNumber ?? null, body.customerName, credentials.environment,
-        credentials.locationId, order.id, totalCents, taxCents, q.totalCents, catalog ? 1 : 0, JSON.stringify(items),
+        credentials.locationId, order.id, totalCents, taxCents, expectedCents, catalog ? 1 : 0, JSON.stringify(items),
         JSON.stringify(result), now, body.orderRef ?? null,
       )
       .run(),
@@ -173,7 +180,7 @@ export async function checkout(env: Env, device: string, body: CheckoutBody, now
     if (raced) return replay(raced, hash);
     throw new HttpError(409, "conflict", "This receipt token was already used by another checkout");
   }
-  console.log({ event: "checkout", id: body.id, squareOrderId: order.id, totalCents, usedCatalog: catalog !== null, device });
+  console.log({ event: "checkout", id: body.id, squareOrderId: order.id, totalCents, donationCents, usedCatalog: catalog !== null, device });
   return result;
 }
 

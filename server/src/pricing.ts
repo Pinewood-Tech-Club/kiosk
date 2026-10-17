@@ -132,6 +132,24 @@ export function catalogLineItems(q: Quote, catalog: Catalog): SquareLineItem[] {
   return lines;
 }
 
+export const DONATION_LINE_NAME = "Donation";
+
+/** Custom-amount line, kept out of every catalog tax: auto-applied taxes otherwise reach custom amounts too. */
+export function donationLineItem(cents: number, blockedTaxIds: string[]): SquareLineItem {
+  return {
+    name: DONATION_LINE_NAME,
+    quantity: "1",
+    base_price_money: money(cents),
+    ...(blockedTaxIds.length
+      ? { pricing_blocklists: { blocked_taxes: blockedTaxIds.map((id, i) => ({ uid: `donation-tax-${i}`, tax_catalog_object_id: id })) } }
+      : {}),
+  };
+}
+
+export function isDonationLine(line: { title: string; detail: string }): boolean {
+  return line.title === DONATION_LINE_NAME && !/^#\d/.test(line.detail);
+}
+
 export function adHocLineItems(q: Quote): SquareLineItem[] {
   return q.lines.map((line) => {
     const item = line.item;
