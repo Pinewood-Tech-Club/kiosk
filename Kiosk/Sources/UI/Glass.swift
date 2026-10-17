@@ -123,6 +123,7 @@ struct GlassIconButton: View {
 
 struct GlassViewOrderButton: View {
     let totalCents: Int
+    let itemCount: Int
     var size = Layout.viewOrderRect.size
     var cornerRadius = Layout.trayTileRadius
     let action: () -> Void
@@ -139,10 +140,16 @@ struct GlassViewOrderButton: View {
                 .font(Theme.sans(19, .semibold))
                 .monospacedDigit()
                 .opacity(0.82)
+                Text(itemCount == 1 ? "1 item" : "\(itemCount) items")
+                    .font(Theme.sans(14, .medium))
+                    .monospacedDigit()
+                    .opacity(0.6)
+                    .contentTransition(.numericText(value: Double(itemCount)))
             }
             .foregroundStyle(Theme.onText)
             .frame(width: size.width - 2 * KioskGlassButtonStyle.horizontalInset, height: size.height - 2 * KioskGlassButtonStyle.verticalInset)
             .animation(.snappy, value: totalCents)
+            .animation(.snappy, value: itemCount)
         }
         .buttonStyle(.glassProminent)
         .buttonBorderShape(.roundedRectangle(radius: cornerRadius))

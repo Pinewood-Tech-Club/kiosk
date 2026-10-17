@@ -421,7 +421,8 @@ struct BuilderForeground: View {
         ZStack {
             trayContent
             ZStack {
-                GlassViewOrderButton(totalCents: app.liveQuote.totalCents) { app.viewOrder() }
+                let quote = app.liveQuote
+                GlassViewOrderButton(totalCents: quote.totalCents, itemCount: quote.lines.count) { app.viewOrder() }
                     .disabled(!app.canViewOrder)
                     .position(x: Layout.viewOrderRect.midX, y: Layout.viewOrderRect.midY)
 
