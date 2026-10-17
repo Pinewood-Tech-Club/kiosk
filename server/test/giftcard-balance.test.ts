@@ -64,7 +64,7 @@ describe("GET /giftcard", () => {
   it("shows the club picker as a scrollable list with no search box", async () => {
     const page = await (await send("/giftcard")).text();
     expect(page).toContain("Who should get your donation?");
-    expect(page).toContain('"All clubs"');
+    expect(page).not.toContain("All clubs");
     expect(page).not.toMatch(/<input[^>]*id="org"/);
   });
 

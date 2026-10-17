@@ -36,7 +36,6 @@ p{margin:0}
 .results button{display:block;width:100%;min-height:64px;text-align:center;font:inherit;background:var(--bg);color:var(--fg);border:0;padding:14px 20px 15px;cursor:pointer;line-height:1.15;outline:none;transition:background .08s,color .08s}
 @media (hover:hover){.results:not(.still) button:hover{background:var(--accent);color:var(--bg)}}
 .results .n{font-size:clamp(24px,2.8vw,34px);display:block}
-.results .sep{margin:18px 20px 8px;padding-top:14px;border-top:1px solid rgba(0,0,0,.14);font-size:clamp(14px,1.4vw,18px);font-weight:400;opacity:.55;letter-spacing:.02em}
 .who{font-size:clamp(40px,6vw,80px);font-weight:700;line-height:1.1;margin:0;max-width:90vw}
 .choices{margin-top:48px;display:flex;flex-wrap:wrap;justify-content:center;gap:22px}
 .choice{font:inherit;min-width:clamp(150px,17vw,220px);padding:20px 26px 18px;border:.09em solid var(--fg);background:var(--bg);color:var(--fg);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;outline:none;transition:background .12s,color .12s,transform .12s}
@@ -396,12 +395,7 @@ function renderOrgs() {
     li.appendChild(b);
     return li;
   };
-  const items = featured.map(row);
-  if (featured.length && rest.length) {
-    const sep = document.createElement("li"); sep.className = "sep"; sep.textContent = "All clubs";
-    items.push(sep);
-  }
-  items.push(...rest.map(row));
+  const items = [...featured, ...rest].map(row);
   orgList.replaceChildren(...items);
 }
 
