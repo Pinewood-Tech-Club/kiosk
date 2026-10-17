@@ -10,6 +10,7 @@ struct ToppingGlyph: View {
             context.scaleBy(x: canvas.width / 64, y: canvas.height / 64)
             switch topping {
             case .whip: Self.whip(&context)
+            case .fudge: Self.fudge(&context)
             case .chocolate: Self.syrup(&context, dark: Self.chocolate, light: Self.chocolateLight)
             case .caramel: Self.syrup(&context, dark: Self.caramel, light: Self.caramelLight)
             case .gummies: Self.gummies(&context)
@@ -25,6 +26,10 @@ struct ToppingGlyph: View {
     private static let creamShade = Color(red: 0.84, green: 0.79, blue: 0.72)
     private static let chocolate = Color(red: 0.36, green: 0.20, blue: 0.12)
     private static let chocolateLight = Color(red: 0.55, green: 0.33, blue: 0.20)
+    private static let fudge = Color(red: 0.24, green: 0.11, blue: 0.06)
+    private static let fudgeLight = Color(red: 0.42, green: 0.22, blue: 0.13)
+    private static let steel = Color(red: 0.78, green: 0.79, blue: 0.81)
+    private static let steelShade = Color(red: 0.52, green: 0.53, blue: 0.56)
     private static let caramel = Color(red: 0.62, green: 0.32, blue: 0.08)
     private static let caramelLight = Color(red: 0.88, green: 0.58, blue: 0.24)
 
@@ -46,6 +51,33 @@ struct ToppingGlyph: View {
         peak.addQuadCurve(to: CGPoint(x: 41, y: 20), control: CGPoint(x: 37, y: 14))
         peak.closeSubpath()
         context.fill(peak, with: .color(cream))
+    }
+
+    private static func fudge(_ context: inout GraphicsContext) {
+        var handle = Path()
+        handle.move(to: CGPoint(x: 13, y: 30))
+        handle.addCurve(to: CGPoint(x: 16, y: 5), control1: CGPoint(x: 8, y: 20), control2: CGPoint(x: 9, y: 9))
+        context.stroke(handle, with: .color(steel), style: StrokeStyle(lineWidth: 4, lineCap: .round))
+        var bowl = Path()
+        bowl.move(to: CGPoint(x: 8, y: 30))
+        bowl.addCurve(to: CGPoint(x: 56, y: 30), control1: CGPoint(x: 9, y: 58), control2: CGPoint(x: 55, y: 58))
+        bowl.closeSubpath()
+        context.fill(bowl, with: .linearGradient(Gradient(colors: [steel, steelShade]),
+                                                startPoint: CGPoint(x: 20, y: 30), endPoint: CGPoint(x: 48, y: 56)))
+        var top = Path(ellipseIn: CGRect(x: 8, y: 23, width: 48, height: 14))
+        var drip = Path()
+        drip.move(to: CGPoint(x: 40, y: 32))
+        drip.addLine(to: CGPoint(x: 41, y: 44))
+        drip.addArc(center: CGPoint(x: 45, y: 45), radius: 4.6, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: true)
+        drip.addLine(to: CGPoint(x: 50, y: 32))
+        drip.closeSubpath()
+        top.addPath(drip)
+        context.fill(top, with: .linearGradient(Gradient(colors: [fudgeLight, fudge]),
+                                               startPoint: CGPoint(x: 18, y: 22), endPoint: CGPoint(x: 44, y: 50)))
+        var shine = Path()
+        shine.move(to: CGPoint(x: 20, y: 27))
+        shine.addQuadCurve(to: CGPoint(x: 34, y: 26), control: CGPoint(x: 27, y: 25))
+        context.stroke(shine, with: .color(.white.opacity(0.5)), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
     }
 
     private static func syrup(_ context: inout GraphicsContext, dark: Color, light: Color) {

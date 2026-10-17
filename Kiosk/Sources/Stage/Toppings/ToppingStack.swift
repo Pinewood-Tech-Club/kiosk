@@ -3,8 +3,8 @@ import RealityKit
 import UIKit
 
 extension Topping {
-    /// Whip and drizzle change the surface everything above them rests on; scattered pieces don't.
-    var isLayered: Bool { self == .whip || drizzleStyle != nil }
+    /// Fudge, whip and drizzle change the surface everything above them rests on; scattered pieces don't.
+    var isLayered: Bool { self == .fudge || self == .whip || drizzleStyle != nil }
 
     var drizzleStyle: DrizzleStyle? {
         switch self {
@@ -16,9 +16,10 @@ extension Topping {
 
     var stackRank: Int {
         switch self {
-        case .whip: 0
-        case .chocolate, .caramel: 1
-        case .gummies, .mms, .sprinkles: 2
+        case .fudge: 0
+        case .whip: 1
+        case .chocolate, .caramel: 2
+        case .gummies, .mms, .sprinkles: 3
         }
     }
 
@@ -54,7 +55,7 @@ enum ToppingSeed {
     }
 }
 
-/// The toppings on one item rig, always stacked scoops → whip → drizzle → scattered (in the order they were added),
+/// The toppings on one item rig, always stacked scoops → fudge → whip → drizzle → scattered (in the order they were added),
 /// each layer resting on the surface of everything beneath it. When a layer beneath others changes, the ones above are
 /// handed their finished surface at once and move onto it over the change's duration, with the same easing, so the
 /// whole stack moves as one.
@@ -241,6 +242,7 @@ final class ToppingStack {
                     drizzle.underToppings = underToppings
                     drizzle.partnered = partnered
                 }
+                (layer as? FudgeLayer)?.underToppings = underToppings
                 let tap = animated ? launch?(topping) : nil
                 if let tap {
                     layer.launchPoint = tap.point
@@ -252,7 +254,8 @@ final class ToppingStack {
                 light(layer.entity)
                 if let icon = tap?.icon, layer.cardIcon == nil { icon.playTap(for: topping, layer: layer) }
                 if animated, topping.isLayered {
-                    changeDuration = max(changeDuration, (layer as? DrizzleLayer)?.coverDuration ?? layer.growDuration)
+                    changeDuration = max(changeDuration, (layer as? DrizzleLayer)?.coverDuration
+                                         ?? (layer as? FudgeLayer)?.coverDuration ?? layer.growDuration)
                 }
             }
             result.append(Placed(topping: topping, layer: layer, beneath: beneath, scatteredBeneath: scatteredBeneath,
@@ -275,6 +278,7 @@ enum ToppingFactory {
     static func layer(_ topping: Topping, candy: CandyLibrary?) -> any ToppingLayer {
         switch topping {
         case .whip: WhipLayer()
+        case .fudge: FudgeLayer()
         case .chocolate, .caramel: DrizzleLayer(style: topping.drizzleStyle ?? .chocolate)
         case .gummies, .mms, .sprinkles: ScatterLayer(kind: scatterKind(topping, candy: candy))
         }
@@ -289,6 +293,8 @@ enum ToppingFactory {
         switch topping {
         case .whip:
             return (WhipLayer.makeIconDollop(), [])
+        case .fudge:
+            return (FudgeIcon.make(), [])
         case .chocolate, .caramel:
             return (DrizzleLayer.makeIcon(style: topping.drizzleStyle ?? .chocolate), [])
         case .gummies, .mms, .sprinkles:

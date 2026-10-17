@@ -179,6 +179,7 @@ extension Stage {
         setToppings(show.item.toppings, itemID: show.item.id)
         let duration = switch topping {
         case .whip: 1.2
+        case .fudge: 2.4
         case .chocolate, .caramel: 1.6
         case .gummies, .mms, .sprinkles: 0.8
         }

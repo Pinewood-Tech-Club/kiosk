@@ -19,7 +19,7 @@ final class CandyLibrary {
         case .gummies: gummyBears
         case .mms: candyLentils
         case .sprinkles: sprinkles
-        case .whip, .chocolate, .caramel: nil
+        case .whip, .fudge, .chocolate, .caramel: nil
         }
     }
 
