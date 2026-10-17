@@ -53,7 +53,7 @@ describe("GET /giftcard", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("text/html");
     expect(response.headers.get("Permissions-Policy")).toBe("camera=(self)");
-    expect(await response.text()).toContain("Gift Card Balance");
+    expect(await response.text()).toContain("Hold your gift card up to the camera");
   });
 
   it("turns on the simulated camera only for ?debug=1", async () => {
@@ -95,12 +95,13 @@ describe("POST /giftcard/balance", () => {
     expect(result.body.error.code).toBe("giftcard_not_found");
   });
 
-  it("stops lookups from an address after repeated misses", async () => {
+  it("never rate-limits the supervised kiosk, even after many misses", async () => {
     mockSquare(404, { errors: [{ code: "NOT_FOUND", category: "INVALID_REQUEST_ERROR" }] });
-    await env.DB.batch(Array.from({ length: 10 }, () => env.DB.prepare("INSERT INTO giftcard_lookup_failures (device, at) VALUES (?, ?)").bind(`giftcard-web:203.0.113.${ipCounter}`, Date.now())));
-    const result = await check({ gan: GAN });
-    expect(result.status).toBe(429);
-    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("from-gan"))).toBe(false);
+    for (let i = 0; i < 12; i++) expect((await check({ gan: GAN })).status).toBe(404);
+    mockSquare(200, card());
+    expect((await check({ gan: GAN })).status).toBe(200);
+    const { n } = (await env.DB.prepare("SELECT COUNT(*) AS n FROM giftcard_lookup_failures").first<{ n: number }>())!;
+    expect(n).toBe(0);
   });
 
   it("refuses cross-origin posts", async () => {

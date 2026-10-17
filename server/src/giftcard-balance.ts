@@ -14,11 +14,8 @@ function pageHeaders(nonce: string): Record<string, string> {
 async function balance(request: Request, env: Env): Promise<Response> {
   const origin = request.headers.get("Origin");
   if (origin && origin !== new URL(request.url).origin) throw new HttpError(403, "forbidden", "Cross-origin request refused");
-  const ip = clientIp(request);
-  const { success } = await env.LOGIN_LIMITER.limit({ key: `giftcard:${ip}` });
-  if (!success) throw new HttpError(429, "rate_limited", "Too many checks, wait a minute", { "Retry-After": "60" });
   const body = await readBody(request, GiftCardLookupBody, 1024);
-  const card = await lookupCard(env, await credentialsFor(env), `giftcard-web:${ip}`, body.gan);
+  const card = await lookupCard(env, await credentialsFor(env), `giftcard-web:${clientIp(request)}`, body.gan, Date.now(), false);
   return json({ balanceCents: card.balanceCents, state: card.state });
 }
 

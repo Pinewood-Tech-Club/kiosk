@@ -8,8 +8,6 @@ html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font-family:var(--serif);font-size:24px;line-height:1.4;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overflow:hidden;user-select:none;touch-action:manipulation}
 .screen{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
 .screen[hidden]{display:none}
-#s-scan.revealing{z-index:2}
-#ring{position:fixed;left:0;top:0;width:0;height:0;border:4px solid var(--accent);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:3;display:none}
 h1{font-size:clamp(56px,10vw,140px);font-weight:700;line-height:1.05;margin:0 0 14px}
 p{margin:0}
 .sub{font-size:clamp(20px,2.4vw,32px)}
@@ -23,10 +21,13 @@ p{margin:0}
 .btn:hover{background:var(--bg);color:var(--fg);border-color:var(--fg)}
 .link:hover{background:var(--fg);color:var(--bg)}
 .btn:active,.link:active{transform:scale(.97)}
+.btn:disabled,.link:disabled{opacity:.4;cursor:default;transform:none}
 .small{font-size:clamp(15px,1.6vw,20px);padding:.4em 1em}
 .corner{position:absolute;top:28px;left:32px}
 #s-scan{justify-content:flex-start;padding-top:max(32px,5vh)}
 #s-scan .ask{margin-bottom:0;padding:0 12vw}
+#s-scan .hint{margin-top:2.4vh}
+#s-scan .link{margin-top:1.8vh}
 .finder{position:relative;width:100%;height:100%;border:.09em solid var(--fg);border-radius:28px;background:#f3f3f3;overflow:hidden;flex:none;isolation:isolate}
 .finder video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s}
 .finder video.live{opacity:1}
@@ -36,12 +37,25 @@ p{margin:0}
 .finder.live .sweep{opacity:.85}
 .stage{position:relative;width:min(62vh,86vw);height:min(62vh,86vw);margin-top:3.2vh;flex:none}
 .stage .finder{margin:0;transition:opacity .35s ease}
-.stage.busy .finder{opacity:0}
-.checking{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:clamp(26px,3.4vw,44px);opacity:0;pointer-events:none;transition:opacity .3s ease}
-.stage.busy .checking{opacity:1;transition-delay:.25s}
+.stage.busy .finder,.kstage.busy .pad{opacity:0}
+.checking{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-size:clamp(26px,3.4vw,44px);opacity:0;pointer-events:none;transition:opacity .3s ease}
+.busy>.checking{opacity:1;transition-delay:.25s}
 .checking i{font-style:normal;animation:dot 1.2s infinite both}
 .checking i:nth-child(2){animation-delay:.2s}
 .checking i:nth-child(3){animation-delay:.4s}
+#s-keypad{justify-content:flex-start;padding-top:max(28px,4.5vh)}
+#s-keypad .ask{margin-bottom:0}
+.digits{font-size:clamp(34px,5.4vw,64px);font-weight:700;line-height:1.1;margin:2.2vh 0 0;font-variant-numeric:tabular-nums lining-nums;white-space:pre;letter-spacing:.02em}
+.digits .rest{opacity:.18}
+.kstage{position:relative;margin-top:2.8vh;flex:none}
+.pad{display:grid;grid-template-columns:repeat(3,min(13vh,17vw));gap:min(1.6vh,2vw);justify-content:center;transition:opacity .35s ease}
+.key{font:inherit;font-size:clamp(30px,4.6vh,52px);height:min(10.5vh,14vw);border:.09em solid var(--fg);background:var(--bg);color:var(--fg);cursor:pointer;display:flex;align-items:center;justify-content:center;outline:none;transition:background .08s,color .08s,transform .08s;font-variant-numeric:lining-nums}
+.key:active,.key.down{background:var(--fg);color:var(--bg);transform:scale(.96)}
+.key.quiet{border-color:transparent}
+.key.quiet:active,.key.quiet.down{background:var(--bg);color:var(--fg)}
+.key svg{width:.85em;height:.85em;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.key:disabled{opacity:.25;cursor:default;transform:none}
+.pad .btn{grid-column:1/-1;margin-top:min(1.2vh,1.5vw);font-size:clamp(22px,3.4vh,34px)}
 @keyframes dot{0%,60%,100%{opacity:.2}30%{opacity:1}}
 @keyframes sweep{from{top:0}to{top:calc(100% - 3px)}}
 #warn{position:fixed;inset:0;z-index:20;background:rgba(255,255,255,.93);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
@@ -54,6 +68,8 @@ p{margin:0}
 @media (pointer:fine){*{cursor:none!important}#cursor{display:block}}
 @media (prefers-reduced-motion:reduce){.finder .sweep,.checking i{animation:none}}
 `;
+
+const ICON_DELETE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/></svg>`;
 
 const ICON_CAMERA_OFF = `<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121"/><path d="m2 2 20 20"/><path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175"/><path d="M9.695 4.024A2 2 0 0 1 10.004 4h3.993a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v7.344"/></svg>`;
 
@@ -76,15 +92,8 @@ ${body}
 
 export function giftCardBody(): string {
   return `<svg id="cursor" viewBox="0 0 56 56" aria-hidden="true"><path d="M3.85 5.46 Q3.00 3.00 5.23 4.34 L41.92 26.38 Q44.14 27.72 42.12 29.36 L20.65 46.75 Q18.63 48.38 17.78 45.93 Z"/></svg>
-<div id="ring"></div>
 
-<section class="screen" id="s-idle">
-  <h1>Gift Card Balance</h1>
-  <p class="sub" id="idle-sub">Tap anywhere to check your gift card balance</p>
-</section>
-
-<section class="screen" id="s-scan" hidden>
-  <button class="link small corner" id="back-scan">Start over</button>
+<section class="screen" id="s-scan">
   <p class="ask">Hold your gift card up to the camera</p>
   <div class="stage" id="stage">
     <div class="finder" id="finder">
@@ -95,6 +104,23 @@ export function giftCardBody(): string {
     <p class="checking" aria-live="polite">Checking your balance<i>.</i><i>.</i><i>.</i></p>
   </div>
   <p class="hint">Line up the barcode or QR code inside the square</p>
+  <button class="link small" id="open-keypad">Enter card number</button>
+</section>
+
+<section class="screen" id="s-keypad" hidden>
+  <button class="link small corner" id="back-keypad">Back</button>
+  <p class="ask">Type the 16-digit card number</p>
+  <p class="digits" id="kp-digits" aria-live="polite"></p>
+  <div class="kstage" id="kstage">
+    <div class="pad" id="pad">
+      <button class="key" data-key="1">1</button><button class="key" data-key="2">2</button><button class="key" data-key="3">3</button>
+      <button class="key" data-key="4">4</button><button class="key" data-key="5">5</button><button class="key" data-key="6">6</button>
+      <button class="key" data-key="7">7</button><button class="key" data-key="8">8</button><button class="key" data-key="9">9</button>
+      <span></span><button class="key" data-key="0">0</button><button class="key quiet" data-key="back" aria-label="Delete">${ICON_DELETE}</button>
+      <button class="btn" id="kp-check" disabled>Check balance</button>
+    </div>
+    <p class="checking" aria-live="polite">Checking your balance<i>.</i><i>.</i><i>.</i></p>
+  </div>
 </section>
 
 <section class="screen" id="s-result" hidden>
@@ -127,15 +153,14 @@ export function giftCardScript(debug = false): string {
 const IDLE_MS = 20000, WARN_AT_MS = 15000, SCAN_EVERY_MS = 140, CAMERA_RETRY_MS = 3000;
 const FORMATS = ["qr_code", "code_128", "code_39", "code_93", "ean_13", "ean_8", "itf", "codabar", "upc_a", "upc_e", "data_matrix", "pdf417", "aztec"];
 const $ = (id) => document.getElementById(id);
-const SCREENS = ["s-idle", "s-scan", "s-result", "s-error"];
+const SCREENS = ["s-scan", "s-keypad", "s-result", "s-error"];
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
-let current = "s-idle", resetting = false, swallowClick = 0;
+let current = "s-scan", resetting = false, swallowClick = 0, retryAction = null, lookupRun = 0;
 let idleTimer = null, warnTimer = null, warnDeadline = 0;
 let stream = null, cameraOpening = null, cameraRetry = null, scanTimer = null, scanRun = 0, busy = false;
 let engine = null, zxingLoading = null;
 
-$("idle-sub").textContent = matchMedia("(pointer: coarse)").matches ? "Tap anywhere to check your gift card balance" : "Click anywhere to check your gift card balance";
 
 const cur = $("cursor");
 const c = { x: -100, y: -100, px: -100, py: -100, vx: 0, vy: 0, rot: 0, rv: 0, scale: 1, down: false, t: performance.now() };
@@ -177,7 +202,7 @@ function startWarning() {
 function bump() {
   clearTimeout(idleTimer); idleTimer = null;
   stopWarning();
-  if (current !== "s-idle") idleTimer = setTimeout(startWarning, WARN_AT_MS);
+  if (current !== "s-scan") idleTimer = setTimeout(startWarning, WARN_AT_MS);
 }
 function onActivity(e) {
   if (!$("warn").hidden) {
@@ -186,7 +211,7 @@ function onActivity(e) {
     bump();
     return;
   }
-  if (current !== "s-idle") bump();
+  bump();
 }
 for (const type of ["pointerdown", "keydown", "touchstart"]) document.addEventListener(type, onActivity, true);
 document.addEventListener("click", (e) => { if (Date.now() < swallowClick) { e.stopPropagation(); e.preventDefault(); } }, true);
@@ -196,6 +221,7 @@ function show(id) {
   current = id;
   for (const s of SCREENS) $(s).hidden = s !== id;
   $("stage").classList.remove("busy");
+  $("kstage").classList.remove("busy");
   if (leaving === "s-scan" && id !== "s-scan") stopScan();
   bump();
 }
@@ -218,53 +244,33 @@ function swap(from, to, tone) {
 function reset() {
   if (resetting) return;
   stopWarning();
-  const from = SCREENS.map($).find((el) => !el.hidden);
-  if (!from || from.id === "s-idle") { show("s-idle"); return; }
+  retryAction = null;
+  const from = SCREENS.map($).find((el) => !el.hidden && el.id !== "s-scan");
+  if (!from) { if (current !== "s-scan") { show("s-scan"); startScan(); } return; }
   resetting = true;
   stopScan();
+  current = "s-scan";
   const out = from.animate(
     [{ transform: "scale(1)", filter: "blur(0px)", opacity: 1 }, { transform: "scale(1.1)", filter: "blur(14px)", opacity: 0 }],
     { duration: 380, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
   out.onfinish = () => {
-    show("s-idle"); out.cancel();
-    const back = $("s-idle").animate(
+    show("s-scan"); out.cancel();
+    startScan();
+    const back = $("s-scan").animate(
       [{ transform: "scale(1.1)", filter: "blur(14px)", opacity: 0 }, { transform: "scale(1)", filter: "blur(0px)", opacity: 1 }],
       { duration: 420, easing: "cubic-bezier(0, 0, .2, 1)" });
     back.onfinish = () => { resetting = false; };
   };
 }
 
-function reveal(x, y) {
-  const scan = $("s-scan"), ring = $("ring");
-  if (!scan.hidden || resetting || current !== "s-idle") return;
-  const RING_MIN = 4, RING_MAX = 48;
-  const R = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) + RING_MAX + 4;
-  scan.classList.add("revealing"); scan.hidden = false;
-  ring.style.left = x + "px"; ring.style.top = y + "px"; ring.style.display = "block";
-  startScan();
-  const t0 = performance.now(), D = 520;
-  (function frame(now) {
-    const p = Math.min(1, (now - t0) / D), e = p * p * p, r = R * e;
-    scan.style.clipPath = "circle(" + r + "px at " + x + "px " + y + "px)";
-    ring.style.width = ring.style.height = 2 * r + "px";
-    ring.style.borderWidth = (RING_MIN + (RING_MAX - RING_MIN) * e) + "px";
-    if (p < 1) return requestAnimationFrame(frame);
-    scan.style.clipPath = ""; scan.classList.remove("revealing"); ring.style.display = "none";
-    if (current === "s-scan") show("s-scan");
-  })(t0);
-  current = "s-scan";
-  bump();
-}
-
-$("s-idle").addEventListener("click", (e) => reveal(e.clientX || innerWidth / 2, e.clientY || innerHeight / 2));
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") reset();
-  else if (current === "s-idle" && e.key.length === 1) reveal(innerWidth / 2, innerHeight / 2);
-});
-$("back-scan").onclick = reset;
 $("result-done").onclick = reset;
 $("error-done").onclick = reset;
-$("error-retry").onclick = () => { $("s-error").hidden = true; swapToScan(); };
+$("error-retry").onclick = () => {
+  const again = retryAction;
+  retryAction = null;
+  if (again) { again(); return; }
+  $("s-error").hidden = true; swapToScan();
+};
 
 function swapToScan() {
   $("s-scan").hidden = false;
@@ -276,10 +282,9 @@ function swapToScan() {
 function fail(kind) {
   const cases = {
     denied: ["Camera is turned off", "Allow camera access for this page, then try again. Or ask at the table.", true],
-    nocamera: ["No camera found", "This screen can't see a camera. Ask at the table.", false],
+    nocamera: ["No camera found", "This screen can't see a camera. Type the card number instead, or ask at the table.", false],
     camera: ["Camera won't start", "Something else may be using it. Try again, or ask at the table.", true],
     notfound: ["Card not found", "We couldn't find that gift card. Check that it is the right card and try again.", true],
-    limit: ["Too many tries", "Wait a minute, then try again. Or ask at the table.", false],
     network: ["Couldn't check right now", "Something went wrong on our end. Try again, or ask at the table.", true],
   };
   const [title, sub, retry] = cases[kind] || cases.network;
@@ -288,43 +293,95 @@ function fail(kind) {
   $("error-title").style.fontSize = "clamp(40px, 6.5vw, 96px)";
   $("error-sub").textContent = sub;
   $("error-retry").hidden = !retry;
-  if (current === "s-scan" && !$("s-scan").hidden) swap("s-scan", "s-error", "forward");
+  if (!retry) retryAction = null;
+  if (current !== "s-error" && SCREENS.includes(current) && !$(current).hidden) swap(current, "s-error", "forward");
   else show("s-error");
 }
 
-function showResult(card) {
-  const active = card.state === "ACTIVE";
+function showResult(found, gan, from) {
+  const active = found.state === "ACTIVE";
   const notes = { PENDING: "This card hasn't been activated yet. Ask at the table.", BLOCKED: "This card is blocked. Ask at the table.", DEACTIVATED: "This card has been turned off. Ask at the table." };
   if (active) {
     $("result-ask").textContent = "Your gift card balance is";
-    $("result-amount").textContent = money.format(card.balanceCents / 100);
-    $("result-sub").textContent = card.balanceCents === 0 ? "This card is empty." : "Thanks for supporting Tech Club.";
+    $("result-amount").textContent = money.format(found.balanceCents / 100);
+    $("result-sub").textContent = found.balanceCents === 0 ? "This card is empty." : "Thanks for supporting Tech Club.";
   } else {
     $("result-ask").textContent = "This card can't be used right now";
     $("result-amount").textContent = "";
-    $("result-sub").textContent = notes[card.state] || "Ask at the table.";
+    $("result-sub").textContent = notes[found.state] || "Ask at the table.";
   }
-  swap("s-scan", "s-result", "forward");
+  swap(from, "s-result", "forward");
 }
 
-async function lookup(gan) {
+async function lookup(gan, from = "s-scan") {
   busy = true;
-  const run = scanRun;
-  $("stage").classList.add("busy");
+  const run = ++lookupRun;
+  (from === "s-keypad" ? $("kstage") : $("stage")).classList.add("busy");
   const minimum = new Promise((resolve) => setTimeout(resolve, DEBUG ? 1500 : 600));
   let outcome;
   if (DEBUG) outcome = { balanceCents: DEMO_BALANCE_CENTS, state: "ACTIVE" };
   else try {
     const res = await fetch("/giftcard/balance", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ gan }) });
-    outcome = res.ok ? await res.json() : res.status === 404 ? "notfound" : res.status === 429 ? "limit" : "network";
+    outcome = res.ok ? await res.json() : res.status === 404 ? "notfound" : "network";
   } catch (e) {
     outcome = "network";
   }
   await minimum;
   busy = false;
-  if (run !== scanRun) return;
-  if (typeof outcome === "string") fail(outcome); else showResult(outcome);
+  if (run !== lookupRun || current !== from) return;
+  if (from === "s-keypad") retryAction = () => { $("kstage").classList.remove("busy"); swap("s-error", "s-keypad", "back"); };
+  if (typeof outcome === "string") fail(outcome); else showResult(outcome, gan, from);
 }
+
+let typed = "";
+function paintKeypad() {
+  let done = "", left = "";
+  for (let i = 0; i < 16; i++) {
+    const gap = i && i % 4 === 0 ? " " : "";
+    if (i < typed.length) done += gap + typed[i]; else left += gap + "\u2022";
+  }
+  const shown = document.createElement("span"), rest = document.createElement("span");
+  shown.textContent = done; rest.className = "rest"; rest.textContent = left;
+  $("kp-digits").replaceChildren(shown, rest);
+  $("kp-check").disabled = typed.length !== 16;
+  for (const k of $("pad").querySelectorAll("[data-key]")) k.disabled = k.dataset.key === "back" ? !typed.length : typed.length >= 16;
+}
+function press(key) {
+  if (current !== "s-keypad" || busy) return;
+  if (key === "back") typed = typed.slice(0, -1);
+  else if (/^\d$/.test(key) && typed.length < 16) typed += key;
+  paintKeypad();
+}
+function flash(key) {
+  const el = $("pad").querySelector('[data-key="' + key + '"]');
+  if (!el) return;
+  el.classList.add("down");
+  setTimeout(() => el.classList.remove("down"), 120);
+}
+function checkTyped() {
+  if (current !== "s-keypad" || busy || typed.length !== 16) return;
+  lookup(typed, "s-keypad");
+}
+function openKeypad(first) {
+  if (current !== "s-scan" || busy || resetting) return;
+  typed = first || "";
+  paintKeypad();
+  $("kstage").classList.remove("busy");
+  swap("s-scan", "s-keypad", "forward");
+}
+$("open-keypad").onclick = () => openKeypad("");
+$("back-keypad").onclick = () => { if (!busy) { typed = ""; swap("s-keypad", "s-scan", "back"); startScan(); } };
+$("pad").addEventListener("click", (e) => { const k = e.target.closest("[data-key]"); if (k) press(k.dataset.key); });
+$("kp-check").onclick = checkTyped;
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { reset(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (current === "s-scan" && /^\d$/.test(e.key)) { e.preventDefault(); openKeypad(e.key); return; }
+  if (current !== "s-keypad") return;
+  if (/^\d$/.test(e.key)) { e.preventDefault(); flash(e.key); press(e.key); }
+  else if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); flash("back"); press("back"); }
+  else if (e.key === "Enter") { e.preventDefault(); checkTyped(); }
+});
 
 function extractGan(raw) {
   let text = String(raw);
@@ -379,6 +436,7 @@ async function makeEngine() {
 
 function stopScan() {
   scanRun++;
+  lookupRun++;
   clearTimeout(scanTimer); scanTimer = null;
   busy = false;
 }
@@ -462,7 +520,7 @@ async function startScan() {
 }
 
 const DEMO_GAN = "7783320000001234", DEMO_BALANCE_CENTS = 1250;
-const SIM_ENTER = 450, SIM_SLIDE = 1250, SIM_SETTLE = 900, SIM_HOLD = 500;
+const SIM_ENTER = 1400, SIM_SLIDE = 1250, SIM_SETTLE = 900, SIM_HOLD = 500;
 let simBars = null, simGrain = null;
 
 function simBarcode() {
@@ -595,8 +653,11 @@ function simulate(run) {
   })(t0);
 }
 
-if (!DEBUG) openCamera().catch(() => {});
+paintKeypad();
+show("s-scan");
+startScan();
+if (!DEBUG && !("BarcodeDetector" in window)) loadZxing().catch(() => {});
 
-document.addEventListener("visibilitychange", () => { if (document.hidden && current === "s-scan") reset(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden && current !== "s-scan") reset(); });
 `;
 }

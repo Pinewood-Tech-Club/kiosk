@@ -75,15 +75,22 @@ async function noteLookupFailure(env: Env, device: string, now: number): Promise
   );
 }
 
-export async function lookupCard(env: Env, credentials: SquareCredentials, device: string, rawGan: string, now = Date.now()): Promise<SquareGiftCard & { last4: string }> {
-  if ((await recentLookupFailures(env, device, now)) >= LOOKUP_FAILURE_LIMIT) {
+export async function lookupCard(
+  env: Env,
+  credentials: SquareCredentials,
+  device: string,
+  rawGan: string,
+  now = Date.now(),
+  limitFailures = true,
+): Promise<SquareGiftCard & { last4: string }> {
+  if (limitFailures && (await recentLookupFailures(env, device, now)) >= LOOKUP_FAILURE_LIMIT) {
     throw new HttpError(429, "rate_limited", "Too many failed gift card lookups, try again in a few minutes", { "Retry-After": "300" });
   }
   let gan: string;
   try {
     gan = normalizeGan(rawGan);
   } catch (error) {
-    await noteLookupFailure(env, device, now);
+    if (limitFailures) await noteLookupFailure(env, device, now);
     throw error;
   }
   const last4 = gan.slice(-4);
@@ -98,7 +105,7 @@ export async function lookupCard(env: Env, credentials: SquareCredentials, devic
     return { id: card.id, state: card.state ?? "UNKNOWN", balanceCents: card.balance_money?.amount ?? 0, last4 };
   } catch (error) {
     if (error instanceof SquareError && error.status === 404) {
-      await noteLookupFailure(env, device, now);
+      if (limitFailures) await noteLookupFailure(env, device, now);
       console.warn({ event: "giftcard-not-found", device, last4 });
       throw new HttpError(404, "giftcard_not_found", "No gift card with that number");
     }
