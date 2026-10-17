@@ -2,6 +2,7 @@ import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test"
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src";
+import { ZXING_WASM_PATH } from "../src/giftcard-scanner";
 
 const BASE = "https://booth.test";
 const GAN = "7783320000001234";
@@ -61,12 +62,17 @@ describe("GET /giftcard", () => {
     expect(await (await send("/giftcard?debug=1")).text()).toContain("const DEBUG = true;");
   });
 
-  it("serves the vendored decoder and confetti", async () => {
-    for (const path of ["/giftcard/zxing.js", "/giftcard/confetti.js"]) {
+  it("serves the scanner worker, its decoder wasm and confetti", async () => {
+    for (const path of ["/giftcard/scan-worker.js", "/giftcard/confetti.js"]) {
       const response = await send(path);
       expect(response.status).toBe(200);
       expect(response.headers.get("Content-Type")).toContain("javascript");
     }
+    expect(await (await send("/giftcard/scan-worker.js")).text()).toContain(ZXING_WASM_PATH);
+    const wasm = await send(ZXING_WASM_PATH);
+    expect(wasm.status).toBe(200);
+    expect(wasm.headers.get("Content-Type")).toBe("application/wasm");
+    expect(WebAssembly.validate(new Uint8Array(await wasm.arrayBuffer()))).toBe(true);
   });
 
   it("gives debug mode the same org list as the live page", async () => {
